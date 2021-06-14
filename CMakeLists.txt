@@ -213,6 +213,8 @@ if ((SIMUTRANS_BACKEND STREQUAL "sdl2") OR (SIMUTRANS_BACKEND STREQUAL "gdi"))
 			# manually linking them instead, until it is fixed
 			target_link_libraries(simutrans PRIVATE -lfluidsynth -lharfbuzz -lgraphite2 -lglib-2.0 -lintl -liconv -ldsound -lole32 -lws2_32 -lgomp -lksuser)
 		else ()
+message( "FL " ${FluidSynth_INCLUDE_DIRS} " OR "${FLUIDSYNTH_INCLUDE_DIRS})
+			target_include_directories(simutrans PRIVATE ${FluidSynth_INCLUDE_DIRS})
 			target_link_libraries(simutrans PRIVATE ${FluidSynth_LIBRARIES})
 		endif (MINGW)
 	else ()
