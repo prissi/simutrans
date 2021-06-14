@@ -9,23 +9,23 @@ jobs:
 
     steps:
     - uses: actions/checkout@v1
-
+    - uses: nttld/setup-ndk@v1
+      with:
+        ndk-version: r21e
     - name: install_dependencies
       run: |
-        sudo apt-get -y update
-        sudo apt-get -ym install libsdl2-dev
-        sudo apt-get -ym install libfreetype6-dev
-        sudo apt-get -ym install libminiupnpc-dev
-        sudo apt-get -ym install libbz2-dev
-        sudo apt-get -ym install autoconf
+        curl -L -O https://github.com/pelya/commandergenius/archive/refs/heads/sdl_android.zip
+        unzip sdl_android.zip
+      env:
+        ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
 
     - name: setup
       run: |
-        autoconf
-        ./configure
-        echo "FLAGS = -DREVISION=$(svn info --show-item revision svn://servers.simutrans.org/simutrans) " >>config.default
-        echo "STATIC = 1" >>config.default
-        cat config.default >>/dev/stderr
+        cd commandergenius-sdl_android
+        ./build.sh simutrans
+      env:
+        ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+        
 
     - name: make
       run: make
