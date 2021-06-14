@@ -10,7 +10,7 @@ jobs:
     steps:
     - uses: nttld/setup-ndk@v1
       with:
-        ndk-version: r21e
+        ndk-version: r22b
     - name: install_dependencies
       run: |
         curl -L -O https://github.com/pelya/commandergenius/archive/refs/heads/sdl_android.zip
