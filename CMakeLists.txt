@@ -139,7 +139,7 @@ if (SIMUTRANS_MULTI_THREAD)
 endif (SIMUTRANS_MULTI_THREAD)
 
 if (SIMUTRANS_BACKEND STREQUAL "sdl2")
-mssage("SDL2 dirs " ${SDL2_INCLUDE_DIRS})
+message("SDL2 dirs " ${SDL2_INCLUDE_DIRS})
 	target_sources(simutrans PRIVATE display/simgraph16.cc sys/simsys_s2.cc sound/sdl2_sound.cc)
 	target_include_directories(simutrans PRIVATE ${SDL2_INCLUDE_DIRS})
 	if (MINGW)
