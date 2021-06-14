@@ -146,6 +146,7 @@ message("SDL2 dirs " ${SDL2_INCLUDE_DIRS})
 		target_link_libraries(simutrans PRIVATE ${SDL2_STATIC_LIBRARIES})
 	elseif (APPLE)
 		target_link_libraries(simutrans PRIVATE ${SDL2_LIBRARIES})
+		target_include_directories(simutrans PRIVATE ${SDL2_INCLUDE_DIRS}/..) # since otherwise <SDL2/SDL.h> fails
 	else ()
 		target_link_libraries(simutrans PRIVATE SDL2::SDL2)	
 	endif ()

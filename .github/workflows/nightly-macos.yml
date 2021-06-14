@@ -13,7 +13,7 @@ jobs:
     - name: install_dependencies
       run: | 
         brew install cmake pkg-config libpng sdl2 freetype fluidsynth zstd
-        brew list -v zstd
+        brew list -v sdl2
 
     - name: build
       run: |
