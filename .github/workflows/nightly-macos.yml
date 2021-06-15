@@ -24,7 +24,7 @@ jobs:
 
     - name: distribute
       run: |
-        cd build
+        cd build/simutrans/install
         zip -r simumac-nightly.zip simutrans
 
     - name: Update binaries of Nightly Release

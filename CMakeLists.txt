@@ -292,9 +292,9 @@ endif ()
 #
 install(TARGETS simutrans RUNTIME DESTINATION simutrans BUNDLE DESTINATION simutrans)
 
-install(DIRECTORY "${CMAKE_SOURCE_DIR}/simutrans/" DESTINATION "simutrans")
+install(DIRECTORY "${CMAKE_SOURCE_DIR}/simutrans/" DESTINATION "${CMAKE_SOURCE_DIR}/install/simutrans/")
 
-install(FILES get_pak.sh DESTINATION "simutrans"
+install(FILES get_pak.sh DESTINATION "${CMAKE_SOURCE_DIR}/install/simutrans/"
 	PERMISSIONS
 		OWNER_READ OWNER_WRITE OWNER_EXECUTE
 		GROUP_READ GROUP_EXECUTE
