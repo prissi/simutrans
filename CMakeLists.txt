@@ -292,9 +292,9 @@ endif ()
 #
 install(TARGETS simutrans RUNTIME DESTINATION "${CMAKE_BINARY_DIR}/simutrans/" BUNDLE DESTINATION "${CMAKE_BINARY_DIR}/simutrans/")
 
-install(DIRECTORY "${CMAKE_SOURCE_DIR}/simutrans" DESTINATION "${CMAKE_BINARY_DIR}")
+#install(DIRECTORY "${CMAKE_SOURCE_DIR}/simutrans" DESTINATION "${CMAKE_BINARY_DIR}")
 
-install(CODE "execute_process(COMMAND sh ../get_lang_files.sh WORKING_DIRECTORY \${CMAKE_BINARY_DIR})")
+#install(CODE "execute_process(COMMAND sh ../get_lang_files.sh WORKING_DIRECTORY \${CMAKE_BINARY_DIR})")
 
 if (NOT WIN32)
 	install(FILES get_pak.sh DESTINATION "${CMAKE_BINARY_DIR}/simutrans/"
@@ -311,9 +311,9 @@ endif ()
 if (APPLE)
 	# install pak64 with the bundle
 	install(CODE
-	"file(READ ${CMAKE_SOURCE_DIR}/paksetinfo.h URLpak64 OFFSET 110)
+	"file(STRINGS  ${CMAKE_SOURCE_DIR}/paksetinfo.h URLpak64 REGEX \"/pak64/\")
+	 string( REGEX REPLACE \"^.[\\t ]*\\\"\" \"\" URLpak64 \${URLpak64})
 	 string( REGEX REPLACE \"\\\", .*\$\" \"\" URLpak64 \${URLpak64})
-	 message(\${URLpak64})
 	 execute_process(COMMAND sh ../../get_pak.sh \${URLpak64} WORKING_DIRECTORY \${CMAKE_BINARY_DIR}/simutrans)
 	")
 endif()
