@@ -18,14 +18,13 @@ jobs:
       run: |
         mkdir build
         cd build
-        mkdir install
         cmake -DCMAKE_BUILD_TYPE=Release ..
         cmake --build . --target install
 
     - name: distribute
       run: |
-        cd build/inst
-        zip -r ../simumac-nightly.zip simutrans
+        cd build
+        zip -r simumac-nightly.zip simutrans
 
     - name: Update binaries of Nightly Release
       uses: svenstaro/upload-release-action@v1-release

@@ -47,6 +47,8 @@ else ()
 	message(WARNING "Could not find revision information because this repository "
 		"is neither a Subversion nor a Git repository. Revision information "
 		"will be unavailable.")
-	file(WRITE ${SOURCE_DIR}/revision.h "#define REVISION \n")
+	if (NOT EXISTS ${SOURCE_DIR}/revision.h)
+		file(WRITE ${SOURCE_DIR}/revision.h "#define REVISION \n")
+	endif ()
 endif ()
 
