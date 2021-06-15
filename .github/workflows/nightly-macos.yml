@@ -22,7 +22,7 @@ jobs:
         mkdir install
         cmake -DCMAKE_BUILD_TYPE=Release .. -DCMAKE_INSTALL_PREFIX="install"
         cmake -DCMAKE_BUILD_TYPE=Release .. - 
-        cmake --build . --target install -v
+        cmake --build .  --verbose --target install
 
     - name: distribute
       run: |
