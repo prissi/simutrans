@@ -292,12 +292,12 @@ endif ()
 #
 install(TARGETS simutrans RUNTIME DESTINATION "${CMAKE_BINARY_DIR}/simutrans/" BUNDLE DESTINATION "${CMAKE_BINARY_DIR}/simutrans/")
 
-#install(DIRECTORY "${CMAKE_SOURCE_DIR}/simutrans" DESTINATION "${CMAKE_BINARY_DIR}")
+install(DIRECTORY "${CMAKE_SOURCE_DIR}/simutrans" DESTINATION "${CMAKE_BINARY_DIR}")
 
-#install(CODE "execute_process(COMMAND sh ../get_lang_files.sh WORKING_DIRECTORY \${CMAKE_BINARY_DIR})")
+install(CODE "execute_process(COMMAND sh ../get_lang_files.sh WORKING_DIRECTORY \${CMAKE_BINARY_DIR})")
 
 if (NOT WIN32)
-	install(FILES get_pak.sh DESTINATION "${CMAKE_SOURCE_DIR}/simutrans/"
+	install(FILES get_pak.sh DESTINATION "${CMAKE_BINARY_DIR}/simutrans/"
 		PERMISSIONS
 			OWNER_READ OWNER_WRITE OWNER_EXECUTE
 			GROUP_READ GROUP_EXECUTE
@@ -308,7 +308,7 @@ else ()
 	install(CODE "execute_process(COMMAND NSIS WORKING_DIRECTORY \${CMAKE_SOURCE_DIR}/nsis)")
 endif ()
 
-if (WIN32)
+if (APPLE)
 	# install pak64 with the bundle
 	install(CODE
 	"file(READ ${CMAKE_SOURCE_DIR}/paksetinfo.h URLpak64 OFFSET 110)
