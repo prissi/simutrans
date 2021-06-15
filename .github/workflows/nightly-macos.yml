@@ -13,19 +13,18 @@ jobs:
     - name: install_dependencies
       run: | 
         brew install cmake pkg-config libpng sdl2 freetype fluidsynth zstd
-        brew list -v sdl2
 
     - name: build
       run: |
         mkdir build
         cd build
         mkdir install
-        cmake -DCMAKE_BUILD_TYPE=Release .. -DCMAKE_INSTALL_PREFIX="install"
+        cmake -DCMAKE_BUILD_TYPE=Release ..
         cmake --build . --target install
 
     - name: distribute
       run: |
-        cd build/install
+        cd build/inst
         zip -r ../simumac-nightly.zip simutrans
 
     - name: Update binaries of Nightly Release

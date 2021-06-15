@@ -290,14 +290,14 @@ endif ()
 #
 # Installation
 #
-install(TARGETS simutrans RUNTIME DESTINATION "${CMAKE_SOURCE_DIR}/install/simutrans/" BUNDLE DESTINATION "${CMAKE_SOURCE_DIR}/install/simutrans/")
+install(TARGETS simutrans RUNTIME DESTINATION "${CMAKE_SOURCE_DIR}/inst/simutrans/" BUNDLE DESTINATION "${CMAKE_SOURCE_DIR}/inst/simutrans/")
 
 #install(SCRIPT get_lang_files.sh)
 
-install(DIRECTORY "../simutrans" DESTINATION "${CMAKE_SOURCE_DIR}/install/simutrans/")
+install(DIRECTORY "../simutrans" DESTINATION "${CMAKE_SOURCE_DIR}/inst/simutrans/")
 
 if (NOT WIN32)
-	install(FILES get_pak.sh DESTINATION "${CMAKE_SOURCE_DIR}/install/simutrans/"
+	install(FILES get_pak.sh DESTINATION "${CMAKE_SOURCE_DIR}/inst/simutrans/"
 		PERMISSIONS
 			OWNER_READ OWNER_WRITE OWNER_EXECUTE
 			GROUP_READ GROUP_EXECUTE
