@@ -290,17 +290,22 @@ endif ()
 #
 # Installation
 #
-install(TARGETS simutrans RUNTIME DESTINATION simutrans BUNDLE DESTINATION simutrans)
+install(TARGETS simutrans RUNTIME DESTINATION "${CMAKE_SOURCE_DIR}/install/simutrans/" BUNDLE DESTINATION "${CMAKE_SOURCE_DIR}/install/simutrans/")
 
-install(DIRECTORY "${CMAKE_SOURCE_DIR}/simutrans/" DESTINATION "${CMAKE_SOURCE_DIR}/install/simutrans/")
+#install(SCRIPT get_lang_files.sh)
 
-install(FILES get_pak.sh DESTINATION "${CMAKE_SOURCE_DIR}/install/simutrans/"
-	PERMISSIONS
-		OWNER_READ OWNER_WRITE OWNER_EXECUTE
-		GROUP_READ GROUP_EXECUTE
-		WORLD_READ WORLD_EXECUTE
-)
+install(DIRECTORY "../simutrans" DESTINATION "${CMAKE_SOURCE_DIR}/install/simutrans/")
 
+if (NOT WIN32)
+	install(FILES get_pak.sh DESTINATION "${CMAKE_SOURCE_DIR}/install/simutrans/"
+		PERMISSIONS
+			OWNER_READ OWNER_WRITE OWNER_EXECUTE
+			GROUP_READ GROUP_EXECUTE
+			WORLD_READ WORLD_EXECUTE
+	)
+else ()
+	# NSIS missing
+endif ()
 
 
 #
