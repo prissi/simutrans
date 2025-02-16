@@ -8,7 +8,8 @@
 
 
 #include "simobj.h"
-#include "../descriptor/bridge_desc.h"
+#include "../descriptor/pillar_desc.h"
+#include "../tpl/minivec_tpl.h"
 
 class loadsave_t;
 class karte_t;
@@ -18,17 +19,18 @@ class karte_t;
  */
 class pillar_t : public obj_t
 {
-	const bridge_desc_t *desc;
-	uint8 dir;
-	bool asymmetric;
-	image_id image;
+private:
+	const pillar_desc_t *desc;
+
+	minivec_tpl<image_id> left;
+	minivec_tpl<image_id> right;
 
 protected:
 	void rdwr(loadsave_t *file) OVERRIDE;
 
 public:
 	pillar_t(loadsave_t *file);
-	pillar_t(koord3d pos, player_t *player, const bridge_desc_t *desc, bridge_desc_t::img_t img, int hoehe);
+	pillar_t(koord3d pos, player_t *player, const bridge_desc_t *desc, int hoehe);
 
 	const char* get_name() const OVERRIDE { return "Pillar"; }
 	typ get_typ() const OVERRIDE { return obj_t::pillar; }

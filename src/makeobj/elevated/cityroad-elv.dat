@@ -1,0 +1,63 @@
+---
+obj=elevated_way
+name=np-elevated-city_road-nopier
+copyright=wa
+cost=15000
+maintenance=300
+topspeed=50
+max_weight=100
+#intro_year=1960
+#intro_month=7
+waytype=road
+draw_as_ding=1
+# max_height is limited byt the engine at 4
+#max_height=4
+# min_height 0 mean may touch the ground
+min_height=0
+# old elevated ways are min_height=max_height=1
+
+cursor=cityroad-elv-nopier.7.1
+icon=> cityroad-elv-nopier.7.0
+image[S][0]=cityroad-elv-nopier.0.0,0,16
+image[W][0]=cityroad-elv-nopier.0.1,0,16
+image[N][0]=cityroad-elv-nopier.0.2,0,16
+image[E][0]=cityroad-elv-nopier.0.3,0,16
+
+image[SW][0]=cityroad-elv-nopier.6.0,0,16
+image[NW][0]=cityroad-elv-nopier.6.1,0,16
+image[NE][0]=cityroad-elv-nopier.6.2,0,16
+image[SE][0]=cityroad-elv-nopier.6.3,0,16
+
+image[NS][0]=cityroad-elv-nopier.2.0,0,16
+image[EW][0]=cityroad-elv-nopier.2.1,0,16
+image[NSEW][0]=cityroad-elv-nopier.2.2,0,16
+image[-][0]=cityroad-elv-nopier.2.3,0,16
+
+image[NEW][0]=cityroad-elv-nopier.3.0,0,16
+image[NSE][0]=cityroad-elv-nopier.3.1,0,16
+image[SEW][0]=cityroad-elv-nopier.3.2,0,16
+image[NSW][0]=cityroad-elv-nopier.3.3,0,16
+
+imageUp[12][0]=cityrcoad-elv-slope.1.0
+imageUp[9][0]=cityroad-elv-slope.1.1
+imageUp[3][0]=cityroad-elv-slope.1.2
+imageUp[6][0]=cityroad-elv-slope.1.3
+
+# no double slopes
+imageUp2[12][0]=-
+imageUp2[9][0]=-
+imageUp2[3][0]=-
+imageUp2[6][0]=-
+
+pillar[left_flat1]=cityrcoad-elv-pillar.0.0
+pillar[left_WS1]=cityroad-elv-pillar.0.1
+pillar[left_SW1]=cityroad-elv-pillar.0.2
+pillar[left_flat2]=cityrcoad-elv-pillar.1.0
+pillar[left_WS2]=cityroad-elv-pillar.1.1
+pillar[left_SW2]=cityroad-elv-pillar.1.2
+pillar[right_flat1]=cityrcoad-elv-pillar.0.3
+pillar[right_ES1]=cityroad-elv-pillar.0.4
+pillar[right_SE1]=cityroad-elv-pillar.0.5
+pillar[right_flat2]=cityrcoad-elv-pillar.1.3
+pillar[right_ES2]=cityroad-elv-pillar.1.4
+pillar[right_SE2]=cityroad-elv-pillar.1.5

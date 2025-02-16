@@ -31,7 +31,7 @@ pillar_t::pillar_t(loadsave_t *file) : obj_t()
 }
 
 
-pillar_t::pillar_t( koord3d pos, player_t *player, const bridge_desc_t *desc, bridge_desc_t::img_t img, int hoehe ) : obj_t( pos )
+pillar_t::pillar_t( koord3d pos, player_t *player, const pillar_desc_t *desc, bridge_desc_t::img_t img, int hoehe ) : obj_t( pos )
 {
 	this->desc = desc;
 	this->dir = (uint8)img;
