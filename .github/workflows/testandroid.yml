@@ -19,7 +19,7 @@ jobs:
         echo "Current working directory: $(ANDROID_HOME)"
         echo "($PATH)"
         echo "($GITHUB_PATH)"
-        echo "cmake version: (cmake --version)"
-        echo "cmake help: (cmake --help)"
+        cmake --help
+        cmake --version
 
         
