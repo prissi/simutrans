@@ -17,5 +17,5 @@ jobs:
       run: |
         echo "Current working directory: $(pwd)"
         echo "Current working directory: $(ANDROID_HOME)"
-        echo "$(ls /)"
+        echo "$(ls /opt/)"
         
