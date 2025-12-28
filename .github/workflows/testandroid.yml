@@ -1,4 +1,4 @@
-name: Nightly build Android
+name: Nightly test Android
 
 on:
   push:
@@ -17,5 +17,5 @@ jobs:
       run: |
         echo "Current working directory: $(pwd)"
         echo "Current working directory: $(ANDROID_HOME)"
-        echo "$(ls /opt/)"
+        echo "$(find / -name sdkmanager)"
         
