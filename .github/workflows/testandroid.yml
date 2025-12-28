@@ -1,0 +1,21 @@
+name: Nightly build Android
+
+on:
+  push:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        path: 'gh-clone/simutrans'
+
+    - name: Install dependencies
+      run: |
+        echo "Current working directory: $(pwd)"
+        echo "Current working directory: $(ANDROID_HOME)"
+        echo "$(ls /)"
+        
