@@ -16,7 +16,7 @@ jobs:
     - name: Install dependencies
       run: |
         echo "Current working directory: $(pwd)"
-        echo "Current working directory: $(ANDROID_HOME)"
+        echo "Android: $(ls /usr/local/lib/android)"
         echo "($PATH)"
         echo "($GITHUB_PATH)"
         cmake --help
