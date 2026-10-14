@@ -59,7 +59,7 @@ template<class D> struct access_objs {
 	{
 		SQUserPointer tag = obj_t_tag + bind_code<D>::objtype;
 		SQUserPointer p = NULL;
-		if (SQ_SUCCEEDED(sq_getinstanceup(vm, index, &p, tag))  &&  p) {
+		if (SQ_SUCCEEDED(sq_getinstanceup(vm, index, &p, tag, SQTrue))  &&  p) {
 			D *obj = static_cast<D*>(p);
 			koord3d pos = param<koord3d>::get(vm, index);
 			grund_t *gr = welt->lookup(pos);
@@ -522,6 +522,7 @@ void export_map_objects(HSQUIRRELVM vm)
 	/**
 	 * Checks whether player can remove this object.
 	 * @returns error message or null if object can be removed.
+	 * @param player the player that would remove it
 	 */
 	register_method(vm, &obj_t::get_removal_error, "is_removable");
 	/**
@@ -602,6 +603,7 @@ void export_map_objects(HSQUIRRELVM vm)
 	register_method( vm, &get_tile_list, "get_tile_list", true );
 	/**
 	 * @returns true if both building tiles are part of one (multi-tile) building
+	 * @param other the other building tile
 	 */
 	register_method(vm, &gebaeude_t::is_same_building, "is_same_building");
 
@@ -623,11 +625,14 @@ void export_map_objects(HSQUIRRELVM vm)
 	/**
 	 * Start the convoy in this depot.
 	 * @ingroup game_cmd
+	 * @param player owner of the depot
+	 * @param cnv the convoy to start
 	 */
 	register_method(vm, depot_start_convoy, "start_convoy", true);
 	/**
 	 * Start all convoys in this depot.
 	 * @ingroup game_cmd
+	 * @param player owner of the depot
 	 */
 	register_method_fv(vm, depot_start_convoy, "start_all_convoys", freevariable<convoihandle_t>(convoihandle_t()), true);
 	/**
@@ -751,7 +756,7 @@ void export_map_objects(HSQUIRRELVM vm)
 
 	/**
 	 * Powerlines.
-	 * (Including transformers. Can be differentiated by @ref obj_x::get_type.
+	 * (Including transformers. Can be differentiated by @ref map_object_x::get_type.
 	 */
 	begin_obj_class<leitung_t>(vm, "powerline_x", "map_object_x");
 
@@ -764,7 +769,7 @@ void export_map_objects(HSQUIRRELVM vm)
 
 	/**
 	 * Transformers.
-	 * Sink and source can be differentiated by @ref obj_x::get_type.
+	 * Sink and source can be differentiated by @ref map_object_x::get_type.
 	 */
 	begin_obj_class<pumpe_t>(vm, "transformer_x", "powerline_x");
 

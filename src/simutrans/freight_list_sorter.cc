@@ -7,11 +7,14 @@
 
 #include "freight_list_sorter.h"
 #include "simhalt.h"
+#include "simline.h"
+#include "simconvoi.h"
 #include "simtypes.h"
 #include "simware.h"
 #include "simfab.h"
 #include "simmem.h"
 #include "world/simworld.h"
+#include "player/simplay.h"
 
 #include "dataobj/translator.h"
 
@@ -23,6 +26,31 @@
 
 karte_ptr_t freight_list_sorter_t::welt;
 freight_list_sorter_t::sort_mode_t freight_list_sorter_t::sortby=by_name;
+
+
+
+/**
+ * This variable defines by which column the table is sorted
+ * Values: 0 = destination
+ *         1 = via
+ *         2 = via_amount
+ *         3 = amount
+ *         4 = via owner of next stop
+ *         5 = via next line (or lineless convoy) taken
+ */
+static const char* sort_text[freight_list_sorter_t::SORT_MODES] = {
+		"Zielort",
+		"Menge",
+		"via",
+		"via Menge",
+		"via owner",
+		"connection"
+};
+
+const char *freight_list_sorter_t::get_sort_mode_string(uint8 sort_mode, halthandle_t h)
+{
+	return sort_text[h.is_bound() ? sort_mode : (sort_mode%(SORT_MODES-1))];
+}
 
 
 /**
@@ -48,6 +76,8 @@ bool freight_list_sorter_t::compare_ware(ware_t const& w1, ware_t const& w2)
 			/* FALLTHROUGH */
 
 		case by_via_sum:
+		case by_via_owner:
+		case by_connection:
 		case by_amount: { // sort by ware amount
 			int const order = w2.amount - w1.amount;
 			if(  order != 0  ) {
@@ -122,40 +152,120 @@ void freight_list_sorter_t::add_ware_heading( cbuffer_t &buf, uint64 sum, uint32
 }
 
 
-void freight_list_sorter_t::sort_freight(vector_tpl<ware_t> const& warray, cbuffer_t& buf, sort_mode_t sort_mode, const slist_tpl<ware_t>* full_list, const char* what_doing)
+void freight_list_sorter_t::sort_freight(vector_tpl<ware_t> const& warray, cbuffer_t& buf, sort_mode_t sort_mode, const slist_tpl<ware_t>* full_list, const char* what_doing, halthandle_t h)
 {
 	sortby = sort_mode;
+	if (!h.is_bound() && sort_mode == by_connection) {
+		sort_mode = by_amount;
+	}
 
 	// added sorting to ware's destination list
-	int pos = 0;
-	ware_t* wlist = MALLOCN( ware_t, warray.get_count() );
+	ware_t* wlist = MALLOCN(ware_t, warray.get_count());
 
-	// track any lost good amounts during packet merger
+	// store the overflow when merging wares (during via sortings), looks very broken for now
 	// only created when needed
 	uint64* categories_goods_amount_lost = NULL;
 
+	uint32 pos = 0;
 	for(ware_t const& ware : warray) {
-		if(  ware.get_desc() == goods_manager_t::none  ||  ware.amount == 0  ) {
+		if(  ware.get_desc() == goods_manager_t::none  ||  ware.amount == 0  ||  !ware.get_next_halt().is_bound()) {
 			continue;
 		}
 		wlist[pos] = ware;
 
 		if(  sort_mode == by_via_sum  ) {
 			// via sort mode merges packets with a common next stop
-			for(  int i=0;  i<pos;  i++  ) {
+			for(  uint32 i=0;  i<pos;  i++  ) {
 				ware_t& wi = wlist[i];
-				if(  wi.get_index()==ware.get_index()  &&  wi.get_via_halt()==ware.get_via_halt()  &&
-					(  (wi.get_via_halt().is_bound() && (  wi.get_target_halt()==wi.get_via_halt() )==( ware.get_target_halt()==ware.get_via_halt() ) )
-					|| wi.get_target_halt() == ware.get_target_halt() ) ) {
+				if(wi.get_index() == ware.get_index()) {
+					bool merge = wi.get_target_halt() == ware.get_target_halt();
+					if (!merge  &&   wi.get_via_halt() == ware.get_via_halt()) {
+						//ware.set_target_halt(halthandle_t());
+						merge = true;
+					}
+					if(merge) {
+						ware_t::goods_amount_t const remaining_amount = wi.add_goods(ware.amount);
+						if(  remaining_amount > 0  ) {
+							// reached goods amount limit, have to discard amount and track category totals separatly
+							if(  categories_goods_amount_lost == NULL  ) {
+								categories_goods_amount_lost = new uint64[256](); // this should be tied to a category index limit constant
+							}
+							categories_goods_amount_lost[wi.get_desc()->get_catg_index()]+= remaining_amount;
+						}
+						pos--; // remove after merging
+						break;
+					}
+				}
+			}
+		}
+
+		if (sort_mode == by_connection) {
+			// connection mode merges packets with all their next connections common
+			for (  uint32 i = 0; i < pos; i++) {
+				ware_t& wi = wlist[i];
+				if (wi.get_index() == ware.get_index()) {
+					halthandle_t w_next = ware.get_next_halt();
+					halthandle_t wi_next = wi.get_next_halt();
+					bool merge = w_next == wi_next;
+					bool has_line = false;
+					if (!merge) {
+						// not same via halt, but maybe same lines
+						for (linehandle_t const& line : h->registered_lines) {
+							if (line->get_goods_catg_index().is_contained(ware.get_catg_index())) {
+								// only merge if both can travel with the same line to their stop
+								bool has_line1 = w_next->registered_lines.is_contained(line);
+								bool has_line2 = wi_next->registered_lines.is_contained(line);
+								has_line |= has_line1 || has_line2;
+								merge = has_line1 && has_line2;
+								if (merge) {
+									break;
+								}
+							}
+						}
+					}
+					// Don't attempt to merge with convoys if at least one of the
+					// wares can take a line, since then the lines differ.
+					if (!merge && !has_line) {
+						// not same via halt, not same line, but maybe same convoy
+						for (convoihandle_t const& c : wi_next->registered_convoys) {
+							if (c->get_goods_catg_index().is_contained(ware.get_catg_index())  &&  w_next->registered_convoys.is_contained(c)  &&  (h.is_bound() && h->registered_convoys.is_contained(c))) {
+								merge = true;
+								break;
+							}
+						}
+					}
+					if (merge) {
+						// same entry
+						ware_t::goods_amount_t const remaining_amount = wi.add_goods(ware.amount);
+						if (remaining_amount > 0) {
+							// reached goods amount limit, have to discard amount and track category totals separatly
+							if (categories_goods_amount_lost == NULL) {
+								categories_goods_amount_lost = new uint64[256](); // this should be tied to a category index limit constant
+							}
+							categories_goods_amount_lost[wi.get_desc()->get_catg_index()] += remaining_amount;
+						}
+						pos--; // remove after merging
+						break;
+					}
+				}
+			}
+		}
+
+		else if(  sort_mode == by_via_owner  ) {
+			// player sort mode merges packets which next stop that has at least one of same player permitting to stop (ignoring public player)
+			uint16 permissions = ware.get_next_halt()->get_owners() & ~(1 << PLAYER_PUBLIC_NR);
+			for(  uint32 i=0;  i<pos;  i++  ) {
+				ware_t& wi = wlist[i];
+				if(  wi.get_index()==ware.get_index()  &&  wi.get_next_halt().is_bound()  &&  wi.get_next_halt()->get_permissions() & permissions) {
 					ware_t::goods_amount_t const remaining_amount = wi.add_goods(ware.amount);
 					if(  remaining_amount > 0  ) {
-						// reached goods amount limit, have to discard amount and track category totals separatly
+						// reached goods amount limit, have to discard amount and track category totals separately
 						if(  categories_goods_amount_lost == NULL  ) {
 							categories_goods_amount_lost = new uint64[256](); // this should be tied to a category index limit constant
 						}
 						categories_goods_amount_lost[wi.get_desc()->get_catg_index()]+= remaining_amount;
 					}
-					--pos;
+					pos--; // remove after merging
 					break;
 				}
 			}
@@ -178,7 +288,7 @@ void freight_list_sorter_t::sort_freight(vector_tpl<ware_t> const& warray, cbuff
 		int last_goods_index = -1;
 		int last_ware_catg = -1;
 
-		for(  int j = 0;  j < pos;  j++  ) {
+		for(  uint32 j = 0;  j < pos;  j++  ) {
 			halthandle_t const halt     = wlist[j].get_target_halt();
 			halthandle_t const via_halt = wlist[j].get_via_halt();
 
@@ -193,7 +303,7 @@ void freight_list_sorter_t::sort_freight(vector_tpl<ware_t> const& warray, cbuff
 				last_goods_index = ware.get_index();
 				// special freight => handle different
 				last_ware_catg = (ware.get_catg()!=0) ? ware.get_catg() : -1;
-				for(  int i=j;  i<pos;  i++  ) {
+				for(  uint32 i=j;  i<pos;  i++  ) {
 					ware_t const& sumware = wlist[i];
 					if(  last_goods_index != sumware.get_index()  ) {
 						if(  last_ware_catg != sumware.get_catg()  ) {
@@ -224,8 +334,52 @@ void freight_list_sorter_t::sort_freight(vector_tpl<ware_t> const& warray, cbuff
 
 			// detail amount
 			goods_desc_t const& desc = *ware.get_desc();
-			char const *const good_description_format = sortby == by_via_sum  &&  ware.is_goods_amount_maxed() ? "  >=%u%s %s > " : "  %u%s %s > ";
+			char const* const good_description_format = ware.is_goods_amount_maxed() ? "  >=%u%s %s > " : "  %u%s %s > ";
 			buf.printf(good_description_format, ware.amount, translator::translate(desc.get_mass()), translator::translate(desc.get_name()));
+
+			// special mode: simply retrieve player name
+			if(  sortby == by_via_owner  ) {
+				if(  via_halt.is_bound()  ) {
+					buf.append(via_halt->get_first_owner()->get_name());
+				}
+				else {
+					buf.append(name);
+				}
+				buf.append("\n");
+				continue;
+			}
+
+			if (sort_mode == by_connection) {
+				// when we are here, we have a valid halthandle in h
+				halthandle_t h_next = ware.get_next_halt();
+				uint32 linecount = 0;
+				// maybe same line
+				for (linehandle_t const& line : h->registered_lines) {
+					if (h_next->registered_lines.is_contained(line) && line->get_goods_catg_index().is_contained(ware.get_catg_index())) {
+						if (linecount++) {
+							buf.append(", ");
+						}
+						buf.append(line->get_name());
+					}
+				}
+				if (!linecount) {
+					uint32 convoicount = 0;
+					// not same line, but maybe same convoy
+					for (convoihandle_t const& c : h->registered_convoys) {
+						if (h_next->registered_convoys.is_contained(c) && c->get_goods_catg_index().is_contained(ware.get_index())) {
+							if (convoicount++==0) {
+								buf.append(c->get_name());
+							}
+						}
+					}
+					if (convoicount > 1) {
+						buf.append(" + ");
+						buf.printf(translator::translate("%d more convois"), convoicount - 1);
+					}
+				}
+				buf.append("\n");
+				continue;
+			}
 
 			// the target name is not correct for the via sort
 			const bool is_factory_going = ( sortby!=by_via_sum  &&  ware.to_factory ); // exclude merged packets

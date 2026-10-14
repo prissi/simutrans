@@ -40,11 +40,15 @@ public:
 		ware_ab_filter         = 1 << 2,
 		ware_an_filter         = 1 << 3,
 		ueberfuellt_filter     = 1 << 4,
-		ohneverb_filter        = 1 << 5
+		notconnected_filter    = 1 << 5,
+		owner_filter           = 1 << 6,
+		shared_filter          = 1 << 7
 	};
 
 private:
 	player_t *m_player;
+
+	static int halt_lang_id; // language of stops
 
 	static const char *sort_text[SORT_MODES];
 

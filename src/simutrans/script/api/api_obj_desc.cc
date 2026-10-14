@@ -31,6 +31,7 @@
 #include "../../obj/wayobj.h"
 #include "../../simhalt.h"
 #include "../../simware.h"
+#include "../../tool/simtool.h"
 #include "../../world/simworld.h"
 
 #define begin_enum(name)
@@ -432,6 +433,7 @@ void export_goods_desc(HSQUIRRELVM vm)
 	register_method(vm, &get_predecessors, "get_predecessors", true);
 	/**
 	 * @returns a list of all available vehicles at the current in-game-time
+	 * @param wt waytype
 	 */
 	STATIC register_method(vm, &get_available_vehicles, "get_available_vehicles", false, true);
 	/**
@@ -587,6 +589,7 @@ void export_goods_desc(HSQUIRRELVM vm)
 	 * Returns an array with all buildings of the given type.
 	 * @warning If @p type is one of building_desc_x::harbour, building_desc_x::depot, building_desc_x::station, building_desc_x::station_extension then always the same list is generated.
 	 *          You have to filter out e.g. station buildings yourself.
+	 * @param type the building type to list
 	 */
 	STATIC register_method(vm, &get_building_list, "get_building_list", false, true);
 	/**
@@ -670,6 +673,14 @@ void export_goods_desc(HSQUIRRELVM vm)
 	 */
 	STATIC register_method(vm, way_builder_t::get_way_list, "get_available_ways", false, true);
 
+	/**
+	* Returns the last used (default) way descriptor for a given waytype.
+	* This is the way that would be selected when pressing the shortcut key (e.g. 's' for roads).
+	* @param wt waytype (1=road_wt, 2=track_wt, 3=tram_wt, etc.)
+	* @returns way_desc_x object or null if none available
+	*/
+	STATIC register_method(vm, &tool_build_way_t::get_default_desc, "get_default_way_desc", false, true);
+
 	end_class(vm);
 
 	/**
@@ -678,6 +689,7 @@ void export_goods_desc(HSQUIRRELVM vm)
 	begin_desc_class(vm, "tunnel_desc_x", "obj_desc_transport_x", (GETDESCFUNC)param<const tunnel_desc_t*>::getfunc());
 	/**
 	 * Returns a list with available tunnel types.
+	 * @param wt waytype
 	 */
 	STATIC register_method(vm, tunnel_builder_t::get_available_tunnels, "get_available_tunnels", false, true);
 	end_class(vm);
@@ -704,10 +716,12 @@ void export_goods_desc(HSQUIRRELVM vm)
 	register_method(vm, &bridge_desc_t::get_max_height, "get_max_height");
 	/**
 	 * Returns a bridge with the given name
+	 * @param name raw name of the bridge
 	 */
 	STATIC register_method(vm, bridge_builder_t::get_desc, "get_desc", false, true);
 	/**
 	 * Returns a list with available bridge types.
+	 * @param wt waytype
 	 */
 	STATIC register_method(vm, bridge_builder_t::get_available_bridges, "get_available_bridges", false, true);
 
@@ -763,6 +777,7 @@ void export_goods_desc(HSQUIRRELVM vm)
 	/**
 	 * Checks if this good can be interchanged with the other, in terms of
 	 * transportability.
+	 * @param other the other freight type
 	 */
 	register_method(vm, &goods_desc_t::is_interchangeable, "is_interchangeable");
 	/**

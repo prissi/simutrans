@@ -53,6 +53,7 @@ class gui_schedule_entry_t :
 {
 	schedule_entry_t entry;
 	bool is_current;
+	bool is_water;
 	uint number;
 	player_t* player;
 	gui_label_buf_t stop;
@@ -61,8 +62,9 @@ class gui_schedule_entry_t :
 	bool valid;
 
 public:
-	gui_schedule_entry_t(player_t* pl, schedule_entry_t e, uint n)
+	gui_schedule_entry_t(player_t* pl, schedule_entry_t e, uint n, bool is_w)
 	{
+		is_water = is_w;
 		player = pl;
 		entry  = e;
 		number = n;
@@ -84,7 +86,10 @@ public:
 		add_component(&down);
 
 		del.init( button_t::imagebox, NULL );
-		del.set_image( skinverwaltung_t::gadget->get_image_id(SKIN_GADGET_CLOSE) );
+		if(  skinverwaltung_t::gadget  ) {
+			// no theme is loaded when there is no display, then the button stays blank
+			del.set_image( skinverwaltung_t::gadget->get_image_id(SKIN_GADGET_CLOSE) );
+		}
 		del.set_size( gui_theme_t::gui_arrow_left_size );
 		del.add_listener( this );
 		del.set_tooltip( "Delete the current stop" );
@@ -99,9 +104,9 @@ public:
 	{
 		arrow.set_targetpos3d(entry.pos);
 		stop.buf().printf("%i) ", number+1);
-		schedule_t::gimme_stop_name(stop.buf(), welt, player, entry, -1);
+		schedule_t::gimme_stop_name(stop.buf(), welt, player, is_water, entry, -1);
 		stop.update();
-		if(  haltestelle_t::get_halt( entry.pos, player ).is_bound()  ) {
+		if(  haltestelle_t::get_halt( entry.pos, player, is_water ).is_bound()  ) {
 			if(  !entry.get_absolute_departures()  ) {
 				if (entry.minimum_loading > 0) {
 					if( entry.waiting_time > 0 ) {
@@ -133,7 +138,7 @@ public:
 	{
 		update_label();
 		if (is_current  ||  !valid) {
-			display_fillbox_wh_clip_rgb(pos.x + offset.x, pos.y + offset.y, size.w, size.h, valid ? SYSCOL_LIST_BACKGROUND_SELECTED_F : MONEY_MINUS, false);
+			gfx->draw_rect_clipped(pos.x + offset.x, pos.y + offset.y, size.w, size.h, valid ? SYSCOL_LIST_BACKGROUND_SELECTED_F : MONEY_MINUS, false CLIP_NUM_DEFAULT);
 		}
 		gui_aligned_container_t::draw(offset);
 	}
@@ -169,7 +174,7 @@ public:
 			welt->get_viewport()->change_world_position( entry.pos );
 			return true;
 		}
-		else if(ev->button_state==1  ){
+		else if(ev->mouse_button_state==1  ){
 			set_focus( this );
 			if( !gui_aligned_container_t::infowin_event( ev ) && stop.getroffen( ev->click_pos ) ) {
 				// not handled, so we make it active
@@ -201,15 +206,28 @@ class schedule_gui_stats_t :
 	zeiger_t *current_stop_mark; ///< mark current stop on map
 
 	bool invalid_entries;
+
+	uint32 route_overlay_id;  ///< identifies our route overlay in the world
+	bool route_needs_update;  ///< schedule changed since we asked for the route
+	bool route_shown;         ///< we asked for a route and did not drop it yet
 public:
 	schedule_t *schedule;      ///< schedule under editing
 	player_t*  player;
+	uint16 route_speed_kmh;    ///< speed of the convoi driving this schedule (0: none)
+	bool route_electric;       ///< that convoi may only drive on electrified ways
 
 	schedule_gui_stats_t()
 	{
 		set_table_layout(1,0);
 		last_schedule = schedule = NULL;
 		invalid_entries = false;
+
+		static uint32 next_route_overlay_id = 0;
+		route_overlay_id = ++next_route_overlay_id; // 0 means "nobody"
+		route_needs_update = false;
+		route_shown = false;
+		route_speed_kmh = 0;
+		route_electric = false;
 
 		current_stop_mark = new zeiger_t(koord3d::invalid, NULL );
 		current_stop_mark->set_image( tool_t::general_tool[TOOL_SCHEDULE_ADD]->cursor );
@@ -268,6 +286,19 @@ public:
 			}
 		}
 		current_stop_mark->clear_flag( obj_t::highlight );
+
+		// the route between the stops rides on its own channel: the world holds the
+		// tiles and draws them, we only ask for them and drop them again
+		if(  marking  ) {
+			if(  route_needs_update  ||  !route_shown  ||  welt->get_schedule_route_owner() == 0  ) {
+				welt->request_schedule_route( schedule, player, route_overlay_id, route_speed_kmh, route_electric );
+				route_needs_update = false;
+			}
+		}
+		else if(  route_shown  ) {
+			welt->clear_schedule_route( route_overlay_id );
+		}
+		route_shown = marking;
 	}
 
 	void update_schedule(bool highlight)
@@ -285,6 +316,8 @@ public:
 			}
 		}
 		else {
+			// the stops changed, so the route between them changed too
+			route_needs_update = true;
 			remove_all();
 			entries.clear();
 			invalid_entries = false;
@@ -296,7 +329,7 @@ public:
 			else {
 				for(uint i=0; i<schedule->entries.get_count(); i++) {
 
-					gui_schedule_entry_t* entry = new_component<gui_schedule_entry_t>(player, schedule->entries[i], i);
+					gui_schedule_entry_t* entry = new_component<gui_schedule_entry_t>(player, schedule->entries[i], i,schedule->get_waytype()==water_wt);
 					// mark double entries as invalid
 					bool valid =     (schedule->entries[i].pos != schedule->entries[ (i+1)                               % schedule->entries.get_count() ].pos)
 					             &&  (schedule->entries[i].pos != schedule->entries[ (i-1+schedule->entries.get_count()) % schedule->entries.get_count() ].pos);
@@ -502,6 +535,21 @@ void gui_schedule_t::init(schedule_t* schedule_, player_t* player, convoihandle_
 
 		stats->player = player;
 		stats->schedule = schedule;
+		// the route is calculated with a temporary vehicle: give it the speed and the
+		// catenary requirement of the convoi driving this schedule, so that an electric
+		// one is not shown a route it could not take. A line without convois gets a
+		// generic vehicle, which is not bound to catenary.
+		sint32 top_speed = 0;
+		stats->route_electric = false;
+		if(  convoi_mode.is_bound()  ) {
+			top_speed = convoi_mode->get_min_top_speed();
+			stats->route_electric = convoi_mode->needs_electrification();
+		}
+		else if(  line_mode.is_bound()  &&  line_mode->count_convoys() > 0  ) {
+			top_speed = line_mode->get_convoy(0)->get_min_top_speed();
+			stats->route_electric = line_mode->get_convoy(0)->needs_electrification();
+		}
+		stats->route_speed_kmh = top_speed > 0 ? (uint16)min( speed_to_kmh(top_speed), 1000 ) : 500;
 		stats->update_schedule(false);
 
 		numimp_load.set_value( schedule->get_current_entry().minimum_loading );
@@ -559,7 +607,7 @@ void gui_schedule_t::update_selection()
 
 		const uint8 current_stop = schedule->get_current_stop();
 
-		if(  haltestelle_t::get_halt(schedule->entries[current_stop].pos, player).is_bound()  ) {
+		if(  haltestelle_t::get_halt(schedule->entries[current_stop].pos, player, schedule->get_waytype()==water_wt).is_bound()  ) {
 
 			cb_wait.set_visible(true);
 			if( schedule->entries[current_stop].get_absolute_departures() ) {

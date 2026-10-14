@@ -11,7 +11,7 @@
 #include "koord3d.h"
 
 // since we have now a dummy function instead an array
-const ribi_t::_nesw ribi_t::nesw;;
+const ribi_t::_nesw ribi_t::nesw;
 
 // same like the layouts of buildings
 const ribi_t::ribi ribi_t::layout_to_ribi[4] = {
@@ -286,6 +286,25 @@ const ribi_t::dir ribi_t::dirs[16] = {
 	dir_invalid,   // north-south-west
 	dir_invalid,   // south-east-west
 	dir_invalid    // all
+};
+
+const char ribi_t::names[16][5] = {
+	"    ",
+	"N   ",
+	" E  ",
+	"NE  ",
+	"  S ",
+	"N S ",
+	" ES ",
+	"NES ",
+	"   W",
+	"N  W",
+	" E W",
+	"NE W",
+	"  SW",
+	"N SW",
+	" ESW",
+	"NESW",
 };
 
 

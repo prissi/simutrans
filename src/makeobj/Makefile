@@ -25,7 +25,7 @@ LDFLAGS += $(PNG_LDFLAGS)
 # Absolutely essential
 CXXFLAGS += -DMAKEOBJ
 
-STD_LIBS += -lz -lbz2 -lpng
+STD_LIBS += -lpng
 
 ifeq ($(OSTYPE),cygwin)
   OS_INC   ?= -I/usr/include/mingw
@@ -123,6 +123,7 @@ SHARED_SOURCES += ../simutrans/io/raw_image.cc
 SHARED_SOURCES += ../simutrans/simio.h
 SHARED_SOURCES += ../simutrans/simdebug.cc
 SHARED_SOURCES += ../simutrans/simmem.cc
+SHARED_SOURCES += ../simutrans/utils/cbuffer.cc
 SHARED_SOURCES += ../simutrans/utils/simstring.cc
 SHARED_SOURCES += ../simutrans/utils/searchfolder.cc
 VARIANT_SOURCES += ../simutrans/dataobj/tabfile.cc

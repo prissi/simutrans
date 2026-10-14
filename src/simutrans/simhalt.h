@@ -21,6 +21,8 @@
 
 #include "dataobj/koord.h"
 
+#include "player/simplay.h"
+
 #include "tpl/inthashtable_tpl.h"
 
 #include "tpl/slist_tpl.h"
@@ -116,6 +118,7 @@ private:
 	void init_financial_history();
 
 	PIXVAL status_color, last_status_color;
+	uint16 last_permissions;
 	sint16 last_bar_count;
 	vector_tpl<scr_coord_val> last_bar_height; // caches the last height of the station bar for each good type drawn in display_status(). used for dirty tile management
 	uint32 capacity[3]; // passenger, mail, goods
@@ -166,16 +169,15 @@ public:
 
 	/**
 	 * Returns an index to a halt at koord k
-	 * optionally limit to that owned by player sp
 	 * by default create a new halt if none found
 	 * Only used during loading.
 	 */
 	static halthandle_t get_halt_koord_index(koord k);
 
 	/*
-	 * this will only return something if this stop belongs to same player or is public, or is a dock (when on water)
+	 * this will only return something if this stop belongs to same player or is public, or is a dock (when on water and allowed)
 	 */
-	static halthandle_t get_halt(const koord3d pos, const player_t *player );
+	static halthandle_t get_halt(const koord3d pos, const player_t *player, bool allow_water=true );
 
 	static const vector_tpl<halthandle_t>& get_alle_haltestellen() { return alle_haltestellen; }
 
@@ -194,10 +196,8 @@ public:
 	*/
 	static bool remove(player_t *player, koord3d pos);
 
-	/**
-	 * Station destruction method.
-	 */
-	static void destroy(halthandle_t);
+	// destroys all tiles of the player. If nothing left, destroys the halt
+	static void destroy(halthandle_t,player_t*);
 
 	/**
 	 * destroys all stations
@@ -244,7 +244,6 @@ public:
 
 private:
 	slist_tpl<tile_t> tiles;
-
 
 	/**
 	 * Stores information about link to cargo network of a certain category
@@ -311,8 +310,18 @@ private:
 	 */
 	slist_tpl<fabrik_t *> fab_list;
 
-	player_t *owner;
+//	player_t *owner;
 	static karte_ptr_t welt;
+
+	/**
+	 * What players are allowed to stop here
+	 */
+	uint16 permissions;
+
+	/**
+	 * What players own parts of this station?
+	 */
+	uint16 owners;
 
 	/**
 	 * What is that for a station (for the image)
@@ -351,11 +360,9 @@ private:
 	void transfer_goods(halthandle_t halt);
 
 	/**
-	* parameter to ease sorting
-	* sortierung is local and stores the sortorder for the individual station
+	* parameter to force resorting of freight list
 	*/
-	uint8 sortierung;
-	bool resort_freight_info;
+	uint8 old_sort_mode;
 
 	haltestelle_t(loadsave_t *file);
 	haltestelle_t(koord pos, player_t *player);
@@ -367,12 +374,6 @@ public:
 	* will distribute the goods to changed routes (if there are any)
 	*/
 	void reroute_goods(sint16 &units_remaining);
-
-	/**
-	 * getter/setter for sortby
-	 */
-	uint8 get_sortby() { return sortierung; }
-	void set_sortby(uint8 sm) { resort_freight_info =true; sortierung = sm; }
 
 	/**
 	 * Calculates a status color for status bars
@@ -388,7 +389,7 @@ public:
 	 * sucht umliegende, erreichbare fabriken und baut daraus die
 	 * Fabrikliste auf.
 	 */
-	void verbinde_fabriken();
+	void reconnect_factories();
 
 	/**
 	 * Connects factory to this halt if not already connected and
@@ -399,6 +400,12 @@ public:
 	bool connect_factory(fabrik_t *fab);
 
 	void remove_fabriken(fabrik_t *fab);
+
+	/**
+	 * registers all convois using the current permissions (full check also removes)
+	 * @return true if there was a change
+	 */
+	bool rebuilt_schedule_registration( bool remove_check, bool add_check );
 
 	/**
 	 * Rebuilds the list of connections to reachable halts
@@ -416,14 +423,16 @@ public:
 
 	void rotate90( const sint16 y_size );
 
-	player_t *get_owner() const {return owner;}
-
 	// just for info so far
 	sint64 calc_maintenance() const;
 
 	void merge_halt( halthandle_t halt_to_join );
 
-	void change_owner( player_t *player );
+	// Transfer stop to new_owner for all tiles belonging to old_owner
+	// Co-owners of a shared halt keep their property unless old_owner
+	// is the public player itself. Then every tile is converted.
+	// @return number of tiles converted
+	sint32 change_owner(player_t* new_owner, player_t* current_owner );
 
 	vector_tpl<connection_t> const& get_pax_connections()  const { return all_links[goods_manager_t::INDEX_PAS].connections;  }
 	vector_tpl<connection_t> const& get_mail_connections() const { return all_links[goods_manager_t::INDEX_MAIL].connections; }
@@ -582,7 +591,7 @@ public:
 	 * @param relink_factories if true call verbinde_fabriken, if not true take care of factory connections yourself
 	 */
 	bool add_grund(grund_t *gb, bool relink_factories = true);
-	bool rem_grund(grund_t *gb);
+	bool rem_grund(grund_t *gb, player_t *pl);
 
 	uint32 get_capacity(uint8 typ) const { return capacity[typ]; }
 
@@ -595,8 +604,11 @@ public:
 public:
 	void recalc_basis_pos();
 
-	// returns ground closest to this coordinate
-	grund_t *get_ground_closest_to( const koord here ) const;
+	// returns ground closest to this coordinate (and may exclude tunnel tiles)
+	grund_t* get_ground_closest_to(const koord here) const;
+
+	// returns ground closest to this coordinate (and may exclude tunnel tiles)
+	grund_t* get_ground_closest_to(const koord3d here, bool use_above = false) const;
 
 	/**
 	 * return the closest square that belongs to this halt
@@ -657,27 +669,37 @@ public:
 
 	/**
 	 * checks, if there is an unoccupied loading bay for this kind of thing
+	 * @return unresevered matching tile or zero
 	 */
-	bool find_free_position(const waytype_t w ,convoihandle_t cnv,const obj_t::typ d) const;
+	grund_t *find_free_position(const waytype_t w ,convoihandle_t cnv,const obj_t::typ d) const;
 
 	/**
-	 * reserves a position (caution: railblocks work differently!
+	 * reserves a position (caution: railblocks work differently!)
+	 * NULL for gr will unreserve all reserved tiles
+	 * @return number of reserved tiles
 	 */
 	bool reserve_position(grund_t *gr,convoihandle_t cnv);
 
 	/**
 	 * frees a reserved  position (caution: railblocks work differently!
 	 */
-	bool unreserve_position(grund_t *gr, convoihandle_t cnv);
+	int unreserve_position(grund_t *gr, convoihandle_t cnv);
 
 	/** true, if this can be reserved
 	 */
 	bool is_reservable(const grund_t *gr, convoihandle_t cnv) const;
 
+	///  returns convoihandle for this tile
+	convoihandle_t get_reserved(const grund_t* gr) const;
+
+	///  returns first grund for this convoi
+	grund_t *get_reserved(convoihandle_t c) const;
+
 	/**
 	 * @param[out] buf Goods description text
 	 */
 	void get_freight_info(cbuffer_t & buf);
+	void reset_freight_info() { old_sort_mode = 255; }
 
 	/**
 	 * @param[out] buf short list of the waiting goods (i.e. 110 Wood, 15 Coal)
@@ -704,6 +726,29 @@ public:
 	const char *get_name() const;
 
 	void set_name(const char *name);
+
+	/**
+	 * will crash on NULL pointer, but no unowned convois ever ...
+	 * @return true if player is allowed to stop here
+	 */
+	inline bool can_use_halt(const player_t* player) const {
+		return !player || (permissions & (1 << player->get_player_nr()))!=0;
+	}
+
+	/**
+	 * Sets permissions
+	 * Owner and public service are always allowed
+	 */
+	void set_permissions(uint16 perms);
+
+	uint16 get_permissions() const { return permissions; }
+
+	player_t* get_first_owner() const;
+	uint16 get_owners() const { return owners; }
+	bool is_owner(player_t* pl) const { return (pl && (1 << pl->get_player_nr()) & owners); }
+
+	// return the owner color for single stops and grey for shared ones
+	uint8 get_player_color() const;
 
 	// create an unique name: better to be called with valid handle, although it will work without
 	char* create_name(koord k, char const* typ);

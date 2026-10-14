@@ -1,6 +1,166 @@
+	ADD: more zoom in levels + zoom shown in display settings
+	FIX: trams behave like normal track for building parallels
+	FIX: tooltips cost preview works again
+	FIX: no depots on tunnel portals any more
+
+
+Release of 125.0.1 (r12334 on 5-Oct-2026):
+	FIX: crash when dragging way from single to double slope
+	FIX: building tunnels (or bridges) even of only one of them is selected
+	FIX: could not input text commands with SDL2
+	CHG: Underground building without portal using sliced underground mode
+	ADD: midi music folder selection
+
+
+Release of 125.0 (r12321 on 1-Oct-2026):
+	FIX: If factory status label were always on, then factories with stops (like oil rigg and fish swarm) the halt status clashed with factory status. Moreover, the factory name could differ from stop name, so both needs to be shown then
+	CHG: using memcpy for image loading (when possible) reduces loading time of paks again
+	ADD: merge stop tool allows to merge with the stop of another player that has set sharing permissions without giving up building and way ownership
+	ADD: Indicate multiple stop ownership by colour bands of station name
+	FIX: again tunnel building in full underground mode
+	FIX: citybuildings of level 1 were actually level zero due to makeobj substracting 1 on loading.
+	FIX: correct citysize again after renovation.
+	CHG: reserved tile for way choose of non-trains (road and air) will now be shown in green when reservation display is on
+	CHG: very much overhauled airplane state machine: Should give much fewer deadlocks (no landing and blockign runway with not free stop, not leaving bay when plane coming in my direction for take off)
+	CHG: direction switches will first display the undefined graphic (if there)
+	ADD: close diagonal became possible including trains passing in different directions.
+	ADD: Including handling of wayobj (as with ways, define diagonal[close1] for close diagonal image)
+	FIX: (Nazalassa) only send chat when hitting RETURN
+	ADD: Filter halt list also for permissions and shared ownership
+	ADD: shared ownership can be indicated by either horizontal or vertical color bars
+	CHG: no_route color for passenger overlay now magenta
+	CHG: box around factoryies not either black or white depending on contrast and draw fields in factory color
+	FIX: fields were not show not removed from minimap
+	ADD: (victor_18993) power tab for electricity producers
+	CHG: TOOL_SHOW_UNDERGROUND new default parameter 'T' for toggling between modes, 'U' for full underground only to properly delect the underground modes
+	FIX: Only make owner pieces of a halt public and give an error message, if nothing was converted
+	ADD: (victor_18993) quicker iterating through freelists in sync_step
+	FIX: minimap destination overlay for cities was broken
+	CHG: (poppo) elevated ways also allowed on top of bridges
+	CHG: (victor_18993) Prevent too high buildings to appear under bridges and elevated ways
+	     + new building parameter in dat file "height_clearance" The allowed spacing to grounds above it
+		 (If not set recalculated from the images)
+	FIX: Crash when using makeobj 'merge' or 'extract' commands
+	ADD: (victor_18993) schedule editor shows the route of the schedule on the map
+	FIX: Crash on Windows when receiving gameinfo for server with motd with >= 260 chars
+	CHG: Now using iso codes for CS, DA and EL (was CZ, DK and GR)
+	ADD: alpha version of a way builder tool DIALOG_TOOL[38] (that show how bad automatic bridge building is right now)
+	FIX: way builder now builds agian automatic bridges from slopes and tries tunnel and bridges even to span normal otherwise terrain with ways
+	FIX: waybuilder should avoid double slopes if the way does not have them, (was broken)
+
+
+Release of 124.5 (r11993 on 31-May-2026):
+	FIX: (poppo) wayobj toll on other people's way and their removal
+	CHG: (Nazalassa) combobox only searchable if not fitting on screen, "Type to search ..." shown then
+	CHG: Stops get an orange/red status colour only when satisfaction (ratio of happy / (happy+unhappy)) is below 90/75%
+	FIX: (janry+prissi) assertion in debug mode when deleting multitile buildings during city removal
+	ADD: (Nazalassa) button to allow signals to pass convois in reverse
+	CHG: parse script data in scenario files for system calls (manipulated savegames only)
+	FIX: Wrong signal direction overlay arrows for signals on tiles with two ways (crossings, tram tracks)
+	FIX: (janry) Crash when server replies with invalid or corrupted Content-Length header field
+	FIX: shift the special keycodes to private unicode range to allow for latin2 characters
+	FIX: Wrong generation of lakes during map generation when groundwater level is not 0
+	FIX: powerlines did not correctly calculated routing costs (exceeded max_route_steps after 40-50 tiles)
+	CHG: (poppo) producing factories can also generate electricity (use with care)
+	ADD: Optional 'electricity_producer' flag (can be 0 or 1) for factories to override electricity producer status based on object name
+	ADD: (makie) more settings for inital climates in simuconf.tab
+	FIX: (janry) admin packets only read or write for admin tool/server
+	FIX: drive again to the end of the platform after choose signal selection
+	FIX: pak specific config in user_dir/addons/PAK_NAM/config/simuconf.tab for reset extended settings
+	FIX: (janry+prissi) new simple tool work_world for creation/loading/saving maps to avoid doing this during a step which may lead to crashes
+	ADD: (nazalassa) permissions for halts, to let other players serve specific halts
+	CHG: public player with built furts across rivers even for faster roads as long as there is one with max_speed of at least 25 km/h for road
+	CHG: link factory tool inaccessible when factories are cross-connected by default
+	CHG: (janry+prissi) pak loading with more checks against broken pak files and up to 33% faster
+
+
+Release of 124.4.1 (r11930 on 18-Apr-2026):
+	CHG: reset ingame names to current language when startign a new map and expose the name language via the translator
+	FIX: crash with winter graphics on bridges without winter graphics
+	ADD: preparation for runttime switch of rendering engine
+	FIX: capping factory mail and pax demand at (2^23-1)/9 = 932067 to avoid overflow issues
+
+
+Release of 124.4 (r11919 on 4-Apr-2026):
+	FIX: stations on bridge heads drawn too low
+	ADD: new freight sorting order "via owner": groups goods by owner of their next transfer stop and sort by amount (also change order a little and fixed several inconsitencies: Now all windows show same ordering)
+	ADD: (Nazalassa+prissi) new freight sorting order "connection": groups goods by lines of their next stop and sort by amount (not available for convois, of course)
+	CHG: Help texts will be first searched in pak directory
+	FIX: could built powerlines under bridges by just building a zero length power bridge starting under a bridge
+	ADD: New simple tool 43 to highlight single ribi ways
+	CHG: Pause tool unpauses server waiting for clients
+	FIX: no new city buildings were built when exceeded 2x1 size (only renovated)
+	FIX: Missing collision check for water factories
+	FIX: Crash when screenshotting in-game window with non-0 position
+	FIX: Graphical glitch when dragging the forest tool across slopes if pakset does not have double grounds
+	FIX: Possible save file corruption when reverting to default settings using the settings window
+	FIX: single way tile did not force bridge direction
+	FIX: multitile city building totally renovated, 3x faster city growth (at the start of the map in debug mode)
+	ADD: (mostly Yona-TYT) flowtext recognised img tag. For now only tags "#?XXX" are supported, where ? is one of these letter GSDTW and XXX a number. G is a general tool icon, S and simple tool, D is dialog tool, T a toolbar and W and window gadget.
+	CHG: default signal spacing for dragging to 5 (as 4 and smaller can slow down trains faster than 200 km/h)
+	FIX: Public player cannot replace wayobjs of other players
+	FIX: Zoom in immediately followed by zoom out if SDL raises mouse wheel event with 0 vertical scroll amount
+	FIX: Do not print a warning, when replacing items by compat.tab
+	FIX: 'makeobj list' cannot print properties of factory nodes
+	FIX: (Nazalassa) Public unread message counter is increased for private messages
+	FIX: (Nazalassa) Ticker messages do not respect player colours when the ticker is opened
+	FIX: (Nazalassa) Cannot build tunnels directly above sloped tunnels if way_height_clearance=1
+	FIX: (Nazalassa) Cursors ignore player changes
+	FIX: Crash when changing the sort mode of a halt while a convoi window is open
+	ADD: (Nazalassa) Sound can now also be loaded from pakset addon directory
+	FIX: (Nazalassa) Players can change nickname to one that is already in use
+	FIX: Maintenance of roadsigns and signals was not booked
+	FIX: (Nazalassa+prissi) toolbars can be automatically stacked again (option in simuconf.tab)
+	FIX: Finance windows did not show powerline revenue as all revenue
+	ADD: (FrankP) new construction sites for res, com, ind as index 7, 8 and 9
+	CHG: Increase maximum loading time of vehicles to 2^31-1 ms
+	ADD: Makeobj now supports named directions for sloped way images (imageup[w]=...)
+	FIX: Wrong expansion of parameterized image lists with no-ribi image (e.g. image[-,nesw]=...)
+	FIX: longblock signal reservation broken
+	FIX: wrong smoketile offsets outside factories autocorrecting
+	CHG: Unified handling of pak set dirs and names
+	CHG: Combobox try to show as much entries as possible
+	ADD: (Nazalassa) bridge renovation when building on an existing bridge
+	FIX: tunnel route search suceeded even if z coordinates of portals did not match
+	FIX: overhauled townhall road building to cope with difficult terrain and avoid illegal tiles
+	CHG: cities try harder to build slopes for expansion even in mountanious sites
+	FIX: citybuildings no longer destroy power lines (version 2)
+	FIX: no longer crash when city grows into fields
+	CHG: test renovation before new buildings and use homeless and jobless numbers to decide to extend town borders
+	FIX: bridge removal costs
+	CHG: Show obsolete shows also distribution_weight=0 factories in the editor window
+	FIX: Not allowed for powerbridges to end on ways
+	ADD: Retain message of the day in servergames. Can be reshown in the game info/network dialog
+	FIX: (poppo) trains could not choose if electrification was not to the end of track
+	CHG: trains with both diesel and electric engine can go on non-electricfied track, but run without electric power there
+	CHG: (k47) stations names drawn later in minimap
+	FIX: (k47) world borders somethimes not correctly displayed
+	FIX: city connects correct over slopes but not to depots
+	CHG: if defined USE_TOWN_ROAD_BUILDER_TOOL the cityroad building tool will use the internal tool of the city (default off)
+	ADD: new flag for bridges and ways in makeobj 60.9 "clip_below" Default is (1) but for slim structures (e.g. powerline) it could be set to zero for nicer display of structures below
+	CHG: (poppo) jump tool now allows also for z coordinaate
+	FIX: (poppo) last tool not show when too many tools to fit
+	ADD: searchable comboboxes; for editing click twice
+	CHG: Stops that are not connected to any other stops now have a blue status colour
+	FIX: Fatal error message when building a city house that was copied using the pipette tool
+	CHG: (poppo) extended selection of way resp. their obj with CNTRL and SHIFT and pipette tool
+	ADD: new settings cost_kw_per_credit (default was 512) to change revenue from power. Smaller numbers more income
+	FIX: Corrected format of transformer tool icon tooltip
+	FIX: Inline tool icons change size when zooming in or out and scaled tool icons are enabled
+	FIX: show convoi (and line) name when permanent tooltips are enabled for convois
+	FIX: not connection to tunnels, bridges and elevated ways when extending city streets
+	FIX: Overcrowded stops can cause unhappy return passengers in unconnected networks
+	FIX: Factory editor could not select water factories from climate selection
+	FIX: Transformers get removed by factory field expansion
+	CHG: sound loudness slider now follows a x^4 curve, approximates an exponential loudness control for finer adjustments
+	FIX: Crash when a scenario references a translation file which is actually a directory
+	FIX: Topspeed replacement with city roads was broken. Multitle buildings also may have the roads around them never fully renovated
+
+
+Release of 124.3.1 (r11671 on 5-Apr-2025):
 	CHG: option for pakset dump versus all other debug by appending 'p' to the debug level, e.g. "-debug 0p" to show only pak details to declutter server logs
 	CHG: tram system type way can be laid over other tracks as well (like pak192 narrowgauge over normal rails)
-	CHG: bridge builder is now only a two click tool (total reneval) Can again connect to complex ramps on elevated ways or cross rivers automatically
+	CHG: bridge builder is now only a two click tool (total renewal) Can again connect to complex ramps on elevated ways or cross rivers automatically
 	FIX: Players gain money by building long stretches of expensive tunnels
 	FIX: Pak files cannot represent cost of vehicles exceeding 2^32-1 Simu-cents
 	FIX: Pak files cannot represent runningcost of vehicles exceeding 2^16-1 Simu-cents
@@ -8,6 +168,15 @@
 	FIX: makro building with way order and stations extensions fixed
 	FIX: Freelist allocated objects (tiles, ways, trees etc.) use 3x more memory than necessary
 	FIX: Do not change underground mode when scrolling from the minimap
+	ADD: Monthly maintenance for roadsigns and signals (maintenance=1234 in dat file)
+	FIX: "Not a socket" error when server does not reply to initial connection attempt within 2 seconds on Windows
+	FIX: Increased maximum possible cost, runningcost, and fixed cost of all pak objects (where applicable) to 2^63-1 Simu-cents to prevent overflows during pak creation
+	FIX: Completely updated city renovation logic, now goes forward to multitile and back again
+	FIX: bridge during town growth were built even if the inital test failed
+	FIX: less moving townhalls and not builging townhalls over roads with asymmetric sizes
+	CHG: with pause setting, server saves game after going to pause => immediately able to fulfill join requests and more current savegames on crashing servers
+	ADD: CURRENCY is now translateable to a local currency (no conversions though) and can be also modified by the user
+	FIX: make sure, the pak path and working path are really different
 
 
 Release of 124.3 (r11590 on 10-Jan-2025):

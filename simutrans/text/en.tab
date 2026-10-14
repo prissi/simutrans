@@ -12,7 +12,7 @@ Prop-Latin1.bdf
 #                             Language: en English                             #
 #                             Encoding: ISO-8859-1                             #
 #                             Font: Prop-Latin1.bdf                            #
-#                           Date Created: 29.01 2025                           #
+#                            Date Created: 1.10 2026                           #
 #                                                                              #
 ################################################################################
 #__________________________________button_text__________________________________
@@ -330,7 +330,7 @@ With a big festival,\n%s built\na new monument.\n%i citizens rejoiced.
 \nHeightfield has wrong image type.\n
 \nHeightfield has wrong\nimage type.\n
 \nis reserved by:
-\nreserved by train 
+\nreserved by 
 \nminimum speed:
 \nminimum speed: 
 \nnot elektrified
@@ -353,8 +353,6 @@ With a big festival,\n%s built\na new monument.\n%i citizens rejoiced.
 %d vehicles stored here.
 %i car(s),
 %i cars, 
-%i km/h (max. %ikm/h)
-%i km/h (max. %i km/h)
 %i years %i months old.
 Age: %i years and %i months
 %s at (%i,%i) now public stop.
@@ -530,7 +528,7 @@ Build Shipyard
 Build truck depot
 Build Garage
 Building costs estimates
-Estimated construction cost
+Estimated costs
 Buildings
 City buildings
 Built artifical slopes
@@ -669,6 +667,8 @@ curiosity builder
 Curiosity builder
 curlist_title
 List of Tourist Destinations
+CURRENCY
+$
 deactivated in online mode
 Not active while online
 Deccelerate time
@@ -817,6 +817,8 @@ Gross Profit
 Cash Flow
 Groundobj
 Object
+groundobj builder
+Place Landscape Objects
 Growth
 City Growth
 GUI settings
@@ -841,6 +843,8 @@ Hier warten/lagern:
 Goods and passengers waiting:
 Higher transport fees, crossconnect all factories
 Higher transport fees, disable Just-in-time.
+highlight single ways
+Indicates the end/interruption of traffic ways.
 Highlite schedule
 Highlight stops in schedule
 hl_title
@@ -1081,6 +1085,8 @@ No terminal station here!
 Can't build a terminal \nstation here! An end piece \nof flat road/track is needed.
 no timeline
 all eras
+No transformer connected.
+No transformed connected:All power will be wasted.
 no tree
 No trees
 No. of Factories
@@ -1191,6 +1197,8 @@ Postrate
 Mail level
 Problems_msg
 Problems
+Produces: %.1f units/minute
+currently %.1f/minute
 Production of %s has been stopped:\n%s\n
 Production of %s has been discontinued:\n%s\n
 Produktion
@@ -1385,6 +1393,8 @@ Status
 Stop status
 Step timeline one year
 Step time-line by a year.
+Stopping permissions
+Other player who can use this stop
 Strassendepot
 Garage
 Strassentunnel
@@ -1464,7 +1474,7 @@ Underground view
 UNDO failed!
 Undo is not possible anymore.\nYou can undo a route \nconstruction only as long as \nno signals/stations/stops or \nanything else was built on \nthe way.
 units/day
- units/month
+/month, 
 Update Line
 Edit line
 upgrade HQ
@@ -1497,6 +1507,8 @@ via %s\n
  via %s\n
 via Menge
 via (amount)
+via owner
+via (owner)
 voranstellen
 Put in front
 Waggon_tab
@@ -1510,7 +1522,7 @@ Water
 Water
 Canal
 Water level
-Water level:
+Sea level:
 way %s cannot longer used:\n
 Way-type %s can no longer be used.\n
 way %s cannot longer used:\n%s\n

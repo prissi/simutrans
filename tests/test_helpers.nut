@@ -28,25 +28,26 @@ function ASSERT_EQUAL(act, exp)
 	}
 }
 
-function ASSERT_LESS(lhs, rhs)
+
+//
+// Announce an engine error that this test is about to provoke on purpose.
+//
+// The runner fails the suite when the log carries an engine script error,
+// because normally one means a test broke without saying so. A test that
+// deliberately drives a failure path produces exactly such a line, and without
+// this it cannot be told apart from the accident the check exists for.
+//
+// Call it immediately before the call that fails, passing enough of the
+// expected message to identify it and no more - the name of the missing file,
+// not "error". The runner ignores error lines containing that text and only
+// those, and fails if an announced error never appeared, so an announcement
+// cannot rot into a blanket excuse.
+//
+function EXPECT_SCRIPT_ERROR(what)
 {
-	if (!(lhs < rhs)) {
-		local err = ttext("Assertion failed, '{lhs} &lt; {rhs}' was not true")
-		err.lhs = make_assertion_str(lhs)
-		err.rhs = make_assertion_str(rhs)
-		throw err.tostring()
-	}
+	print("EXPECTED SCRIPT ERROR: " + what)
 }
 
-function ASSERT_GREATER(lhs, rhs)
-{
-	if (!(lhs > rhs)) {
-		local err = ttext("Assertion failed, '{lhs} &gt; {rhs}' was not true")
-		err.lhs = make_assertion_str(lhs)
-		err.rhs = make_assertion_str(rhs)
-		throw err.tostring()
-	}
-}
 
 function ASSERT_TRUE(a)
 {

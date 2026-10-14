@@ -19,6 +19,7 @@
 #include "../dataobj/translator.h"
 #include "../dataobj/environment.h"
 #include "../dataobj/loadsave.h"
+#include "../freight_list_sorter.h"
 #include "../simconvoi.h"
 #include "../simline.h"
 
@@ -55,29 +56,13 @@ static const bool cost_type_money[convoi_t::MAX_CONVOI_COST] =
 };
 
 
-
 bool convoi_info_t::route_search_in_progress=false;
-
-/**
- * This variable defines by which column the table is sorted
- * Values: 0 = destination
- *                 1 = via
- *                 2 = via_amount
- *                 3 = amount
- */
-const char *convoi_info_t::sort_text[SORT_MODES] = {
-	"Zielort",
-	"via",
-	"via Menge",
-	"Menge"
-};
-
 
 
 convoi_info_t::convoi_info_t(convoihandle_t cnv, bool edit_schedule) :
 	gui_frame_t(""),
 	text(&freight_info),
-	view(scr_size(max(64, get_base_tile_raster_width()), max(56, (get_base_tile_raster_width() * 7) / 8))),
+	view(scr_size(max(64, gfx->get_base_tile_raster_width()), max(56, (gfx->get_base_tile_raster_width() * 7) / 8))),
 	scroll_freight(&container_freight, true, true)
 {
 	is_saving_gui = false;
@@ -147,15 +132,15 @@ void convoi_info_t::init(convoihandle_t cnv)
 	switch_mode.add_listener( this );
 	switch_mode.add_tab(&scroll_freight, translator::translate("Freight"));
 
-	container_freight.set_table_layout(1,0);
+	container_freight.set_table_layout(1,2);
 	container_freight.add_table(2,1);
 	{
 		container_freight.new_component<gui_label_t>("loaded passenger/freight");
 
-		sort_button.init(button_t::roundbox, sort_text[env_t::default_sortmode]);
-		sort_button.set_tooltip("Sort by");
-		sort_button.add_listener(this);
-		container_freight.add_component(&sort_button);
+		sort_mode_button.init(button_t::roundbox, freight_list_sorter_t::get_sort_mode_string(env_t::default_sortmode,halthandle_t()));
+		sort_mode_button.set_tooltip("Sort by");
+		sort_mode_button.add_listener(this);
+		container_freight.add_component(&sort_mode_button);
 	}
 	container_freight.end_table();
 	container_freight.add_component(&text);
@@ -196,18 +181,16 @@ void convoi_info_t::init(convoihandle_t cnv)
 	container_stats.add_table(D_BUTTONS_PER_ROW,0)->set_force_equal_columns(true);
 
 	for (int cost = 0; cost<convoi_t::MAX_CONVOI_COST; cost++) {
-		uint16 curve = chart.add_curve( color_idx_to_rgb(cost_type_color[cost]), cnv->get_finance_history(), convoi_t::MAX_CONVOI_COST, cost, MAX_MONTHS, cost_type_money[cost], false, true, cost_type_money[cost]*2 );
+		uint16 curve = chart.add_curve( gfx->palette_lookup(cost_type_color[cost]), cnv->get_finance_history(), convoi_t::MAX_CONVOI_COST, cost, MAX_MONTHS, cost_type_money[cost], false, true, cost_type_money[cost]*2 );
 
 		button_t *b = container_stats.new_component<button_t>();
 		b->init(button_t::box_state_automatic  | button_t::flexible, cost_type[cost]);
-		b->background_color = color_idx_to_rgb(cost_type_color[cost]);
+		b->background_color = gfx->palette_lookup(cost_type_color[cost]);
 		b->pressed = false;
 
 		button_to_chart.append(b, &chart, curve);
 	}
 	container_stats.end_table();
-
-	cnv->set_sortby( env_t::default_sortmode );
 
 	// convoy details in tab
 	switch_mode.add_tab(&container_details, translator::translate("Vehicle details"));
@@ -241,12 +224,12 @@ void convoi_info_t::init(convoihandle_t cnv)
 	details = container_details.new_component<convoi_detail_t>(cnv);
 
 	// indicator bars
-	filled_bar.add_color_value(&cnv->get_loading_limit(), color_idx_to_rgb(COL_YELLOW));
-	filled_bar.add_color_value(&cnv->get_loading_level(), color_idx_to_rgb(COL_GREEN));
+	filled_bar.add_color_value(&cnv->get_loading_limit(), gfx->palette_lookup(COL_YELLOW));
+	filled_bar.add_color_value(&cnv->get_loading_level(), gfx->palette_lookup(COL_GREEN));
 
 	speed_bar.set_base(max_convoi_speed);
 	speed_bar.set_vertical(false);
-	speed_bar.add_color_value(&mean_convoi_speed, color_idx_to_rgb(COL_GREEN));
+	speed_bar.add_color_value(&mean_convoi_speed, gfx->palette_lookup(COL_GREEN));
 
 	// we update this ourself!
 	route_bar.init(&cnv_route_index, 0);
@@ -256,6 +239,7 @@ void convoi_info_t::init(convoihandle_t cnv)
 	}
 	route_bar.set_height(9);
 
+	cnv->reset_freight_info();
 	update_labels();
 
 	reset_min_windowsize();
@@ -404,7 +388,7 @@ void convoi_info_t::update_labels()
 
 	// next stop
 	target_label.buf().append(translator::translate("Fahrtziel"));
-	schedule_t::gimme_stop_name(target_label.buf(), welt, cnv->get_owner(), cnv->get_schedule()->get_current_entry(), 34);
+	schedule_t::gimme_stop_name(target_label.buf(), welt, cnv->get_owner(), cnv->front()->get_waytype()==water_wt, cnv->get_schedule()->get_current_entry(), 34);
 	target_label.update();
 
 	// only show assigned line, if there is one!
@@ -418,12 +402,15 @@ void convoi_info_t::update_labels()
 	line_button2.set_visible( cnv->get_line().is_bound() );
 	line_label.update();
 
-	// buffer update now only when needed by convoi itself => dedicated buffer for this
-	const int old_len=freight_info.len();
-	cnv->get_freight_info(freight_info);
-	if(  old_len!=freight_info.len()  ) {
-		text.recalc_size();
-		scroll_freight.set_size( scroll_freight.get_size() );
+	if(  switch_mode.get_aktives_tab() == &scroll_freight  ) {
+		sort_mode_button.set_text(freight_list_sorter_t::get_sort_mode_string(env_t::default_sortmode, halthandle_t()));
+		// buffer update now only when needed by convoi itself => dedicated buffer for this
+		const int old_len = freight_info.len();
+		cnv->get_freight_info(freight_info);
+		if(  old_len != freight_info.len()  ) {
+			text.recalc_size();
+			scroll_freight.set_size(scroll_freight.get_size());
+		}
 	}
 
 	// realign container - necessary if strings changed length
@@ -543,11 +530,10 @@ bool convoi_info_t::action_triggered( gui_action_creator_t *comp, value_t v)
 		rename_cnv();
 	}
 	// sort by what
-	else if(  comp == &sort_button  ) {
+	else if(  comp == &sort_mode_button  ) {
 		// sort by what
-		env_t::default_sortmode = (sort_mode_t)((int)(cnv->get_sortby()+1)%(int)SORT_MODES);
-		sort_button.set_text(sort_text[env_t::default_sortmode]);
-		cnv->set_sortby( env_t::default_sortmode );
+		env_t::default_sortmode = (int)(env_t::default_sortmode+1) % ((int)freight_list_sorter_t::SORT_MODES-1);
+		cnv->reset_freight_info();
 	}
 
 	bool edit_allowed = (cnv.is_bound() && (cnv->get_owner() == welt->get_active_player() || welt->get_active_player()->is_public_service()));
@@ -783,7 +769,7 @@ void convoi_info_t::rdwr(loadsave_t *file)
 			cnv->set_state(convoi_t::EDIT_SCHEDULE);
 			scd.highlight_schedule(true);
 		}
-
+		cnv->reset_freight_info();
 	}
 }
 

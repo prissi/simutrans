@@ -36,7 +36,8 @@ private:
 		simloops_value_label;
 
 public:
-	button_t toolbar_pos, reselect_closes_tool, single_toolbar, fullscreen, borderless;
+	button_t toolbar_pos, reselect_closes_tool, single_toolbar, stack_toolbars, fullscreen, borderless;
+	button_t show_construction_info;
 
 	gui_settings_t();
 

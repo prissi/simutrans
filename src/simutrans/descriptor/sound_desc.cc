@@ -35,8 +35,11 @@ public:
 
 
 static stringhashtable_tpl<sound_ids *> name_sound;
-static bool sound_on=false;
-static std::string sound_path;
+static bool sound_on = false;
+
+const int NUM_SOUND_PATHS = 2;
+static std::string sound_paths[NUM_SOUND_PATHS];
+
 
 sint16 sound_desc_t::compatible_sound_id[MAX_OLD_SOUNDS]=
 {
@@ -59,11 +62,12 @@ sint16 sound_desc_t::message_sound;
 
 /* init sounds */
 /* standard sounds and old sounds are found in the file <pakset>/sound/sound.tab */
-void sound_desc_t::init(const std::string &pak_dir)
+void sound_desc_t::init(const std::string &pak_dir, const std::string &addon_dir)
 {
 	// ok, now init
 	sound_on = true;
-	sound_path = pak_dir + "sound/";
+	sound_paths[0] = addon_dir + "sound/";
+	sound_paths[1] = pak_dir + "sound/";
 
 	tabfile_t soundconf;
 	const std::string tabfilename = pak_dir + "sound/sound.tab";
@@ -86,8 +90,8 @@ DBG_MESSAGE("sound_desc_t::init()","reading sound %s", fn  );
 			compatible_sound_id[i] = get_sound_id( fn );
 DBG_MESSAGE("sound_desc_t::init()","assigned system sound %d to sound %s (id=%i)", i, (const char *)fn, compatible_sound_id[i] );
 		}
-		message_sound = get_sound_id("message.wav");
 	}
+	message_sound = get_sound_id("message.wav");
 
 	// now assign special sounds for climates, beaches and forest
 	beach_sound = get_sound_id( "beaches.wav" );
@@ -115,7 +119,13 @@ sint16 sound_desc_t::get_sound_id(const char *name)
 	}
 
 	// not loaded: try to load it
-	const sint16 sample_id = dr_load_sample((sound_path + name).c_str());
+	sint16 sample_id = NO_SOUND;
+	for(  int i=0;  i<NUM_SOUND_PATHS;  i++  ) {
+		sample_id = dr_load_sample((sound_paths[i] + name).c_str());
+		if(  sample_id!=NO_SOUND  ) {
+			break;
+		}
+	}
 
 	if(sample_id==NO_SOUND) {
 		dbg->warning("sound_desc_t::get_sound_id()", "Sound \"%s\" not found", name );

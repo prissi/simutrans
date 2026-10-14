@@ -30,6 +30,12 @@ bool tabfile_t::open(const char *filename)
 }
 
 
+bool tabfile_t::open(const std::string &filename)
+{
+	return open(filename.c_str());
+}
+
+
 void tabfile_t::close()
 {
 	if(file) {
@@ -161,10 +167,10 @@ PIXVAL tabfileobj_t::get_color(const char *key, PIXVAL def, rgb888_t *color_rgb)
 			uint8 index = (uint8)strtoul( value, NULL, 0 );
 			// we save in settings as RGB888
 			if (color_rgb) {
-				*color_rgb = get_color_rgb(index);
+				*color_rgb = gfx->get_color_rgb(index);
 			}
 			// but the functions expect in the system colour (like RGB565)
-			return color_idx_to_rgb(index);
+			return gfx->palette_lookup(index);
 		}
 #else
 		(void)color_rgb;
@@ -310,6 +316,17 @@ void tabfileobj_t::unused( const char *exclude_start_chars )
 	}
 }
 
+static bool match_ribi(const char *p)
+{
+	return
+		(p[0] == '-' && (p[1] < '0' || p[1] > '9')) ||
+		std::tolower(p[0]) == 'n' ||
+		std::tolower(p[0]) == 'e' ||
+		std::tolower(p[0]) == 's' ||
+		std::tolower(p[0]) == 'w';
+}
+
+
 
 bool tabfile_t::read(tabfileobj_t &objinfo, FILE *fp)
 {
@@ -368,13 +385,13 @@ bool tabfile_t::read(tabfileobj_t &objinfo, FILE *fp)
 						int name_length = strcspn(buffer,",");
 
 						int value = atoi(buffer);
-						if (value == 0 && (tolower(buffer[0]) == 'n' || tolower(buffer[0]) == 's' || tolower(buffer[0]) == 'e' || tolower(buffer[0]) == 'w')) {
+						if (value == 0 && match_ribi(buffer)) {
 							sprintf(parameter_name[ names++ ], "%.*s", name_length, buffer);
 							parameter_ribi[i] = true;
 						}
 						parameter_value[i][parameter_values[i]++] = value;
 
-						token_ptr = strtok(buffer,"-,");
+						token_ptr = strtok(buffer, parameter_ribi[i] ? "," : "-,");
 						while (token_ptr != NULL && parameter_values[i]<256) {
 							switch(param[i][token_ptr-buffer-1]) {
 								case ',':
@@ -406,7 +423,7 @@ bool tabfile_t::read(tabfileobj_t &objinfo, FILE *fp)
 										}
 									}
 							}
-							token_ptr = strtok(NULL, "-,");
+							token_ptr = strtok(NULL, parameter_ribi[i] ? "," : "-,");
 						}
 						combinations*=parameter_values[i];
 					}

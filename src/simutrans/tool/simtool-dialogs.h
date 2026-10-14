@@ -52,6 +52,7 @@
 #include "../gui/sprachen.h"
 #include "../gui/themeselector.h"
 #include "../gui/vehiclelist_frame.h"
+#include "../gui/way_builder_frame.h"
 
 #include "../obj/baum.h"
 #include "../obj/groundobj.h"
@@ -654,7 +655,7 @@ public:
 	{
 		if (icon != IMG_EMPTY) {
 			if (is_selected()) {
-				display_img_blend(icon, pos.x, pos.y, TRANSPARENT50_FLAG | OUTLINE_FLAG | color_idx_to_rgb(COL_BLACK), false, dirty);
+				gfx->draw_img_blend(icon, pos.x, pos.y, TRANSPARENT50_FLAG | OUTLINE_FLAG | gfx->palette_lookup(COL_BLACK), false, dirty);
 			}
 			uint16 unread_count = env_t::chat_unread_public + env_t::chat_unread_company + env_t::chat_unread_whisper;
 			if (unread_count > 99) {
@@ -663,12 +664,12 @@ public:
 			if (unread_count) {
 				char str[16];
 				sprintf(str, "%i", unread_count);
-				scr_coord_val txt_width = proportional_string_width(str);
+				scr_coord_val txt_width = gfx->calc_text_width(str);
 				scr_coord_val width = max(LINEASCENT, txt_width + 2);
 				scr_coord_val xoff = env_t::iconsize.w - width - 1;
 				scr_coord_val yoff = env_t::iconsize.h - LINESPACE - 1;
-				display_filled_roundbox_clip(pos.x + xoff, pos.y + yoff, width, LINESPACE, color_idx_to_rgb(COL_RED + 1), dirty);
-				display_proportional_rgb(pos.x + xoff + D_GET_CENTER_ALIGN_OFFSET(txt_width, width), pos.y + yoff + 1, str, ALIGN_LEFT, color_idx_to_rgb(COL_WHITE), dirty);
+				gfx->draw_rounded_rect_clipped(pos.x + xoff, pos.y + yoff, width, LINESPACE, gfx->palette_lookup(COL_RED + 1), dirty);
+				gfx->draw_text(pos.x + xoff + D_GET_CENTER_ALIGN_OFFSET(txt_width, width), pos.y + yoff + 1, str, ALIGN_LEFT, gfx->palette_lookup(COL_WHITE), dirty);
 			}
 		}
 	}
@@ -693,6 +694,25 @@ public:
 	bool is_selected() const OVERRIDE { return win_get_magic(magic_player_ranking); }
 	bool init(player_t */*player*/) OVERRIDE {
 		create_win(new player_ranking_frame_t(), w_info, magic_player_ranking);
+		return false;
+	}
+	bool exit(player_t*) OVERRIDE { destroy_win(magic_player_ranking); return false; }
+	bool is_init_keeps_game_state() const OVERRIDE { return true; }
+	bool is_work_keeps_game_state() const OVERRIDE { return true; }
+};
+
+// way builder tool
+class dialog_way_builder_t : public tool_t {
+public:
+	dialog_way_builder_t() : tool_t(DIALOG_WAY_BUILDER | DIALOGE_TOOL) {}
+	char const* get_tooltip(player_t const*) const OVERRIDE { return translator::translate("Way builder"); }
+	bool is_selected() const OVERRIDE { return win_get_magic(magic_way_builder); }
+	bool init(player_t*/*player*/) OVERRIDE {
+		waytype_t wt = invalid_wt;
+		if (default_param && default_param[0] > 0) {
+			wt = (waytype_t)atoi(default_param);
+		}
+		create_win(new way_builder_frame_t(wt), w_info, magic_way_builder);
 		return false;
 	}
 	bool exit(player_t*) OVERRIDE { destroy_win(magic_player_ranking); return false; }

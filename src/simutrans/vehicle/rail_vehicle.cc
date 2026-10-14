@@ -151,45 +151,47 @@ bool rail_vehicle_t::check_next_tile(const grund_t *bd) const
 	if(  !sch  ) {
 		return false;
 	}
-
-	// diesel and steam engines can use electrified track as well.
-	// also allow driving on foreign tracks ...
-	const bool needs_no_electric = !(cnv!=NULL ? cnv->needs_electrification() : desc->get_engine_type()==vehicle_desc_t::electric);
-	if(  (!needs_no_electric  &&  !sch->is_electrified())  ||  sch->get_max_speed() == 0  ) {
+	if (sch->get_max_speed() == 0) {
+		// city walls etc.
 		return false;
 	}
 
-	if (depot_t *depot = bd->get_depot()) {
-		if (depot->get_waytype() != desc->get_waytype()  ||  depot->get_owner() != get_owner()) {
+	// check for electrification
+	if(  needs_electric  &&  !sch->is_electrified()  ) {
+		return false;
+	}
+
+	if (depot_t* depot = bd->get_depot()) {
+		if (depot->get_waytype() != desc->get_waytype() || depot->get_owner() != get_owner()) {
 			return false;
 		}
 	}
 	// now check for special signs
-	if(sch->has_sign()) {
+	if (sch->has_sign()) {
 		const roadsign_t* rs = bd->find<roadsign_t>();
-		if(  rs->get_desc()->get_wtyp()==get_waytype()  ) {
-			if(  cnv != NULL  &&  rs->get_desc()->get_min_speed() > 0  &&  rs->get_desc()->get_min_speed() > cnv->get_min_top_speed()  ) {
+		if (rs->get_desc()->get_wtyp() == get_waytype()) {
+			if (cnv != NULL && rs->get_desc()->get_min_speed() > 0 && rs->get_desc()->get_min_speed() > cnv->get_min_top_speed()) {
 				// below speed limit
 				return false;
 			}
-			if(  rs->get_desc()->is_private_way()  &&  (rs->get_player_mask() & (1<<get_owner_nr()) ) == 0  ) {
+			if (rs->get_desc()->is_private_way() && (rs->get_player_mask() & (1 << get_owner_nr())) == 0) {
 				// private road
 				return false;
 			}
 		}
 	}
 
-	if(  target_halt.is_bound()  &&  cnv->is_waiting()  ) {
+	if (target_halt.is_bound() && cnv->is_waiting()) {
 		// we are searching a stop here:
 		// ok, we can go where we already are ...
-		if(bd->get_pos()==get_pos()) {
+		if (bd->get_pos() == get_pos()) {
 			return true;
 		}
 		// we cannot pass an end of choose area
-		if(sch->has_sign()) {
+		if (sch->has_sign()) {
 			const roadsign_t* rs = bd->find<roadsign_t>();
-			if(  rs->get_desc()->get_wtyp()==get_waytype()  ) {
-				if(  rs->get_desc()->get_flags() & roadsign_desc_t::END_OF_CHOOSE_AREA  ) {
+			if (rs->get_desc()->get_wtyp() == get_waytype()) {
+				if (rs->get_desc()->get_flags() & roadsign_desc_t::END_OF_CHOOSE_AREA) {
 					return false;
 				}
 			}
@@ -204,23 +206,23 @@ bool rail_vehicle_t::check_next_tile(const grund_t *bd) const
 
 
 // how expensive to go here (for way search)
-int rail_vehicle_t::get_cost(const grund_t *gr, const weg_t *w, const sint32 max_speed, ribi_t::ribi from) const
+int rail_vehicle_t::get_cost(const grund_t* gr, const weg_t* w, const sint32 max_speed, ribi_t::ribi from) const
 {
 	// first favor faster ways
-	if(  w==NULL  ) {
+	if (w == NULL) {
 		// only occurs when deletion during way search
 		return 999;
 	}
 
 	// add cost for going (with maximum speed, cost is 1)
 	const sint32 max_tile_speed = w->get_max_speed();
-	int costs = (max_speed<=max_tile_speed) ? 1 : 4-(3*max_tile_speed)/max_speed;
+	int costs = (max_speed <= max_tile_speed) ? 1 : 4 - (3 * max_tile_speed) / max_speed;
 
 	// effect of slope
-	if(  gr->get_weg_hang()!=0  ) {
+	if (gr->get_weg_hang() != 0) {
 		// check if the slope is upwards, relative to the previous tile
 		// 25 hardcoded, see get_cost_upslope()
-		costs += 25 * get_sloping_upwards( gr->get_weg_hang(), from );
+		costs += 25 * get_sloping_upwards(gr->get_weg_hang(), from);
 	}
 
 	return costs;
@@ -228,35 +230,56 @@ int rail_vehicle_t::get_cost(const grund_t *gr, const weg_t *w, const sint32 max
 
 
 // this routine is called by find_route, to determined if we reached a destination
-bool rail_vehicle_t::is_target(const grund_t *gr,const grund_t *prev_gr) const
+bool rail_vehicle_t::is_target(const grund_t* gr, const grund_t* prev_gr) const
 {
-	const schiene_t * sch1 = (const schiene_t *) gr->get_weg(get_waytype());
+	const schiene_t* sch1 = (const schiene_t*)gr->get_weg(get_waytype());
 	// first check blocks, if we can go there
-	if(  sch1->can_reserve(cnv->self)  ) {
+	if (sch1->can_reserve(cnv->self)) {
 		//  just check, if we reached a free stop position of this halt
-		if(  gr->is_halt()  &&  gr->get_halt()==target_halt  ) {
+		if (gr->is_halt() && gr->get_halt() == target_halt) {
 			// now we must check the predecessor ...
-			if(  prev_gr!=NULL  ) {
-				const koord dir=gr->get_pos().get_2d()-prev_gr->get_pos().get_2d();
+			if (prev_gr != NULL) {
+				const koord dir = gr->get_pos().get_2d() - prev_gr->get_pos().get_2d();
 				const ribi_t::ribi ribi = ribi_type(dir);
-				if(  gr->get_weg(get_waytype())->get_ribi_maske() & ribi  ) {
+				if (gr->get_weg(get_waytype())->get_ribi_maske() & ribi) {
 					// signal/one way sign wrong direction
 					return false;
 				}
-				grund_t *to;
-				if(  !gr->get_neighbour(to,get_waytype(),ribi)  ||  !(to->get_halt()==target_halt)  ||  (to->get_weg(get_waytype())->get_ribi_maske() & ribi_type(dir))!=0  ) {
-					// end of stop: Is it long enough?
-					// end of stop could be also signal!
-					uint16 tiles = cnv->get_tile_length();
-					while(  tiles>1  ) {
-						if(  gr->get_weg(get_waytype())->get_ribi_maske() & ribi  ||  !gr->get_neighbour(to,get_waytype(),ribi_t::backward(ribi))  ||  !(to->get_halt()==target_halt)  ) {
+				// make sure that we are at the end of the platform or usable area
+				grund_t* to;
+				if (gr->get_neighbour(to, get_waytype(), ribi)) {
+					weg_t* w = to->get_weg(get_waytype());
+					if (to->get_halt() == target_halt) {
+						// not end of platform yet
+						// the following line would allow for more than one train on a platform, if there is a signal!
+//						if (!w->has_signal()  &&  w->get_max_speed() > 0  &&  (!needs_electric || w->is_electrified())) {
+						if (w->get_max_speed() > 0  &&  (!needs_electric || w->is_electrified())) {
+							// and we can go further
 							return false;
 						}
-						gr = to;
-						tiles --;
 					}
-					return true;
 				}
+				// check for electrifiction needed? (we have checked this tile on route already)
+				// end of stop: Is it long enough?
+				sint16 tiles = cnv->get_tile_length();
+				while (true) {
+					schiene_t* w = dynamic_cast<schiene_t*>(gr->get_weg(get_waytype()));
+
+					// check electrification or illegal tracks (i.e. city walls with speed equals zero)
+					if (w->get_max_speed() == 0 || (needs_electric && !w->is_electrified())) {
+						return (tiles <= 1);
+					}
+					if (w->is_reserved()) {
+						// only one train per platform (unless there are signals)
+						return false;
+					}
+					if (!gr->get_neighbour(to, get_waytype(), ribi_t::backward(ribi)) || to->get_halt() != target_halt) {
+						return (tiles <= 1);
+					}
+					gr = to;
+					tiles--;
+				}
+				return true;
 			}
 		}
 	}
@@ -282,6 +305,10 @@ bool rail_vehicle_t::is_longblock_signal_clear(signal_t *sig, route_t::index_t n
 		return true;
 	}
 
+	// unreserve this stretch (has been successful!)
+	route_t::index_t dummy;
+	block_reserver(cnv->get_route(), next_block+1, dummy, dummy, 0, false, false);
+
 	// no signal before end_of_route => need to do route search in a step
 	if(  !cnv->is_waiting()  ) {
 		restart_speed = -1;
@@ -293,45 +320,43 @@ bool rail_vehicle_t::is_longblock_signal_clear(signal_t *sig, route_t::index_t n
 	uint8 schedule_index = cnv->get_schedule()->get_current_stop()+1;
 	route_t target_rt;
 	koord3d cur_pos = cnv->get_route()->back();
-	route_t::index_t dummy;
 	route_t::index_t next_next_signal = route_t::INVALID_INDEX;
 
 	if(schedule_index >= cnv->get_schedule()->get_count()) {
 		schedule_index = 0;
 	}
 	while(  schedule_index != cnv->get_schedule()->get_current_stop()  ) {
-		// now search
-		// search for route
-		bool success = target_rt.calc_route( welt, cur_pos, cnv->get_schedule()->entries[schedule_index].pos, this, speed_to_kmh(cnv->get_min_top_speed()), 8888 /*cnv->get_tile_length()*/ );
-		if(  target_rt.is_contained(get_pos())  ) {
-			// do not reserve route going through my current stop&
+
+		// now search search for route of next segment
+		if (  !target_rt.calc_route(welt, cur_pos, cnv->get_schedule()->entries[schedule_index].pos, this, speed_to_kmh(cnv->get_min_top_speed()), 8888 /*cnv->get_tile_length()*/)) {
+			// broken route => no meaning to continue
+			// but we go on to make sure that the convoi drives as far as possible
 			break;
 		}
-		if(  success  ) {
-			success = block_reserver( &target_rt, 1, next_next_signal, dummy, 0, true, false );
-			block_reserver( &target_rt, 1, dummy, dummy, 0, false, false );
+
+		if(  target_rt.is_contained(get_pos())  ) {
+			// do not reserve route going through my current position => finished with checking
+			break;
 		}
+
+		// reserver and unreserve again
+		bool success = block_reserver( &target_rt, 1, next_next_signal, dummy, 0, true, false );
+		block_reserver( &target_rt, 1, dummy, dummy, 0, false, false );
 
 		if(  success  ) {
 			// ok, would be free
 			if(  next_next_signal<target_rt.get_count()  ) {
-				// and here is a signal => finished
-				// (however, if it is this signal, we need to renew reservation ...
-				if(  target_rt.at(next_next_signal) == cnv->get_route()->at( next_block )  ) {
-					block_reserver( cnv->get_route(), next_block+1, next_signal, next_crossing, 0, true, false );
-				}
-				sig->set_state( roadsign_t::STATE_GREEN );
-				cnv->set_next_stop_index( min( min( next_crossing, next_signal ), cnv->get_route()->get_count()-1-1 ) );
-				return true;
+				// and here is a signal => finished checking
+				break;
 			}
 		}
-
-		if(  !success  ) {
-			block_reserver( cnv->get_route(), next_block+1, next_next_signal, dummy, 0, false, false );
+		else {
+			// route not reservable
 			sig->set_state( roadsign_t::STATE_RED );
 			restart_speed = 0;
 			return false;
 		}
+
 		// prepare for next leg of schedule
 		cur_pos = target_rt.back();
 		schedule_index ++;
@@ -339,9 +364,11 @@ bool rail_vehicle_t::is_longblock_signal_clear(signal_t *sig, route_t::index_t n
 			schedule_index = 0;
 		}
 	}
-	if(  cnv->get_next_stop_index()-1 <= route_index  ) {
-		cnv->set_next_stop_index( cnv->get_route()->get_count()-1 );
-	}
+
+	// we need to renew intial reservation (cannot fail)
+	block_reserver(cnv->get_route(), next_block + 1, next_signal, next_crossing, 0, true, false);
+	sig->set_state(roadsign_t::STATE_GREEN);
+	cnv->set_next_stop_index(min(min(next_crossing, next_signal), cnv->get_route()->get_count() - 1 - 1));
 	return true;
 }
 
@@ -399,7 +426,7 @@ bool rail_vehicle_t::is_choose_signal_clear(signal_t *sig, const route_t::index_
 		}
 		if(  way->has_signal()  ) {
 			signal_t *sig = gr->find<signal_t>(1);
-			if(  sig  &&  sig->get_desc()->is_choose_sign()  ) {
+			if(  sig  &&  sig->get_desc()->is_choose_sign()  &&  !( sig->get_two_ways() && !(ribi_type(cnv->get_route()->at(idx), cnv->get_route()->at(idx-1)) & sig->get_dir()) )) {
 				// second choose signal on route => not choosing here
 				choose_ok = false;
 			}
@@ -435,7 +462,7 @@ skip_choose:
 
 		// now we are in a step and can use the route search array
 		route_t target_rt;
-		const int richtung = ribi_type(get_pos(), pos_next); // to avoid confusion at diagonals
+		const int richtung = ribi_type(cnv->get_route()->at(start_block), cnv->get_route()->at(start_block + 1)); // to avoid confusion at diagonals
 		if(  !target_rt.find_route( welt, cnv->get_route()->at(start_block), this, speed_to_kmh(cnv->get_min_top_speed()), richtung, welt->get_settings().get_max_choose_route_steps() )  ) {
 			// nothing empty or not route with less than get_max_choose_route_steps() tiles
 			target_halt = halthandle_t();
@@ -739,20 +766,24 @@ bool rail_vehicle_t::block_reserver(const route_t *route, route_t::index_t start
 #endif
 		if(reserve) {
 			if(  sch1->has_signal()  &&  i<route->get_count()-1  ) {
-				if(count) {
-					signs.append(gr);
+				signal_t* signal = gr->find<signal_t>();
+				// Maybe we can ignore the signal
+				if (!( signal->get_two_ways() && i>start_index && !(ribi_type(pos, route->at(i-1)) & signal->get_dir()) )) {
+					if (count) {
+						signs.append(gr);
+					}
+					count --;
+					next_signal_index = i;
 				}
-				count --;
-				next_signal_index = i;
 			}
-			if (!sch1->reserve(cnv->self, ribi_type(route->at(max(1u, i) - 1u), route->at(min(route->get_count() - 1u, i + 1u))))) {
+			if (!sch1->reserve(cnv->self, i)) {
 				success = false;
 			}
 			if (gr->has_two_ways()) {
 				// we may need to reserve the other way as well
 				if (schiene_t* sch0 = dynamic_cast<schiene_t*>(gr->get_weg_nr(gr->get_weg_nr(0) == sch1))) {
 					// the other way is reservable too => try to reserve it
-					if (!sch0->reserve(cnv->self, ribi_type(route->at(max(1u, i) - 1u), route->at(min(route->get_count() - 1u, i + 1u))))) {
+					if (!sch0->reserve(cnv->self, i)) {
 						success = false;
 					}
 				}
@@ -795,7 +826,7 @@ bool rail_vehicle_t::block_reserver(const route_t *route, route_t::index_t start
 	if(!success) {
 		// free reservation
 		for ( route_t::index_t j=start_index; j<i; j++) {
-			if (grund_t * gr=welt->lookup(route->at(j))) {
+			if (grund_t* gr = welt->lookup(route->at(j))) {
 				schiene_t* sch1 = (schiene_t*)gr->get_weg(get_waytype());
 				if(sch1) {
 					sch1->unreserve(cnv->self);
@@ -863,7 +894,7 @@ void rail_vehicle_t::enter_tile(grund_t* gr)
 		sch0->book(cargo, WAY_STAT_GOODS);
 		if(leading) {
 			sch0->book(1, WAY_STAT_CONVOIS);
-			sch0->reserve( cnv->self, get_direction() );
+			sch0->reserve( cnv->self, get_route_index()-1 );
 		}
 	}
 }

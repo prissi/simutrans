@@ -207,15 +207,15 @@ download_and_install_pakset()
 # generated list of pak sets
 obsolete_start_index=12
 paksets=( \
-  "http://downloads.sourceforge.net/project/simutrans/pak64/124-3/simupak64-124-3.zip" \
-  "http://downloads.sourceforge.net/project/simutrans/pak128/pak128%20for%20ST%20124.3up%20%282.10.0%29/simupak128-2-10-for124-3up.zip" \
+  "http://downloads.sourceforge.net/project/simutrans/pak64/125-0/simupak64-125-0.zip" \
+  "http://downloads.sourceforge.net/project/simutrans/pak128/pak128%20for%20ST%20125.0%20up%20%282.10.3%29/simupak128-2-1023-for-125-0up.zip" \
   "http://downloads.sourceforge.net/project/simutrans/pak192.comic/pak192.comic%20V0.7.2/pak192-comic.zip" \
-  "http://simutrans-germany.com/pak.german/pak64.german_0-124-0-0-5_full.zip" \
+  "http://simutrans-germany.com/pak.german/pak64.german_0-124-5-1-1_full.zip" \
+  "http://downloads.sourceforge.net/project/simutrans/PAK128.german/PAK128.german_2.4_for_ST_124.3.1/PAK128.german_2.4_for_ST_124.3.1.zip" \
   "http://downloads.sourceforge.net/project/simutrans/pak64.japan/123-0/simupak64.japan-123-0.zip" \
   "https://github.com/wa-st/pak-nippon/releases/download/v0.6.2/pak.nippon-v0.6.2.zip" \
   "http://downloads.sourceforge.net/project/simutrans/Pak128.CS/nightly%20builds/pak128.CS-r2096.zip" \
   "http://downloads.sourceforge.net/project/simutrans/pak128.britain/pak128.Britain%20for%20120-3/pak128.Britain.1.18-120-3.zip" \
-  "http://pak128-german.de/PAK128.german_2.3_beta.zip" \
   "https://github.com/Varkalandar/pak144.Excentrique/releases/download/r0.08/pak144.Excentrique_v008.zip" \
   "http://downloads.sourceforge.net/project/simutrans/pakTTD/simupakTTD-124-0.zip" \
   "http://codeberg.org/Nazalassa/pak48.bitlit/releases/download/0.1d/pak48.bitlit_0.1d.zip" \
@@ -428,6 +428,9 @@ while [ "$setcount" -lt "$maxcount" ]; do
   choicename="${choicename%.tar}" # for .tar.gz
   choicename="${choicename/simupak/pak}"
   choices[choicecount]=$choicename
+  if [ "$setcount" -eq "$obsolete_start_index" ]; then
+    echo "---- Obsolete (unmaintained) paks below ----"
+  fi
   let "setcount += 1"
   let "choicecount += 1"
   echo "${choicecount}) ${choicename}"

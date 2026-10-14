@@ -66,10 +66,14 @@ void message_node_t::rdwr(loadsave_t *file)
 		// color was 16bit, with 0x8000 indicating player colors
 		uint16 c = color & PLAYER_FLAG ? 0x8000 + (color&(~PLAYER_FLAG)) : MN_GREY0;
 		file->rdwr_short(c);
-		color = c & 0x8000 ? PLAYER_FLAG + (c&(~0x8000)) : color_idx_to_rgb(c);
+		color = c & 0x8000 ? PLAYER_FLAG + (c&(~0x8000)) : gfx->palette_lookup(c);
 	}
 	else {
-		file->rdwr_long( color );
+		// the saved word is 32 bit because the savegame says so, not because a
+		// screen colour happens to fit in one
+		SAVED_PIXVAL saved = (SAVED_PIXVAL)color;
+		file->rdwr_long( saved );
+		color = (FLAGGED_PIXVAL)saved;
 	}
 	file->rdwr_long( time );
 	if(  file->is_loading()  ) {
@@ -84,7 +88,7 @@ PIXVAL message_node_t::get_player_color(karte_t *welt) const
 	FLAGGED_PIXVAL colorval = color;
 	if(  color&PLAYER_FLAG  ) {
 		player_t *player = welt->get_player(color&(~PLAYER_FLAG));
-		colorval = player ? PLAYER_FLAG+color_idx_to_rgb(player->get_player_color1()+env_t::gui_player_color_dark) : color_idx_to_rgb(MN_GREY0);
+		colorval = player ? PLAYER_FLAG+gfx->palette_lookup(player->get_player_color1()+env_t::gui_player_color_dark) : gfx->palette_lookup(MN_GREY0);
 	}
 	return (PIXVAL)colorval;
 }
@@ -298,26 +302,34 @@ void message_t::rdwr(loadsave_t* file)
 		if (env_t::server) {
 			// do not save local messages and expired messages
 			uint32 current_time = world()->get_current_month();
-			for (message_node_t* const i : list) {
-				if (i->type & DO_NOT_SAVE_MSG || (i->type & EXPIRE_AFTER_ONE_MONTH_MSG && current_time - i->time > 1)) {
+			for (message_node_t* const m : list) {
+				if (m->type & DO_NOT_SAVE_MSG  ||  (m->type & EXPIRE_AFTER_ONE_MONTH_MSG  &&  current_time - m->time > 1)) {
 					continue;
 				}
-				msg_to_save.append(i);
+				msg_to_save.append(m);
+				if (msg_to_save.get_count() == MAX_SAVED_MESSAGES) {
+					// just the newest messages (which are at the front)
+					break;
+				}
 			}
 		}
 		else {
 			// do not save discardable messages (like changing player)
-			for (message_node_t* const i : list) {
-				if (!(i->type & DO_NOT_SAVE_MSG)) {
-					msg_to_save.append(i);
+			for (message_node_t* const m : list) {
+				if (!(m->type & DO_NOT_SAVE_MSG)) {
+					msg_to_save.append(m);
+					if (msg_to_save.get_count() == MAX_SAVED_MESSAGES) {
+						// just the newest messages (which are at the front)
+						break;
+					}
 				}
 			}
 		}
 		// save only the last MAX_SAVED_MESSAGES
-		msg_count = (uint16)min(MAX_SAVED_MESSAGES, msg_to_save.get_count());
+		msg_count = (uint16)msg_to_save.get_count();
 		file->rdwr_short(msg_count);
-		for (uint32 i = msg_to_save.get_count() - msg_count; i < msg_to_save.get_count(); i++) {
-			msg_to_save[i]->rdwr(file);
+		for (message_node_t* const m : msg_to_save) {
+			m->rdwr(file);
 		}
 	}
 	else {
@@ -399,7 +411,7 @@ void chat_message_t::add_chat_message(const char* text, sint8 channel, sint8 sen
 
 	// send this message to a ticker if public channel message
 	if (channel >= -1) { // and not mine
-		if (sender_nr >= 0 && sender_nr != PLAYER_UNOWNED) {
+		if (sender_nr >= 0) {
 			// not mine?
 			if(strcmp(sender_nick, env_t::nickname.c_str()) != 0){
 				bool company_msg = channel == world()->get_active_player_nr();
@@ -411,7 +423,13 @@ void chat_message_t::add_chat_message(const char* text, sint8 channel, sint8 sen
 					buf.printf("%s: %s", sender_nick.c_str(), text);
 					int type = message_t::chat_common + company_msg + private_msg*2;
 					ticker::add_msg(buf, koord3d::invalid, PLAYER_FLAG|sender_nr, type );
-					env_t::chat_unread_public++;
+					if (company_msg) {
+						env_t::chat_unread_company++;
+					} else if (private_msg) {
+						env_t::chat_unread_whisper++;
+					} else {
+						env_t::chat_unread_public++;
+					}
 					sound_play(sound_desc_t::message_sound, 255, TOOL_SOUND);
 				}
 			}

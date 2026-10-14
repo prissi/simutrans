@@ -164,10 +164,15 @@ public:
 		TREE_DIST_RAINFALL = 2,
 		TREE_DIST_COUNT
 	};
+
+	// server message (if any)
+	std::string motd = "";
+
 private:
 	uint16 tree_distribution = tree_distribution_t::TREE_DIST_RANDOM;
 
-	sint8 lake_height = 8; // relative to sea (groundwater) height
+	/// height level until which lakes will appear. (absolute)
+	sint8 lake_height = 8;
 
 	// game mechanics
 	uint8 allow_player_change = true;
@@ -348,13 +353,16 @@ public:
 	// maintainance cost in months to make something public
 	sint64 cst_make_public_months = 60;
 
+	sint32 cst_kw_per_credit = 512; // default
+
 	// costs for the way searcher
 	sint32 way_count_straight        =    1; // cost on existing way
 	sint32 way_count_curve           =    5; // diagonal curve
 	sint32 way_count_double_curve    =   10;
 	sint32 way_count_90_curve        =   30;
 	sint32 way_count_slope           =   20;
-	sint32 way_count_tunnel          =   16;
+	sint32 way_count_tunnel          =   12;
+	uint32 way_count_bridge          =    6;
 	sint32 way_count_no_way          =    3; // slightly prefer existing ways
 	sint32 way_count_avoid_crossings =    8; // prefer less system crossings
 	sint32 way_count_leaving_way     =   50;
@@ -389,14 +397,14 @@ public:
 	void copy_city_road(settings_t const& other);
 
 	// init from this file ...
-	void parse_simuconf(tabfile_t& simuconf, sint16& disp_width, sint16& disp_height, sint16& fullscreen, std::string& objfilename);
+	void parse_simuconf(tabfile_t& simuconf, sint16& disp_width, sint16& disp_height, sint16& fullscreen, bool set_pak);
 
 	// init without screen parameters ...
 	void parse_simuconf(tabfile_t& simuconf) {
 		sint16 idummy = 0;
 		std::string sdummy;
 
-		parse_simuconf(simuconf, idummy, idummy, idummy, sdummy);
+		parse_simuconf(simuconf, idummy, idummy, idummy, false);
 	}
 
 	void parse_colours(tabfile_t& simuconf);
@@ -509,8 +517,14 @@ public:
 
 	int get_name_language_id() const;
 	void set_name_language_iso( const char *iso ) {
-		language_code_names[0] = iso[0];
-		language_code_names[1] = iso[1];
+		if (!iso) {
+			language_code_names[0] = 0;
+			language_code_names[1] = 0;
+		}
+		else {
+			language_code_names[0] = iso[0];
+			language_code_names[1] = iso[1];
+		}
 		language_code_names[2] = 0;
 	}
 
@@ -534,6 +548,7 @@ public:
 	bool is_no_routing_over_overcrowding() const { return no_routing_over_overcrowding; }
 
 	sint16 get_river_number() const { return river_number; }
+	void set_river_number(sint16 r) { river_number = r; }
 	sint16 get_min_river_length() const { return min_river_length; }
 	sint16 get_max_river_length() const { return max_river_length; }
 
@@ -658,6 +673,8 @@ public:
 
 	// some settigns are not to be saved in the global settings
 	void reset_after_global_settings_reload();
+
+	sint64 get_make_public_months() const { return cst_make_public_months; }
 };
 
 #endif

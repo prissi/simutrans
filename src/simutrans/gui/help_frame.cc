@@ -181,10 +181,14 @@ void help_frame_t::open_help_on( const char *helpfilename )
 static char *load_text(char const* const filename )
 {
 	std::string file_prefix= std::string("text") + PATH_SEPARATOR;
-	std::string fullname = file_prefix + translator::get_lang()->iso + PATH_SEPARATOR + filename;
-	dr_chdir(env_t::base_dir);
+	std::string fullname = file_prefix + translator::get_lang()->iso_base + PATH_SEPARATOR + filename;
 
+	dr_chdir(env_t::pak_dir.c_str());
 	FILE* file = dr_fopen(fullname.c_str(), "rb");
+	if (!file) {
+		dr_chdir(env_t::base_dir);
+		file = dr_fopen(fullname.c_str(), "rb");
+	}
 	if (!file) {
 		//Check for the 'base' language(ie en from en_gb)
 		file = dr_fopen((file_prefix + translator::get_lang()->iso_base + PATH_SEPARATOR + filename).c_str(), "rb");
@@ -194,15 +198,11 @@ static char *load_text(char const* const filename )
 		file = dr_fopen((file_prefix + PATH_SEPARATOR + "en" + PATH_SEPARATOR + filename).c_str(), "rb");
 	}
 	if (!file) {
-		// no help file found then sarch [pakset]/text/[lang]/
-		file = dr_fopen((env_t::pak_dir + file_prefix + translator::get_lang()->iso + PATH_SEPARATOR + filename).c_str(), "rb");
-	}
-	if (!file) {
-		// no help file found then sarch [pakset]/text/[lang (bese)]/
+		// no help file found then search [pakset]/text/[lang]/
 		file = dr_fopen((env_t::pak_dir + file_prefix + translator::get_lang()->iso_base + PATH_SEPARATOR + filename).c_str(), "rb");
 	}
 	if (!file) {
-		// no help file found then sarch [pakset]/text/en/
+		// no help file found then search [pakset]/text/en/
 		file = dr_fopen((env_t::pak_dir + file_prefix + "en" + PATH_SEPARATOR + filename).c_str(), "rb");
 	}
 	// go back to load/save dir
@@ -268,6 +268,8 @@ void help_frame_t::set_text(const char * buf, bool resize_frame )
 {
 	helptext.set_text(buf);
 
+	const scr_size screen = gfx->get_screen_size();
+
 	if(  resize_frame  ) {
 
 		// try to get the following sizes
@@ -285,8 +287,8 @@ void help_frame_t::set_text(const char * buf, bool resize_frame )
 
 		if(  generaltext.is_visible()  ) {
 			generaltext.set_pos( scr_coord(D_MARGIN_LEFT, D_MARGIN_TOP) );
-			generaltext.set_size( scr_size( min(180,display_get_width()/3), 0 ) );
-			int generalwidth = min( display_get_width()/3, generaltext.get_preferred_size().w );
+			generaltext.set_size( scr_size( min(180, screen.w/3), 0 ) );
+			int generalwidth = min( screen.w/3, generaltext.get_preferred_size().w );
 			generaltext.set_size( scr_size( generalwidth, helptext.get_size().h ) );
 			generaltext.set_size( generaltext.get_preferred_size() );
 		}
@@ -301,11 +303,11 @@ void help_frame_t::set_text(const char * buf, bool resize_frame )
 			size_x += generaltext.get_size().w + D_SCROLLBAR_WIDTH + D_H_SPACE;
 		}
 		// set window size
-		if(  size_x > display_get_width()-32  ) {
-			size_x = display_get_width()-32;
+		if(  size_x > screen.w-32  ) {
+			size_x = screen.w-32;
 		}
 
-		const scr_coord_val h = display_get_height() - D_TITLEBAR_HEIGHT - win_get_statusbar_height() - TICKER_HEIGHT;
+		const scr_coord_val h = screen.h - D_TITLEBAR_HEIGHT - win_get_statusbar_height() - TICKER_HEIGHT;
 		if(  size_y>h) {
 			size_y = h;
 		}
@@ -338,11 +340,11 @@ void help_frame_t::set_helpfile(const char *filename, bool resize_frame )
 		for(tool_t* const i : tool_t::char_to_tool) {
 			cbuffer_t c;
 			char str[16];
-			if(  i->command_flags & SIM_MOD_CTRL  ) {
+			if(  i->command_flags & SIM_KEYMOD_CTRL  ) {
 				c.append( translator::translate( "[CTRL]" ) );
 				c.append( " + " );
 			}
-			if(  i->command_flags & SIM_MOD_SHIFT  ) {
+			if(  i->command_flags & SIM_KEYMOD_SHIFT  ) {
 				c.append( translator::translate( "[SHIFT]" ) );
 				c.append( " + " );
 			}
@@ -351,9 +353,9 @@ void help_frame_t::set_helpfile(const char *filename, bool resize_frame )
 				case '>': c.append( "&gt;" ); break;
 				case 27:  c.append( translator::translate( "[ESCAPE]" ) ); break;
 				case 127: c.append( translator::translate( "[DELETE]" ) ); break;
-				case SIM_KEY_HOME: c.append( translator::translate( "[HOME]" ) ); break;
-				case SIM_KEY_END:  c.append( translator::translate( "[END]" ) ); break;
-				case SIM_KEY_SCROLLLOCK: c.append( translator::translate( "[SCROLLLOCK]" ) ); break;
+				case SIM_KEYCODE_HOME: c.append( translator::translate( "[HOME]" ) ); break;
+				case SIM_KEYCODE_END:  c.append( translator::translate( "[END]" ) ); break;
+				case SIM_KEYCODE_SCROLLLOCK: c.append( translator::translate( "[SCROLLLOCK]" ) ); break;
 				default:
 					if (key <= 26) {
 						c.printf("%c", '@' + key);
@@ -361,8 +363,8 @@ void help_frame_t::set_helpfile(const char *filename, bool resize_frame )
 					else if (key < 256) {
 						c.printf("%c", key);
 					}
-					else if (key < SIM_KEY_F15) {
-						c.printf("F%i", key - SIM_KEY_F1 + 1);
+					else if (key < SIM_KEYCODE_F15) {
+						c.printf("F%i", key - SIM_KEYCODE_F1 + 1);
 					}
 					else {
 						// try unicode
@@ -408,14 +410,10 @@ FILE *help_frame_t::has_helpfile( char const* const filename, int &mode )
 {
 	mode = native;
 	std::string file_prefix = std::string("text") + PATH_SEPARATOR;
-	std::string fullname = file_prefix + translator::get_lang()->iso + PATH_SEPARATOR + filename;
+	std::string fullname = file_prefix + translator::get_lang()->iso_base + PATH_SEPARATOR + filename;
 	dr_chdir(env_t::base_dir);
 
 	FILE* file = dr_fopen(fullname.c_str(), "rb");
-	if(  !file  &&  strcmp(translator::get_lang()->iso,translator::get_lang()->iso_base)  ) {
-		//Check for the 'base' language(ie en from en_gb)
-		file = dr_fopen(  (file_prefix + translator::get_lang()->iso_base + PATH_SEPARATOR + filename).c_str(), "rb"  );
-	}
 	if(  !file  ) {
 		// check fallback english
 		file = dr_fopen((file_prefix + "en/" + filename).c_str(), "rb");

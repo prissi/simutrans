@@ -51,7 +51,7 @@ scr_size gui_scrollpane_t::get_min_size() const
 		csize.h += D_SCROLLBAR_HEIGHT;
 	}
 	csize.w = max(csize.w, scroll_x.get_min_size().w);
-	csize.h = max(csize.h, scroll_y.get_min_size().h);
+	csize.h = max(csize.h, scroll_y.get_min_size().h * scroll_y.is_visible());
 	return csize;
 
 }
@@ -145,13 +145,13 @@ scr_size gui_scrollpane_t::request_size(scr_size request)
 bool gui_scrollpane_t::infowin_event(const event_t *ev)
 {
 	bool swallow = false;
-	if(   (b_show_scroll_y  &&  scroll_y.is_visible())  &&  ev->ev_class!=EVENT_KEYBOARD  &&  (scroll_y.getroffen(ev->mouse_pos) || scroll_y.getroffen(ev->click_pos)) ) {
+	if(   (b_show_scroll_y  &&  scroll_y.is_visible())  &&  !IS_KEYBOARD(ev)  &&  (scroll_y.getroffen(ev->mouse_pos) || scroll_y.getroffen(ev->click_pos)) ) {
 		event_t ev2 = *ev;
 		ev2.move_origin(scroll_y.get_pos());
 		b_is_dragging = false;
 		return scroll_y.infowin_event(&ev2);
 	}
-	else if(  (b_show_scroll_x  &&  scroll_x.is_visible())  &&  ev->ev_class!=EVENT_KEYBOARD  &&  (scroll_x.getroffen(ev->mouse_pos) || scroll_x.getroffen(ev->click_pos))) {
+	else if(  (b_show_scroll_x  &&  scroll_x.is_visible())  &&  !IS_KEYBOARD(ev)  &&  (scroll_x.getroffen(ev->mouse_pos) || scroll_x.getroffen(ev->click_pos))) {
 		event_t ev2 = *ev;
 		ev2.move_origin(scroll_x.get_pos());
 		b_is_dragging = false;

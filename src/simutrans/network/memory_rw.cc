@@ -53,7 +53,8 @@ void memory_rw_t::rdwr_byte(uint8 &c)
 
 void memory_rw_t::rdwr_bool(bool &i)
 {
-	uint8 b = i;
+	// only read i on saving
+	uint8 b = is_loading()  ||  i;
 	rdwr_byte(b);
 	i = b!=0;
 }
@@ -163,7 +164,7 @@ void memory_rw_t::rdwr_str(plainstring &s)
 		free(t);
 	}
 	else {
-		char *t = s;
+		char *t = const_cast<char *>(s.c_str());
 		rdwr_str(t);
 	}
 }

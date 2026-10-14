@@ -127,11 +127,12 @@ void baum_t::rdwr(loadsave_t *file)
 }
 
 
-void baum_t::finish_rd()
+bool baum_t::finish_rd()
 {
 	if(get_xoff()==-128) {
 		calc_off(welt->lookup( get_pos())->get_grund_hang());
 	}
+	return false;
 }
 
 
@@ -187,7 +188,7 @@ FLAGGED_PIXVAL baum_t::get_outline_colour() const
 void baum_t::recalc_outline_color()
 {
 	outline_color = (env_t::hide_trees  &&  env_t::hide_with_transparency) ?
-		(TRANSPARENT25_FLAG | OUTLINE_FLAG | color_idx_to_rgb(COL_BLACK)) : 0;
+		(TRANSPARENT25_FLAG | OUTLINE_FLAG | gfx->palette_lookup(COL_BLACK)) : 0;
 }
 
 

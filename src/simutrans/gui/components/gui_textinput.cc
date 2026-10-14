@@ -6,6 +6,9 @@
 #include <string.h>
 
 #include "gui_textinput.h"
+#include "gui_scrolled_list.h"
+#include "../gui_frame.h"
+#include "../gui_theme.h"
 #include "../simwin.h"
 #include "../../dataobj/translator.h"
 #include "../../utils/simstring.h"
@@ -13,9 +16,19 @@
 #include "../../sys/simsys.h"
 
 
+static const char* edit_menu_str[]
+{
+	"Cut",
+	"Copy",
+	"Paste",
+	"Select all"
+};
+
+
 gui_textinput_t::gui_textinput_t() :
 	gui_component_t(true),
 	text(NULL),
+	placeholder_text(NULL),
 	composition(),
 	composition_target_start(0),
 	composition_target_length(0),
@@ -27,10 +40,25 @@ gui_textinput_t::gui_textinput_t() :
 	textcol(SYSCOL_EDIT_TEXT),
 	text_dirty(false),
 	focus_received(false),
+	enabled(true),
 	notify_all_changes_delay(0xFFFF),
-	cursor_reference_time(0)
-{ }
+	cursor_reference_time(0),
+	edit_menu(gui_scrolled_list_t::listskin),
+	edit_menu_opening_gesture(false)
+{
+	for (int i= 0; i < lengthof(edit_menu_str); i++) {
+		edit_menu.new_component<gui_scrolled_list_t::const_text_scrollitem_t>(translator::translate(edit_menu_str[i]),SYSCOL_TEXT);
+	}
+	edit_menu.add_listener(this);
+	edit_menu.set_visible(false);
+}
 
+
+gui_textinput_t::~gui_textinput_t()
+{
+	// does not hurt to close the screen window again to be sure ...
+	dr_stop_textinput();
+}
 
 scr_size gui_textinput_t::get_min_size() const
 {
@@ -56,7 +84,7 @@ size_t gui_textinput_t::calc_cursor_pos(const int x)
 		uint8 pixel_width = 0;
 		scr_coord_val current_offset = 0;
 		const scr_coord_val adjusted_offset = x - 1 + scroll_offset;
-		while(  get_next_char_with_metrics(tmp_text, byte_length, pixel_width)  &&  adjusted_offset>(current_offset+(pixel_width>>1))  ) {
+		while(  gfx->get_next_char_with_metrics(tmp_text, byte_length, pixel_width)  &&  adjusted_offset>(current_offset+(pixel_width>>1))  ) {
 			current_offset += pixel_width;
 			new_cursor_pos += byte_length;
 		}
@@ -100,7 +128,7 @@ void gui_textinput_t::set_composition_status( char *c, int start, int length )
 			composition_target_length = length;
 
 			const scr_coord gui_xy = win_get_pos( win_get_top() );
-			const int offset_to_target = proportional_string_len_width( composition.get_str(), composition_target_start );
+			const int offset_to_target = gfx->calc_text_width_n( composition.get_str(), composition_target_start );
 			const scr_coord_val x = pos.x + gui_xy.x + get_current_cursor_x() + offset_to_target;
 			const scr_coord_val y = pos.x + gui_xy.y + D_TITLEBAR_HEIGHT;
 			dr_notify_input_pos({ x, y });
@@ -109,18 +137,95 @@ void gui_textinput_t::set_composition_status( char *c, int start, int length )
 }
 
 
-/**
- * Events are notified to GUI components via this method
- */
+bool gui_textinput_t::action_triggered(gui_action_creator_t*, value_t extra)
+{
+	const int cmd = edit_menu.get_count() == 1 ? 2 : extra.i;
+	edit_menu.set_visible(false);
+
+	// the control characters the key handling below already listens for CUT COPY PAST ALL
+	static const uint16 ctrl_code[4] = { 24, 3, 22, 1 };
+	event_t key(EVENT_KEYDOWN);
+	key.ev_code = ctrl_code[cmd];
+	key.ev_key_mod = SIM_KEYMOD_CTRL;
+	infowin_event(&key);
+
+	return true;
+}
+
+
 bool gui_textinput_t::infowin_event(const event_t *ev)
 {
-	if(  ev->ev_class==EVENT_KEYBOARD  ) {
+	if (!enabled) {
+		return false;
+	}
+
+	if(  edit_menu.is_visible()  &&  edit_menu_opening_gesture  ) {
+		// The finger that held for the menu still has to come off, and its lift
+		// arrives as a click and a release where it rested (SIM_MOUSE_LONGPRESS in
+		// simevent.cc). That ends the gesture that asked for the menu; it is not a
+		// click outside it.
+		if(  IS_LEFTRELEASE(ev)  ) {
+			edit_menu_opening_gesture = false;
+			return true;
+		}
+		if(  IS_LEFTCLICK(ev)  ||  IS_LEFTDRAG(ev)  ||  IS_LONGPRESS(ev)  ) {
+			return true;
+		}
+	}
+	if(  edit_menu.is_visible()  &&  IS_LEFTCLICK(ev)  &&  !edit_menu.getroffen(ev->click_pos)) {
+		// click outside => close it
+		edit_menu.set_visible(false);
+		// swallow click
+		return true;
+	}
+	if (edit_menu.is_visible()) {
+		event_t ev2 = *ev;
+		ev2.move_origin(edit_menu.get_pos());
+		return edit_menu.infowin_event(&ev2);
+	}
+	else if(  IS_LONGPRESS(ev)  ||  IS_RIGHTCLICK(ev)  ) {
+		// a held finger has no other meaning, and a right click in a text field had none
+		scr_rect this_comp( get_size() );
+		if(  text  &&  win_get_focus() == this  &&  this_comp.contains( ev->click_pos )  ) {
+			// find whats enabled if not secret
+			if (edit_menu.get_count() > 1) {
+				// at teh beginnign, cursor position might not be valid
+				size_t len = strlen(text);
+				size_t hc = min(len, head_cursor_pos);
+				size_t tc = min(len, tail_cursor_pos);
+				edit_menu.get_element(0)->set_visible(hc!=tc);
+				edit_menu.get_element(1)->set_visible(hc!=tc);
+				edit_menu.get_element(3)->set_visible(tc>0  ||  hc<len  ||  hc==tc);
+			}
+			// since the size is recalculated on first draw, get_min_size assumes a scrollbar => we do manual calcualtion
+			scr_size sz(0, 0);
+			for (int i = 0; i < edit_menu.get_count(); i++) {
+				if (edit_menu.get_element(i)->is_visible()) {
+					scr_size ez = edit_menu.get_element(i)->get_min_size();
+					if (sz.w < ez.w) sz.w = ez.w;
+					sz.h += ez.h;
+				}
+			}
+			// add the passing
+			sz.w += D_H_SPACE*2;
+			sz.h += D_V_SPACE;
+			edit_menu.set_size(sz);
+			edit_menu.set_pos(scr_coord(0, 0));
+			edit_menu.set_visible(true);
+			edit_menu.set_selection(-1);
+			edit_menu_opening_gesture = IS_LONGPRESS(ev);
+			return true;
+		}
+		return false;
+	}
+
+	if(  IS_KEYDOWN(ev)  ) {
 		if(  text  ) {
 			size_t len = strlen(text);
 
 			switch(ev->ev_code) {
 					// handled by container
-				case SIM_KEY_ENTER:
+				case SIM_KEYCODE_ENTER:
 					if(  text_dirty  ) {
 						text_dirty = false;
 						call_listeners((long)INPUT_FINISHED);
@@ -129,13 +234,13 @@ bool gui_textinput_t::infowin_event(const event_t *ev)
 					tail_cursor_pos = 0;
 					return false;
 
-				case SIM_KEY_TAB:
+				case SIM_KEYCODE_TAB:
 					// focus is going to be lost -> reset cursor positions to select the whole text by default
 					head_cursor_pos = len;
 					tail_cursor_pos = 0;
 					return false;
 
-				case SIM_KEY_ESCAPE:
+				case SIM_KEYCODE_ESCAPE:
 					return false;
 
 				case 1:
@@ -176,10 +281,10 @@ bool gui_textinput_t::infowin_event(const event_t *ev)
 						next_update_call = notify_all_changes_delay == 0xFFFFu ? 0xFFFFFFFFul : dr_time() + notify_all_changes_delay;
 					}
 					break;
-				case SIM_KEY_DOWN: // down arrow
+				case SIM_KEYCODE_DOWN: // down arrow
 					// not used currently
 					break;
-				case SIM_KEY_LEFT: // left arrow
+				case SIM_KEYCODE_LEFT: // left arrow
 					if(  head_cursor_pos>0  ) {
 						// Ctrl key pressed -> skip over to the start of the previous word (as delimited by space(s))
 						if(  IS_CONTROL_PRESSED(ev)  ) {
@@ -187,7 +292,7 @@ bool gui_textinput_t::infowin_event(const event_t *ev)
 							uint8 byte_length = 0;
 							uint8 pixel_width = 0;
 							// first skip over all contiguous space characters to the left
-							while(  head_cursor_pos>0  &&  get_prev_char_with_metrics(tmp_text, text, byte_length, pixel_width)==SIM_KEY_SPACE  ) {
+							while(  head_cursor_pos>0  &&  gfx->get_prev_char_with_metrics(tmp_text, text, byte_length, pixel_width)==SIM_KEYCODE_SPACE  ) {
 								head_cursor_pos -= byte_length;
 							}
 							// revert text pointer for further processing
@@ -195,7 +300,7 @@ bool gui_textinput_t::infowin_event(const event_t *ev)
 								tmp_text += byte_length;
 							}
 							// then skip over all contiguous non-space characters further to the left
-							while(  head_cursor_pos>0  &&  get_prev_char_with_metrics(tmp_text, text, byte_length, pixel_width)!=SIM_KEY_SPACE  ) {
+							while(  head_cursor_pos>0  &&  gfx->get_prev_char_with_metrics(tmp_text, text, byte_length, pixel_width)!=SIM_KEYCODE_SPACE  ) {
 								head_cursor_pos -= byte_length;
 							}
 						}
@@ -208,7 +313,7 @@ bool gui_textinput_t::infowin_event(const event_t *ev)
 						tail_cursor_pos = head_cursor_pos;
 					}
 					break;
-				case SIM_KEY_RIGHT: // right arrow
+				case SIM_KEYCODE_RIGHT: // right arrow
 					if(  head_cursor_pos<len  ) {
 						// Ctrl key pressed -> skip over to the start of the next word (as delimited by space(s))
 						if(  IS_CONTROL_PRESSED(ev)  ) {
@@ -216,7 +321,7 @@ bool gui_textinput_t::infowin_event(const event_t *ev)
 							uint8 byte_length = 0;
 							uint8 pixel_width = 0;
 							// first skip over all contiguous non-space characters to the right
-							while(  head_cursor_pos<len  &&  get_next_char_with_metrics(tmp_text, byte_length, pixel_width)!=SIM_KEY_SPACE  ) {
+							while(  head_cursor_pos<len  &&  gfx->get_next_char_with_metrics(tmp_text, byte_length, pixel_width)!=SIM_KEYCODE_SPACE  ) {
 								head_cursor_pos += byte_length;
 							}
 							// revert text pointer for further processing
@@ -224,7 +329,7 @@ bool gui_textinput_t::infowin_event(const event_t *ev)
 								tmp_text -= byte_length;
 							}
 							// then skip over all contiguous space characters further to the right
-							while(  head_cursor_pos<len  &&  get_next_char_with_metrics(tmp_text, byte_length, pixel_width)==SIM_KEY_SPACE  ) {
+							while(  head_cursor_pos<len  &&  gfx->get_next_char_with_metrics(tmp_text, byte_length, pixel_width)==SIM_KEYCODE_SPACE  ) {
 								head_cursor_pos += byte_length;
 							}
 						}
@@ -237,24 +342,24 @@ bool gui_textinput_t::infowin_event(const event_t *ev)
 						tail_cursor_pos = head_cursor_pos;
 					}
 					break;
-				case SIM_KEY_UP: // up arrow
+				case SIM_KEYCODE_UP: // up arrow
 					// not used currently
 					break;
-				case SIM_KEY_HOME: // home
+				case SIM_KEYCODE_HOME: // home
 					head_cursor_pos = 0;
 					// do not update tail cursor if SHIFT key is pressed -> enables text selection
 					if(  !IS_SHIFT_PRESSED(ev)  ) {
 						tail_cursor_pos = head_cursor_pos;
 					}
 					break;
-				case SIM_KEY_END: // end
+				case SIM_KEYCODE_END: // end
 					head_cursor_pos = len;
 					// do not update tail cursor if SHIFT key is pressed -> enables text selection
 					if(  !IS_SHIFT_PRESSED(ev)  ) {
 						tail_cursor_pos = head_cursor_pos;
 					}
 					break;
-				case SIM_KEY_BACKSPACE:
+				case SIM_KEYCODE_BACKSPACE:
 					// backspace
 					// check and remove any selected text first
 					if(  !remove_selection()  &&  head_cursor_pos>0  ) {
@@ -275,7 +380,7 @@ bool gui_textinput_t::infowin_event(const event_t *ev)
 						}
 					}
 					break;
-				case SIM_KEY_DELETE:
+				case SIM_KEYCODE_DELETE:
 					// delete
 					// check and remove any selected text first
 					if(  !remove_selection()  &&  head_cursor_pos<=len  ) {
@@ -292,10 +397,10 @@ bool gui_textinput_t::infowin_event(const event_t *ev)
 						// ignore special keys not handled so far
 						break;
 					}
-					else if (ev->ev_code>=SIM_KEY_NUMPAD_BASE  &&  ev->ev_code<=SIM_KEY_NUMPAD_BASE+9) {
+					else if (ev->ev_code>=SIM_KEYCODE_NUMPAD_BASE  &&  ev->ev_code<=SIM_KEYCODE_NUMPAD_BASE+9) {
 						// ignore numpad keys if numlock is off
 						// Could also return false here to move the map diagonally but this does not work for 2/4/6/8
-						// (SIM_KEY_LEFT/_RIGHT moves the cursor already)
+						// (SIM_KEYCODE_LEFT/_RIGHT moves the cursor already)
 						break;
 					}
 
@@ -450,9 +555,10 @@ bool gui_textinput_t::infowin_event(const event_t *ev)
 		// use mouse *click* position; update both head and tail cursors
 		tail_cursor_pos = 0;
 		if(  text  ) {
-			tail_cursor_pos = head_cursor_pos = display_fit_proportional( text, ev->click_pos.x - 2 + scroll_offset );
+			tail_cursor_pos = head_cursor_pos = gfx->calc_text_index_for_width( text, ev->click_pos.x - 2 + scroll_offset );
 		}
 		cursor_reference_time = dr_time(); // update reference time for cursor blinking
+		dr_start_textinput();
 		return true;
 	}
 	else if(  IS_LEFTDRAG(ev)  ) {
@@ -465,7 +571,7 @@ bool gui_textinput_t::infowin_event(const event_t *ev)
 		// use mouse *move* position; update head cursor only in order to enable text selection
 		head_cursor_pos = 0;
 		if(  text  ) {
-			head_cursor_pos = display_fit_proportional( text, ev->mouse_pos.x - 1 + scroll_offset );
+			head_cursor_pos = gfx->calc_text_index_for_width( text, ev->mouse_pos.x - 1 + scroll_offset );
 		}
 		cursor_reference_time = dr_time(); // update reference time for cursor blinking
 		return true;
@@ -482,13 +588,13 @@ bool gui_textinput_t::infowin_event(const event_t *ev)
 		const char* tmp_text = text + tail_cursor_pos;
 		uint8 byte_length;
 		uint8 pixel_width;
-		while(  tail_cursor_pos>0  &&  get_prev_char_with_metrics(tmp_text, text, byte_length, pixel_width)!=SIM_KEY_SPACE  ) {
+		while(  tail_cursor_pos>0  &&  gfx->get_prev_char_with_metrics(tmp_text, text, byte_length, pixel_width)!=SIM_KEYCODE_SPACE  ) {
 			tail_cursor_pos -= byte_length;
 		}
 		// for head cursor pos -> skip over all contiguous non-space characters to the right
 		const size_t len = strlen(text);
 		tmp_text = text + head_cursor_pos;
-		while(  head_cursor_pos<len  &&  get_next_char_with_metrics(tmp_text, byte_length, pixel_width)!=SIM_KEY_SPACE  ) {
+		while(  head_cursor_pos<len  &&  gfx->get_next_char_with_metrics(tmp_text, byte_length, pixel_width)!=SIM_KEYCODE_SPACE  ) {
 			head_cursor_pos += byte_length;
 		}
 	}
@@ -504,6 +610,11 @@ bool gui_textinput_t::infowin_event(const event_t *ev)
 		tail_cursor_pos = 0;
 	}
 	else if(  ev->ev_class==INFOWIN  &&  ev->ev_code==WIN_UNTOP  ) {
+		// the focus has already moved on: a field that takes text keeps the keyboard
+		if(  !win_is_textinput()  ) {
+			dr_stop_textinput();
+		}
+		edit_menu.set_visible(false);
 		if(  text_dirty  ) {
 			text_dirty = false;
 			call_listeners((long)INPUT_UNTOP);
@@ -512,6 +623,7 @@ bool gui_textinput_t::infowin_event(const event_t *ev)
 	}
 	else if(  ev->ev_class == INFOWIN   &&  ev->ev_code == WIN_CLOSE  &&  focus_received  ) {
 		// release focus on close and close keyboard
+		edit_menu.set_visible(false);
 		dr_stop_textinput();
 		if (text_dirty) {
 			// note all pending changes
@@ -531,17 +643,28 @@ bool gui_textinput_t::infowin_event(const event_t *ev)
 }
 
 
-/**
- * Draw the component
- */
 void gui_textinput_t::draw(scr_coord offset)
 {
 	display_with_focus( offset, (win_get_focus()==this) );
-	if (text_dirty  &&  next_update_call < dr_time()) {
+	if(  edit_menu.is_visible()  ) {
+		if (edit_menu.get_pos().y == 0) {
+			// First openen? Find out if enough space below
+			scr_size sz = edit_menu.get_size();
+			scr_size wz = win_get_top()->get_windowsize() + win_get_pos(win_get_top());
+			if (wz.h < offset.y + pos.y + size.h + sz.h) {
+				// no => show above
+				edit_menu.set_pos(scr_coord(0, -sz.h));
+			}
+			else {
+				edit_menu.set_pos(scr_coord(0, size.h));
+			}
+		}
+		edit_menu.draw(offset + pos);
+	}
+	if (text_dirty  &&  dr_time() > next_update_call) {
 		// need to trigger a dummy event for next processing
-		event_t* ev = new event_t();
-		ev->ev_class = EVENT_KEYBOARD;
-		ev->ev_code = 0;
+		event_t* ev = new event_t(EVENT_KEYDOWN);
+		ev->ev_code    = 0;
 		ev->ev_key_mod = 0;
 		queue_event(ev);
 	}
@@ -567,6 +690,7 @@ void gui_textinput_t::display_with_focus(scr_coord offset, bool has_focus)
 			dr_notify_input_pos({ x, y });
 		}
 		else {
+			edit_menu.set_visible(false);
 			dr_stop_textinput();
 		}
 		focus_received = has_focus;
@@ -578,20 +702,40 @@ void gui_textinput_t::display_with_focus(scr_coord offset, bool has_focus)
 
 void gui_textinput_t::display_with_cursor(scr_coord offset, bool cursor_active, bool cursor_visible)
 {
-	display_img_stretch( gui_theme_t::editfield, scr_rect( pos+offset, size ) );
+	if (!enabled) {
+		gfx->draw_stretch_map_blend(gui_theme_t::editfield, scr_rect(pos + offset, size), TRANSPARENT50_FLAG|SYSCOL_EDIT_TEXT_DISABLED);
+	}
+	else {
+		gfx->draw_stretch_map(gui_theme_t::editfield, scr_rect(pos + offset, size));
+	}
 
-	if(  text  ) {
-
-		if (head_cursor_pos == 0xFFFF) {
+	if (head_cursor_pos == 0xFFFF) {
+		if (text) {
 			// since before the first draw, the text was likely not set correctly
 			head_cursor_pos = strlen(text);
 		}
+		else {
+			head_cursor_pos = 0;
+		}
+	}
+
+	const char* display_text = (text && text[0]) ? text : placeholder_text;
+	if(  display_text == NULL  &&  composition.len() > 0  ) {
+		// an active IME composition must stay visible even when there is
+		// neither committed text nor a placeholder to draw; otherwise the
+		// pre-edit is invisible in an emptied field
+		display_text = "";
+		head_cursor_pos = tail_cursor_pos = 0;
+	}
+	PIXVAL display_color = display_text == placeholder_text ? SYSCOL_EDIT_TEXT_DISABLED : (enabled ? textcol : SYSCOL_EDIT_TEXT_DISABLED);
+	if (display_text) {
 
 		// recalculate scroll offset
-		const int text_width = proportional_string_width(text);
+		const int text_width = gfx->calc_text_width(display_text);
 		const scr_coord_val view_width = size.w - 3;
-		const int cursor_offset = cursor_active ? proportional_string_len_width(text, head_cursor_pos) : 0;
-		if(  text_width<=view_width  ) {
+		const int cursor_offset = cursor_active ? gfx->calc_text_width_n(display_text, head_cursor_pos) : 0;
+
+		if (text_width <= view_width) {
 			// case : text is shorter than displayable width of the text input
 			//        -> the only case where left and right alignments differ
 			//        -> pad empty spaces on the left if right-aligned
@@ -632,45 +776,45 @@ void gui_textinput_t::display_with_cursor(scr_coord offset, bool cursor_active, 
 		const int y_offset = pos.y+offset.y+D_GET_CENTER_ALIGN_OFFSET(LINESPACE,size.h);
 
 		// display text (before composition)
-		display_text_proportional_len_clip_rgb(x_base_offset, y_offset, text, ALIGN_LEFT | DT_CLIP, textcol, true, head_cursor_pos);
-		int x_offset = proportional_string_len_width(text, head_cursor_pos);
+		gfx->draw_text_clipped_n(x_base_offset, y_offset, display_text, ALIGN_LEFT | DT_CLIP, display_color, true, head_cursor_pos CLIP_NUM_DEFAULT);
+		int x_offset = text ? gfx->calc_text_width_n(text, head_cursor_pos) : 0;
 
 		// IME text to display?
-		if(  composition.len()  ) {
-//			assert(head_cursor_pos==tail_cursor_pos);
+		if (composition.len()) {
+			//	assert(head_cursor_pos==tail_cursor_pos);
 
-			display_proportional_clip_rgb(x_base_offset+x_offset, y_offset, composition.get_str(), ALIGN_LEFT | DT_CLIP, textcol, true);
+			gfx->draw_text_clipped(x_base_offset + x_offset, y_offset, composition.get_str(), ALIGN_LEFT | DT_CLIP, display_color, true);
 
 			// draw underline
-			int composition_width = proportional_string_width(composition.get_str());
-			display_direct_line_rgb(x_base_offset+x_offset, y_offset+LINESPACE, x_base_offset+x_offset+composition_width, y_offset+LINESPACE-1, textcol);
+			int composition_width = gfx->calc_text_width(composition.get_str());
+			gfx->draw_line(x_base_offset + x_offset, y_offset + LINESPACE, x_base_offset + x_offset + composition_width, y_offset + LINESPACE - 1, display_color);
 
 			// mark targeted part in a similar manner to selected text
-			int start_offset = proportional_string_len_width(composition.get_str(), composition_target_start);
-			int highlight_width = proportional_string_len_width(composition.get_str()+composition_target_start, composition_target_length);
-			display_fillbox_wh_clip_rgb(x_base_offset+x_offset+start_offset, y_offset, highlight_width, LINESPACE, SYSCOL_EDIT_BACKGROUND_SELECTED, true);
-			display_text_proportional_len_clip_rgb(x_base_offset+x_offset+start_offset, y_offset, composition.get_str()+composition_target_start, ALIGN_LEFT|DT_CLIP, SYSCOL_EDIT_TEXT_SELECTED, false, composition_target_length);
+			int start_offset = gfx->calc_text_width_n(composition.get_str(), composition_target_start);
+			int highlight_width = gfx->calc_text_width_n(composition.get_str()+composition_target_start, composition_target_length);
+			gfx->draw_rect_clipped(x_base_offset+x_offset+start_offset, y_offset, highlight_width, LINESPACE, SYSCOL_EDIT_BACKGROUND_SELECTED, true CLIP_NUM_DEFAULT);
+			gfx->draw_text_clipped_n(x_base_offset+x_offset+start_offset, y_offset, composition.get_str()+composition_target_start, ALIGN_LEFT|DT_CLIP, SYSCOL_EDIT_TEXT_SELECTED, false, composition_target_length CLIP_NUM_DEFAULT);
 
 			x_offset += composition_width;
 		}
 
 		// display text (after composition)
-		display_proportional_clip_rgb(x_base_offset+x_offset, y_offset, text+head_cursor_pos, ALIGN_LEFT | DT_CLIP, textcol, true);
+		gfx->draw_text_clipped(x_base_offset + x_offset, y_offset, display_text + head_cursor_pos, ALIGN_LEFT | DT_CLIP, display_color, true);
 
-		if(  cursor_active  ) {
+		if (cursor_active && enabled) {
 			// display selected text block with light grey text on charcoal bounding box
-			if(  head_cursor_pos!= tail_cursor_pos  ) {
+			if (head_cursor_pos != tail_cursor_pos) {
 				const size_t start_pos = min(head_cursor_pos, tail_cursor_pos);
 				size_t end_pos = ::max(head_cursor_pos, tail_cursor_pos);
-				const scr_coord_val start_offset = proportional_string_len_width(text, start_pos);
-				const scr_coord_val highlight_width = proportional_string_len_width(text+start_pos, end_pos-start_pos);
-				display_fillbox_wh_clip_rgb(x_base_offset+start_offset, y_offset, highlight_width, LINESPACE, SYSCOL_EDIT_BACKGROUND_SELECTED, true);
-				display_text_proportional_len_clip_rgb(x_base_offset+start_offset, y_offset, text+start_pos, ALIGN_LEFT|DT_CLIP, SYSCOL_EDIT_TEXT_SELECTED, false, end_pos-start_pos);
+				const scr_coord_val start_offset = gfx->calc_text_width_n(display_text, start_pos);
+				const scr_coord_val highlight_width = gfx->calc_text_width_n(display_text + start_pos, end_pos - start_pos);
+				gfx->draw_rect_clipped(x_base_offset + start_offset, y_offset, highlight_width, LINESPACE, SYSCOL_EDIT_BACKGROUND_SELECTED, true CLIP_NUM_DEFAULT);
+				gfx->draw_text_clipped_n(x_base_offset + start_offset, y_offset, display_text + start_pos, ALIGN_LEFT | DT_CLIP, SYSCOL_EDIT_TEXT_SELECTED, false, end_pos - start_pos CLIP_NUM_DEFAULT);
 			}
 
 			// display blinking cursor
 			if(  cursor_visible  ) {
-				display_fillbox_wh_clip_rgb(x_base_offset+cursor_offset-1, y_offset, 1, LINESPACE, SYSCOL_CURSOR_BEAM, true);
+				gfx->draw_rect_clipped(x_base_offset+cursor_offset-1, y_offset, 1, LINESPACE, SYSCOL_CURSOR_BEAM, true CLIP_NUM_DEFAULT);
 			}
 		}
 
@@ -681,14 +825,26 @@ void gui_textinput_t::display_with_cursor(scr_coord offset, bool cursor_active, 
 
 
 
+/// true if a cursor may stand at byte @p pos of @p t: at its end or on the first byte of a character
+static bool is_cursor_position(const char *t, size_t pos)
+{
+	const size_t len = strlen(t);
+	return pos < len ? ((uint8)t[pos] & 0xC0) != 0x80 : pos == len;
+}
+
+
 void gui_textinput_t::set_text(char *t, size_t max)
 {
+	// the menu acts on the buffer it was opened over; it must not outlive it
 	char *old_text = text;
 	this->text = t;
 	this->max = max;
 
-	if (old_text  &&   tail_cursor_pos == head_cursor_pos) {
+	edit_menu.set_visible(false);
+	if (old_text  &&   tail_cursor_pos == head_cursor_pos  &&  (t == NULL  ||  is_cursor_position(t, head_cursor_pos))) {
 		// if same, keep positions
+		// (the buffer may hold another string now, e.g. a combobox showing the next entry; a
+		//  byte position inside one of its characters would split it when drawn or edited)
 	}
 	else {
 		// whole text is selected by default
@@ -700,11 +856,18 @@ void gui_textinput_t::set_text(char *t, size_t max)
 
 
 
+gui_hidden_textinput_t::gui_hidden_textinput_t() :
+	gui_textinput_t()
+{
+	edit_menu.clear_elements();
+	edit_menu.new_component<gui_scrolled_list_t::const_text_scrollitem_t>(translator::translate("Paste"), SYSCOL_TEXT);
+}
+
 // needed to set the cursor on the right position
 bool gui_hidden_textinput_t::infowin_event(const event_t *ev)
 {
 	if(  IS_LEFTRELEASE(ev)  ) {
-		// since now the focus could be received while the mouse  no there, we must release it
+		// since now the focus could be received while the mouse no there, we must release it
 		scr_rect this_comp( get_size() );
 		if(  !this_comp.contains(scr_coord(ev->click_pos.x,ev->click_pos.y) )  ) {
 			// not us, just in old focus from previous selection or tab
@@ -712,7 +875,7 @@ bool gui_hidden_textinput_t::infowin_event(const event_t *ev)
 		}
 		// acting on release causes unwanted recalculations of cursor position for long strings and (cursor_offset>0)
 		// moreover, only (click) or (release) event happened inside textinput, the other one could lie outside
-		sint16 asterix_width = display_calc_proportional_string_len_width("*",1);
+		sint16 asterix_width = gfx->calc_text_width_n("*", 1);
 		head_cursor_pos = 0;
 		if (  text  ) {
 			head_cursor_pos = min( strlen(text), ev->click_pos.x/asterix_width );
@@ -729,13 +892,13 @@ bool gui_hidden_textinput_t::infowin_event(const event_t *ev)
 
 void gui_hidden_textinput_t::display_with_cursor(scr_coord const offset, bool, bool const cursor_visible)
 {
-	display_img_stretch( gui_theme_t::editfield, scr_rect( pos+offset, size ) );
+	gfx->draw_stretch_map( gui_theme_t::editfield, scr_rect( pos+offset, size ) );
 
 	if(  text  ) {
 		// the text will be all asterisk, thus we draw them letter by letter
 
 		// set clipping to be within textinput button
-		const clip_dimension old_clip = display_get_clip_wh();
+		const clip_dimension old_clip = gfx->get_clip_rect(CLIP_NUM_DEFAULT_VALUE);
 
 		int text_clip_x = pos.x+offset.x + 1, text_clip_w = size.w - 2;
 		// something to draw?
@@ -743,7 +906,7 @@ void gui_hidden_textinput_t::display_with_cursor(scr_coord const offset, bool, b
 				return;
 		}
 		const int clip_x =  old_clip.x > text_clip_x ? old_clip.x : text_clip_x;
-		display_set_clip_wh( clip_x, old_clip.y, min(old_clip.xx, text_clip_x+text_clip_w)-clip_x, old_clip.h);
+		gfx->set_clip_rect( clip_x, old_clip.y, min(old_clip.xx, text_clip_x+text_clip_w)-clip_x, old_clip.h CLIP_NUM_DEFAULT, false);
 
 		utf8 const *text_pos = (utf8 const*)text;
 		utf8 const *end = (utf8 const*)text + max;
@@ -752,16 +915,16 @@ void gui_hidden_textinput_t::display_with_cursor(scr_coord const offset, bool, b
 		do {
 			// cursor?
 			if(  cursor_visible  &&  text_pos == (utf8 const*)text + head_cursor_pos  ) {
-				display_fillbox_wh_clip_rgb( xpos, pos.y+offset.y+1+(size.h-LINESPACE)/2, 1, LINESPACE, SYSCOL_CURSOR_BEAM, true);
+				gfx->draw_rect_clipped( xpos, pos.y+offset.y+1+(size.h-LINESPACE)/2, 1, LINESPACE, SYSCOL_CURSOR_BEAM, true CLIP_NUM_DEFAULT);
 			}
 			c = utf8_decoder_t::decode((utf8 const *&)text_pos);
 			if(c) {
-				xpos += display_proportional_clip_rgb( xpos, pos.y+offset.y+1+(size.h-LINESPACE)/2, "*", ALIGN_LEFT | DT_CLIP, textcol, true);
+				xpos += gfx->draw_text_clipped( xpos, pos.y+offset.y+1+(size.h-LINESPACE)/2, "*", ALIGN_LEFT | DT_CLIP, textcol, true);
 			}
 		}
 		while(  text_pos < end  &&  c != UNICODE_NUL  );
 
 		// reset clipping
-		display_set_clip_wh(old_clip.x, old_clip.y, old_clip.w, old_clip.h);
+		gfx->set_clip_rect(old_clip.x, old_clip.y, old_clip.w, old_clip.h CLIP_NUM_DEFAULT, false);
 	}
 }

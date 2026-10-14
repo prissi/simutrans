@@ -63,7 +63,6 @@ void kanal_t::rdwr(loadsave_t *file)
 				}
 				pakset_manager_t::add_missing_paks( bname, MISSING_WAY );
 			}
-			dbg->warning("kanal_t::rdwr()", "Unknown canal '%s' replaced by '%s' (old_max_speed %i)", bname, desc->get_name(), old_max_speed );
 		}
 		set_desc(desc);
 		if(old_max_speed>0) {

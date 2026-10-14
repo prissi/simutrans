@@ -160,6 +160,8 @@ const char* scenario_t::init( const char *scenario_base, const char *scenario_na
 bool scenario_t::load_script(const char* filename)
 {
 	delete script;
+	// a new scenario may report its own broken callbacks
+	failed_callbacks.clear();
 	// start vm
 	script = script_loader_t::start_vm("scenario_base.nut", "script-scenario.log", scenario_path.c_str(), true);
 	if (script == NULL) {
@@ -174,7 +176,7 @@ bool scenario_t::load_script(const char* filename)
 	}
 
 	// load scenario definition
-	if (const char* err = script->call_script(filename)) {
+	if (const char* err = script->call_script(filename,2000000)) {
 		dbg->error("scenario_t::load_script", "error [%s] calling %s", err, filename);
 		return false;
 	}
@@ -565,6 +567,31 @@ void scenario_t::clear_player_rules(uint8 player_nr)
 }
 
 
+/// returned by the permission callbacks that expect a message, @see scenario_t::callback_failed
+static const char* const CALLBACK_FAILED_DENIAL = "Scenario check failed, action denied";
+
+
+bool scenario_t::callback_failed(const char* function, const char* err)
+{
+	if (err == NULL  ||  script_vm_t::is_function_missing(err)) {
+		// no error at all, or the script does not define this callback:
+		// scenario_base.nut provides the defaults, nothing is denied here
+		return false;
+	}
+	// the callback exists but did not decide: tell the player once, then deny
+	if (!failed_callbacks.is_contained(function)) {
+		failed_callbacks.append(function);
+		dbg->warning("scenario_t::callback_failed", "scenario callback %s failed [%s], the requested action is denied", function, err);
+		if (welt) {
+			cbuffer_t buf;
+			buf.printf(translator::translate("Scenario callback '%s' failed, action denied"), function);
+			welt->get_message()->add_message((const char*)buf, koord3d::invalid, message_t::general | message_t::DO_NOT_SAVE_MSG);
+		}
+	}
+	return true;
+}
+
+
 bool scenario_t::is_tool_allowed(const player_t* player, uint16 tool_id, sint16 wt, const char* param)
 {
 	if (what_scenario != SCRIPTED  &&  what_scenario != SCRIPTED_NETWORK) {
@@ -593,7 +620,11 @@ bool scenario_t::is_tool_allowed(const player_t* player, uint16 tool_id, sint16 
 	if (what_scenario == SCRIPTED) {
 		bool ok = true;
 		const char* err = script->call_function(script_vm_t::FORCE, "is_tool_allowed", ok, (uint8)(player  ?  player->get_player_nr() : PLAYER_UNOWNED), tool_id, wt, param);
-		return err != NULL  ||  ok;
+		if (err != NULL) {
+			// ok was not assigned
+			return !callback_failed("is_tool_allowed", err);
+		}
+		return ok;
 	}
 
 	return true;
@@ -655,9 +686,9 @@ const char* scenario_t::is_work_allowed_here(const player_t* player, uint16 tool
 		}
 	}
 
-	// then call the script
-	// cannot be done for two_click_tool_t's as they depend on routefinding,
-	// which is done per client
+	// then call the script, only where the authoritative vm runs: single player or server
+	// the validity of two_click_tool_t's also depends on routefinding, which is done per
+	// client and thus cannot be decided here; only their interaction state is passed on
 	if (what_scenario == SCRIPTED) {
 		koord3d start_pos = pos;
 		bool is_drag_tool = false;
@@ -678,7 +709,11 @@ const char* scenario_t::is_work_allowed_here(const player_t* player, uint16 tool
 		}
 		static plainstring msg;
 		const char *err = script->call_function(script_vm_t::FORCE, "is_work_allowed_here", msg, player_nr, tool_id, param, pos, script_api::mytool_data_t(start_pos, is_drag_tool, is_ctrl, is_shift));
-		return err == NULL ? msg.c_str() : NULL;
+		if (err != NULL) {
+			// msg was not assigned and still holds the message of an earlier call
+			return callback_failed("is_work_allowed_here", err) ? CALLBACK_FAILED_DENIAL : NULL;
+		}
+		return msg.c_str();
 	}
 	return NULL;
 }
@@ -698,8 +733,11 @@ const char* scenario_t::is_schedule_allowed(const player_t* player, const schedu
 	if (what_scenario == SCRIPTED) {
 		static plainstring msg;
 		const char *err = script->call_function(script_vm_t::FORCE, "is_schedule_allowed", msg, (uint8)(player  ?  player->get_player_nr() : PLAYER_UNOWNED), schedule);
-
-		return err == NULL ? msg.c_str() : NULL;
+		if (err != NULL) {
+			// msg was not assigned and still holds the message of an earlier call
+			return callback_failed("is_schedule_allowed", err) ? CALLBACK_FAILED_DENIAL : NULL;
+		}
+		return msg.c_str();
 	}
 	return NULL;
 }
@@ -719,8 +757,11 @@ const char* scenario_t::is_convoy_allowed(const player_t* player, convoihandle_t
 	if (what_scenario == SCRIPTED) {
 		static plainstring msg;
 		const char *err = script->call_function(script_vm_t::FORCE, "is_convoy_allowed", msg, (uint8)(player  ?  player->get_player_nr() : PLAYER_UNOWNED), cnv, (obj_t*)depot);
-
-		return err == NULL ? msg.c_str() : NULL;
+		if (err != NULL) {
+			// msg was not assigned and still holds the message of an earlier call
+			return callback_failed("is_convoy_allowed", err) ? CALLBACK_FAILED_DENIAL : NULL;
+		}
+		return msg.c_str();
 	}
 	return NULL;
 
@@ -736,7 +777,11 @@ bool scenario_t::is_tool_enabled(const player_t * player, uint16 tool_id, sint16
 	if (what_scenario == SCRIPTED) {
 		bool ok = true;
 		const char* err = script->call_function(script_vm_t::FORCE, "is_tool_active", ok, (uint8)(player ? player->get_player_nr() : PLAYER_UNOWNED), tool_id, wt, param);
-		return err != NULL || ok;
+		if (err != NULL) {
+			// ok was not assigned
+			return !callback_failed("is_tool_active", err);
+		}
+		return ok;
 	}
 	return true;
 }
@@ -942,10 +987,10 @@ plainstring scenario_t::load_language_file(const char* filename)
 	}
 	std::string path = scenario_path.c_str();
 	// try user language
-	std::string wanted_file = path + translator::get_lang()->iso + PATH_SEPARATOR + filename;
+	std::string wanted_file = path + translator::get_lang()->iso_base + PATH_SEPARATOR + filename;
 
 	const plainstring& cached = cached_text_files.get(wanted_file.c_str());
-	if (cached != NULL) {
+	if (cached.c_str()==NULL) {
 		// file already cached
 		return cached;
 	}
@@ -1027,7 +1072,23 @@ void scenario_t::rdwr(loadsave_t *file)
 			// load persistent scenario data
 			plainstring str;
 			file->rdwr_str(str);
+
+			// forbid system execution (with manipulated savegames) in data string
+			const char* s = strstr(str, "system");
+			if (s && (s == str || s[-1] <= ' ')) {
+				s += 6;
+				while (*s && *s++ <= ' ') {}
+				if (*s == '(') {
+					dbg->fatal("scenario_t::rdwr", "Manipulated savegame data contained \"system\" call: %s", str.c_str());
+					// we could actually continue by ignoring the script
+					what_scenario = 0;
+					script = NULL;
+					str = "";
+				}
+			}
+
 			dbg->warning("scenario_t::rdwr", "loaded persistent scenario data: %s", str.c_str());
+
 			if (env_t::networkmode   &&  !env_t::server) {
 				// client playing network scenario game:
 				// script files are not available
@@ -1056,6 +1117,7 @@ void scenario_t::rdwr(loadsave_t *file)
 
 				if (!rdwr_error) {
 					script_loader_t::load_compatibility_script(script);
+
 					// restore persistent data
 					const char* err = script->eval_string(str);
 					if (err) {
@@ -1085,18 +1147,37 @@ void scenario_t::rdwr(loadsave_t *file)
 		clear_rules();
 	}
 
-	for (uint pnr = 0; pnr < MAX_PLAYER_COUNT; pnr++) {
-		uint32 count = forbidden_tools[pnr].get_count();
+	if (file->is_version_atleast(124, 3)) {
+		for (uint pnr = 0; pnr < MAX_PLAYER_COUNT; pnr++) {
+			uint32 count = forbidden_tools[pnr].get_count();
+			file->rdwr_long(count);
+
+			for (uint32 i = 0; i < count; i++) {
+				if (file->is_loading()) {
+					forbidden_tools[pnr].append(new forbidden_t());
+				}
+				forbidden_tools[pnr][i]->rdwr(file);
+			}
+		}
+	}
+	else {
+		// only restore rules for player 0 in old games and copy
+		uint32 count = forbidden_tools[0].get_count();
 		file->rdwr_long(count);
 
 		for (uint32 i = 0; i < count; i++) {
 			if (file->is_loading()) {
-				forbidden_tools[pnr].append(new forbidden_t());
+				forbidden_tools[0].append(new forbidden_t());
 			}
-			forbidden_tools[pnr][i]->rdwr(file);
+			forbidden_tools[1][i]->rdwr(file);
+		}
+		// copy them to every player
+		for (uint pnr = 0; pnr < MAX_PLAYER_COUNT; pnr++) {
+			for (uint32 i = 2; i < count; i++) {
+				forbidden_tools[pnr].append(forbidden_tools[0][i]);
+			}
 		}
 	}
-
 	// cached strings
 	if (file->is_version_atleast(120, 3)) {
 		dynamic_string::rdwr_cache(file);

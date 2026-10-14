@@ -76,9 +76,10 @@ fabrik_info_t::fabrik_info_t(fabrik_t* fab_, const gebaeude_t* gb) :
 	gui_frame_t(""),
 	fab(fab_),
 	chart(NULL),
-	view(scr_size( max(64, get_base_tile_raster_width()), max(56, (get_base_tile_raster_width() * 7) / 8))),
+	view(scr_size( max(64, gfx->get_base_tile_raster_width()), max(56, (gfx->get_base_tile_raster_width() * 7) / 8))),
 	prod(&prod_buf),
 	txt(&info_buf),
+	power(&power_buf),
 	scroll_info(&container_info)
 {
 	if (fab) {
@@ -171,6 +172,16 @@ void fabrik_info_t::init(fabrik_t* fab_, const gebaeude_t* gb)
 	chart.set_factory(fab);
 	switch_mode.take_tabs(chart.get_tab_panel());
 
+	// electricity figures in a tab of their own: only a power station has any,
+	// and the window is crowded enough without them
+	if(  fab->get_desc()->is_electricity_producer()  ) {
+		switch_mode.add_tab(&container_power, translator::translate("Electricity"));
+		container_power.set_table_layout(1,0);
+		container_power.add_component(&power);
+		fab->info_power(power_buf);
+		power.recalc_size();
+	}
+
 	// factory description in tab
 	{
 		bool add_tab = false;
@@ -246,7 +257,7 @@ void fabrik_info_t::draw(scr_coord pos, scr_size size)
 	boost_passenger.set_transparent(fab->get_prodfactor_pax()>0 ? 0 : TRANSPARENT50_FLAG | OUTLINE_FLAG | SYSCOL_IMAGE_TRANSPARENCY);
 	boost_mail.set_transparent(fab->get_prodfactor_mail()>0 ? 0 : TRANSPARENT50_FLAG | OUTLINE_FLAG | SYSCOL_IMAGE_TRANSPARENCY);
 
-	indicator_color.set_color( color_idx_to_rgb(fabrik_t::status_to_color[fab->get_status()]) );
+	indicator_color.set_color( gfx->palette_lookup(fabrik_t::status_to_color[fab->get_status()]) );
 
 	chart.update();
 
@@ -311,6 +322,9 @@ void fabrik_info_t::update_components()
 	// update texts
 	fab->info_prod( prod_buf );
 	fab->info_conn( info_buf );
+	if(  fab->get_desc()->is_electricity_producer()  ) {
+		fab->info_power( power_buf );
+	}
 
 	// consumers
 	if(  fab->get_consumer().get_count() != old_consumers_count ) {

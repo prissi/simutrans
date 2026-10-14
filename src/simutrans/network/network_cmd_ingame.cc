@@ -59,12 +59,28 @@ network_command_t* network_command_t::read_from_packet(packet_t *p)
 		default:
 			dbg->warning("network_command_t::read_from_socket", "received unknown packet id %d", p->get_id());
 	}
-	if (nwc) {
-		if (!nwc->receive(p) ||  p->has_failed()) {
-			dbg->warning("network_command_t::read_from_packet", "error while reading cmd from packet");
-			delete nwc;
-			nwc = NULL;
-		}
+	if (nwc == NULL) {
+		// Unknown / unsupported wire id: free p before returning so a
+		// malicious peer can't drive the server out of memory by
+		// flooding it with junk-id packets (callers null out their
+		// packet pointer unconditionally after this returns, so they
+		// won't free it either).
+		delete p;
+		return NULL;
+	}
+	if (!nwc->receive(p) ||  p->has_failed()) {
+		dbg->warning("network_command_t::read_from_packet", "error while reading cmd from packet");
+		delete nwc;
+		nwc = NULL;
+	}
+	else if (env_t::server) {
+		// The wire-supplied our_client_id is attacker-controlled.
+		// Identify the sender by its socket instead, so any later
+		// auth check (nwc_auth_player_t, nwc_chg_player_t,
+		// nwc_tool_t) reads the real slot and cannot be tricked
+		// into looking up someone else's player_unlocked bitmap
+		// or indexing past the socket list.
+		nwc->our_client_id = socket_list_t::get_client_id(p->get_sender());
 	}
 	return nwc;
 }
@@ -166,8 +182,14 @@ bool nwc_nick_t::execute(karte_t *welt)
 	if(env_t::server) {
 		uint32 client_id = socket_list_t::get_client_id(packet->get_sender());
 
-		if(nickname==NULL  ||  nickname=="Admin"  || nick_already_taken(nickname, client_id)) {
-			goto generate_default_nick;
+		if(!nickname  ||  nickname=="Admin"  || nick_already_taken(nickname, client_id)) {
+			if (nickname  &&  id == NWC_NICK) {
+				// Player tried to change nickname, but it is already taken
+				nwc_nick_t::server_tools(welt, client_id, NICK_TAKEN, nickname);
+				return true;
+			} else {
+				goto generate_default_nick;
+			}
 		}
 
 		if (id == NWC_NICK) {
@@ -186,7 +208,7 @@ bool nwc_nick_t::execute(karte_t *welt)
 		return true;
 	}
 	else {
-		env_t::nickname = nickname!=NULL ? nickname.c_str() : "(null)";
+		env_t::nickname = nickname ? nickname.c_str() : "(null)";
 	}
 	return true;
 }
@@ -259,6 +281,20 @@ void nwc_nick_t::server_tools(karte_t *welt, uint32 client_id, uint8 what, const
 			}
 			break;
 		}
+
+		case NICK_TAKEN: {
+			if (client_id > 0) {
+				// send old nickname back to client
+				nwc_nick_t nwc(info.nickname);
+				nwc.send(info.socket);
+			}
+			else {
+				// human at server
+				env_t::nickname = info.nickname;
+			}
+			return;
+		}
+
 		case FAREWELL: {
 			buf.printf(translator::translate("%s has left.", welt->get_settings().get_name_language_id()),
 				   info.nickname.c_str());
@@ -316,10 +352,10 @@ void nwc_chat_t::add_message(karte_t* welt) const
 {
 	cbuffer_t buf;  // Output which will be printed to chat window
 
-	FLAGGED_PIXVAL color = player_nr < PLAYER_UNOWNED  ? PLAYER_FLAG | player_nr :  color_idx_to_rgb(COL_WHITE);
+	FLAGGED_PIXVAL color = player_nr < PLAYER_UNOWNED  ? PLAYER_FLAG | player_nr :  gfx->palette_lookup(COL_WHITE);
 	uint16 flag = message_t::chat;
 
-	if (  destination == NULL  ) {
+	if (  !destination  ) {
 		if (  player_nr < PLAYER_UNOWNED  &&  welt->get_player(player_nr)) {
 			buf.printf( "%s <%s>: %s", clientname.c_str(), welt->get_player( player_nr )->get_name(), message.c_str() );
 		}
@@ -343,7 +379,7 @@ void nwc_chat_t::add_message(karte_t* welt) const
 
 bool nwc_chat_t::execute (karte_t* welt)
 {
-	if (  message == NULL  ) {
+	if (  !message  ) {
 		dbg->warning("nwc_chat_t::execute", "null message");
 		return true;
 	}
@@ -365,7 +401,7 @@ bool nwc_chat_t::execute (karte_t* welt)
 
 		nwc_chat_t* nwchat = new nwc_chat_t( message, player_nr, channel_nr, info.nickname.c_str(), destination, pos );
 
-		if (  destination == NULL  ||  destination=="") {
+		if (  !destination  ) {
 			// Do not send messages to ourself (server)
 			network_send_all( nwchat, true );
 
@@ -585,24 +621,26 @@ bool nwc_auth_player_t::execute(karte_t *welt)
 
 			// player activated for this client? or admin connection via nettool?
 			socket_info_t &info = socket_list_t::get_client(our_client_id);
+			// `player_nr` is wire-controlled; the slot may be NULL.
+			player_t *player = welt->get_player(player_nr);
 			if (info.is_player_unlocked(player_nr)  ||  info.state == socket_info_t::admin) {
 				DBG_MESSAGE("nwc_auth_player_t::execute","set pwd for plnr = %d", player_nr);
 
 				// change password
-				if (welt->get_player(player_nr)->access_password_hash() != hash) {
-					welt->get_player(player_nr)->access_password_hash() = hash;
+				if (player  &&  player->access_password_hash() != hash) {
+					player->access_password_hash() = hash;
 					// unlock all clients if new password is empty
 					// otherwise lock all
 					socket_list_t::unlock_player_all(player_nr, hash.empty(), our_client_id);
 				}
 			}
-			else if (player_nr < PLAYER_UNOWNED) {
+			else if (player_nr < PLAYER_UNOWNED  &&  player) {
 				// players with public service player access always pass password checks
 				if(  info.is_player_unlocked(1)  ) {
 					info.unlock_player(player_nr);
 				}
 				// check password
-				else if (welt->get_player(player_nr)->access_password_hash() == hash) {
+				else if (player->access_password_hash() == hash) {
 
 					DBG_MESSAGE("nwc_auth_player_t::execute","unlock plnr = %d at our_client_id = %d", player_nr, our_client_id);
 
@@ -613,7 +651,9 @@ bool nwc_auth_player_t::execute(karte_t *welt)
 			// report back to client who sent the command
 			if (our_client_id == 0) {
 				// unlock player on the server and clear unlock_pending flag
-				welt->get_player(player_nr)->unlock(info.is_player_unlocked(player_nr), false);
+				if (player) {
+					player->unlock(info.is_player_unlocked(player_nr), false);
+				}
 			}
 			else {
 				// send unlock-info to player on the client (to clear unlock_pending flag)
@@ -758,33 +798,47 @@ void nwc_sync_t::do_command(karte_t *welt)
 		network_send_server(nwc);
 	}
 	else {
+		// we are on the server
 		char fn[256];
-		// first save password hashes
-		sprintf( fn, "server%d-pwdhash.sve", env_t::server );
-		loadsave_t file;
-		if(  file.wr_open(fn, loadsave_t::zipped, 1, "hashes", SAVEGAME_VER_NR ) == loadsave_t::FILE_STATUS_OK  ) {
-			welt->rdwr_player_password_hashes( &file );
-			file.close();
-		}
-
-		// remove passwords before transfer on the server and set default client mask
-		// they will be restored in karte_t::laden
 		uint16 unlocked_players = 0;
-		for(  int i=0;  i<PLAYER_UNOWNED; i++  ) {
-			player_t *player = welt->get_player(i);
-			if(  player==NULL  ||  player->access_password_hash().empty()  ) {
-				unlocked_players |= (1<<i);
+		if (!welt->has_current_network_save) {
+			// no an ready savegame yet
+			// first save password hashes
+			sprintf( fn, "server%d-pwdhash.sve", env_t::server );
+			loadsave_t file;
+			if(  file.wr_open(fn, loadsave_t::zipped, 1, "hashes", SAVEGAME_VER_NR ) == loadsave_t::FILE_STATUS_OK  ) {
+				welt->rdwr_player_password_hashes( &file );
+				file.close();
 			}
-			else {
-				player->access_password_hash().clear();
+
+			// remove passwords before transfer on the server and set default client mask
+			// they will be restored below
+			for(  int i=0;  i<PLAYER_UNOWNED; i++  ) {
+				player_t *player = welt->get_player(i);
+				if(  player==NULL  ||  player->access_password_hash().empty()  ) {
+					unlocked_players |= (1<<i);
+				}
+				else {
+					player->access_password_hash().clear();
+				}
+			}
+
+			// save game
+			sprintf( fn, "server%d-network.sve", env_t::server );
+			bool old_restore_UI = env_t::restore_UI;
+			env_t::restore_UI = true;
+			welt->save( fn, false, SERVER_SAVEGAME_VER_NR, false );
+			env_t::restore_UI = old_restore_UI;
+		}
+		else {
+			sprintf(fn, "server%d-network.sve", env_t::server);
+			for (int i = 0; i < PLAYER_UNOWNED; i++) {
+				player_t* player = welt->get_player(i);
+				if (player == NULL  ||  player->access_password_hash().empty()) {
+					unlocked_players |= (1 << i);
+				}
 			}
 		}
-
-		// save game
-		sprintf( fn, "server%d-network.sve", env_t::server );
-		bool old_restore_UI = env_t::restore_UI;
-		env_t::restore_UI = true;
-		welt->save( fn, false, SERVER_SAVEGAME_VER_NR, false );
 
 		// ok, now sending game
 		// this sends nwc_game_t
@@ -796,7 +850,6 @@ void nwc_sync_t::do_command(karte_t *welt)
 		uint32 old_sync_steps = welt->get_sync_steps();
 		welt->load( fn );
 		welt->type_of_generation = karte_t::LOADED_WORLD;
-		env_t::restore_UI = old_restore_UI;
 
 		// restore steps
 		welt->network_game_set_pause( false, old_sync_steps);
@@ -1064,6 +1117,13 @@ void nwc_tool_t::rdwr()
 	packet->rdwr_short(tool_id);
 	packet->rdwr_short(wt);
 	packet->rdwr_str(default_param);
+	if(  packet->is_loading()  &&  default_param.c_str()==NULL  ) {
+		// rdwr_str yields a NULL plainstring for a len==0 wire string, and the
+		// wire can't tell an empty param from "no param" anyway. Normalise to ""
+		// so tools never see a NULL here; they treat "" and NULL identically
+		// (the strempty() guards in simtool).
+		default_param = "";
+	}
 	packet->rdwr_bool(init);
 	packet->rdwr_long(tool_client_id);
 	packet->rdwr_byte(flags);
@@ -1142,6 +1202,9 @@ network_broadcast_world_command_t* nwc_tool_t::clone(karte_t *welt)
 		}
 
 		// check whether player is authorized do this
+		if (!socket_list_t::is_valid_client_id(our_client_id)) {
+			return NULL;
+		}
 		socket_info_t const& info = socket_list_t::get_client(our_client_id);
 		if ( player_nr < PLAYER_UNOWNED  &&  !info.is_player_unlocked(player_nr) ) {
 			if (tool_id == (TOOL_ADD_MESSAGE | GENERAL_TOOL)) {
@@ -1261,7 +1324,10 @@ void nwc_tool_t::do_command(karte_t *welt)
 		if (err) {
 			dbg->warning("nwc_tool_t::do_command","Tool %s failed with '%s'", tool->get_name(), err);
 		}
-		tool->exit(player);
+		if (!local  ||  callback_id != 0) {
+			// only exit if not active player because for the latter, the tools stays active
+			tool->exit(player);
+		}
 	}
 	else {
 		err = "Init was not succesfull, returned false.";

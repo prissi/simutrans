@@ -1337,7 +1337,7 @@ inline bool local_display_obj_vh(const obj_t *draw_obj, const sint16 xpos, const
 		if(  ontile  ||  (veh_ribi & ribi) == ribi  ||  (ribi_t::backward(veh_ribi) & ribi )== ribi  ||  draw_obj->get_typ() == obj_t::air_vehicle  ) {
 			// activate clipping only for our direction masked by the ribi argument
 			// use non-convex clipping (16) only if we are on the currently drawn tile or its n/w neighbours
-			activate_ribi_clip( ((veh_ribi|ribi_t::backward(veh_ribi))&ribi) | (ontile  ||  ribi == ribi_t::north  ||  ribi == ribi_t::west ? 16 : 0)  CLIP_NUM_PAR);
+			gfx->activate_ribi_clip( ((veh_ribi|ribi_t::backward(veh_ribi))&ribi) | (ontile  ||  ribi == ribi_t::north  ||  ribi == ribi_t::west ? 16 : 0)  CLIP_NUM_PAR);
 			draw_obj->display( xpos, ypos  CLIP_NUM_PAR);
 		}
 		return true;
@@ -1357,7 +1357,7 @@ uint8 objlist_t::display_obj_vh( const sint16 xpos, const sint16 ypos, const uin
 
 	if(  capacity <= 1  ) {
 		uint8 i = local_display_obj_vh( obj.one, xpos, ypos, ribi, ontile  CLIP_NUM_PAR);
-		activate_ribi_clip( ribi_t::all  CLIP_NUM_PAR);
+		gfx->activate_ribi_clip( ribi_t::all  CLIP_NUM_PAR);
 		return i;
 	}
 
@@ -1370,7 +1370,8 @@ uint8 objlist_t::display_obj_vh( const sint16 xpos, const sint16 ypos, const uin
 			break;
 		}
 	}
-	activate_ribi_clip( ribi_t::all  CLIP_NUM_PAR);
+
+	gfx->activate_ribi_clip( ribi_t::all  CLIP_NUM_PAR);
 	return nr_v+1;
 }
 
@@ -1428,7 +1429,6 @@ void objlist_t::display_obj_fg( const sint16 xpos, const sint16 ypos, const uint
 }
 
 
-#ifdef MULTI_THREAD
 void objlist_t::display_obj_overlay(const sint16 xpos, const sint16 ypos) const
 {
 	if(  top == 0  ) {
@@ -1446,7 +1446,6 @@ void objlist_t::display_obj_overlay(const sint16 xpos, const sint16 ypos) const
 		}
 	}
 }
-#endif
 
 
 void objlist_t::check_season(const bool calc_only_season_change)

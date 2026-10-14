@@ -165,7 +165,7 @@ script_vm_t::~script_vm_t()
 	delete log;
 }
 
-const char* script_vm_t::call_script(const char* filename)
+const char* script_vm_t::call_script(const char* filename, uint32 ops)
 {
 	// load script
 	if (!SQ_SUCCEEDED(sqstd_loadfile(vm, filename, true))) {
@@ -173,7 +173,7 @@ const char* script_vm_t::call_script(const char* filename)
 	}
 	// call it
 	sq_pushroottable(vm);
-	if (!SQ_SUCCEEDED(sq_call_restricted(vm, 1, SQFalse, SQTrue, 100000))) {
+	if (!SQ_SUCCEEDED(sq_call_restricted(vm, 1, SQFalse, SQTrue, ops))) {
 		sq_pop(vm, 1); // pop script
 		return "Call script failed";
 	}
@@ -206,9 +206,19 @@ const char* script_vm_t::eval_string(const char* squirrel_string)
 }
 
 
+/// error returned by intern_prepare_call if the script does not define the function
+static const char* const FUNCTION_NOT_FOUND = "Function not found";
+
+
 bool script_vm_t::is_call_suspended(const char* err)
 {
 	return (err != NULL)  &&  ( strcmp(err, "suspended") == 0);
+}
+
+
+bool script_vm_t::is_function_missing(const char* err)
+{
+	return (err != NULL)  &&  ( strcmp(err, FUNCTION_NOT_FOUND) == 0);
 }
 
 
@@ -242,7 +252,7 @@ const char* script_vm_t::intern_prepare_call(HSQUIRRELVM &job, call_type_t ct, c
 		sq_pushroottable(job);
 	}
 	else {
-		err = "Function not found";
+		err = FUNCTION_NOT_FOUND;
 		sq_poptop(job); // array, root table
 	}
 	return err;

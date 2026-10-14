@@ -75,63 +75,7 @@ bool gui_container_t::infowin_event(const event_t *ev)
 	}
 
 	// need to change focus?
-	if(  ev->ev_class==EVENT_KEYBOARD  ) {
-
-		if(  comp_focus  &&  comp_focus->is_visible()  ) {
-			event_t ev2 = *ev;
-			ev2.move_origin(comp_focus->get_pos());
-			swallowed = comp_focus->infowin_event(&ev2);
-		}
-
-		// either event not swallowed, or inner container has no focused child component after TAB event
-		if(  !swallowed  ||  (ev->ev_code==SIM_KEY_TAB  &&  comp_focus  &&  comp_focus->get_focus()==NULL)  ) {
-			if(  ev->ev_code==SIM_KEY_TAB  ) {
-				// TAB: find new focus
-				new_focus = NULL;
-				if(  IS_SHIFT_PRESSED(ev)  ) {
-					// find previous textinput field
-					for(gui_component_t* const c : components) {
-						if (c == comp_focus) break;
-						if (c->is_focusable()) {
-							new_focus = c;
-						}
-					}
-				}
-				else {
-					// or next input field
-					bool valid = comp_focus==NULL;
-					for(gui_component_t* const c : components) {
-						if (valid && c->is_focusable()) {
-							new_focus = c;
-							break;
-						}
-						if (c == comp_focus) {
-							valid = true;
-						}
-					}
-				}
-
-				// inner containers with focusable components may not have a focused component yet
-				// ==> give the inner container a chance to activate the first focusable component
-				if(  new_focus  &&  new_focus->get_focus()==NULL  ) {
-					event_t ev2 = *ev;
-					ev2.move_origin(new_focus->get_pos());
-					new_focus->infowin_event(&ev2);
-				}
-
-				swallowed = comp_focus!=new_focus;
-			}
-			else if(  ev->ev_code==SIM_KEY_ENTER  ||  ev->ev_code==SIM_KEY_ESCAPE  ) {
-				new_focus = NULL;
-				if(  ev->ev_code==SIM_KEY_ESCAPE  ) {
-					// no untop message even!
-					comp_focus = NULL;
-				}
-				swallowed = comp_focus!=new_focus;
-			}
-		}
-	}
-	else {
+	if (!IS_KEYBOARD(ev)) {
 		// CASE : not a keyboard event
 		const scr_coord event_pos = ev->ev_class == EVENT_MOVE ? ev->mouse_pos : ev->click_pos;
 
@@ -222,6 +166,61 @@ bool gui_container_t::infowin_event(const event_t *ev)
 			}
 		}
 	}
+	else if(  IS_KEYDOWN(ev)  ) {
+		if(  comp_focus  &&  comp_focus->is_visible()  ) {
+			event_t ev2 = *ev;
+			ev2.move_origin(comp_focus->get_pos());
+			swallowed = comp_focus->infowin_event(&ev2);
+		}
+
+		// either event not swallowed, or inner container has no focused child component after TAB event
+		if(  !swallowed  ||  (ev->ev_code==SIM_KEYCODE_TAB  &&  comp_focus  &&  comp_focus->get_focus()==NULL)  ) {
+			if(  ev->ev_code==SIM_KEYCODE_TAB  ) {
+				// TAB: find new focus
+				new_focus = NULL;
+				if(  IS_SHIFT_PRESSED(ev)  ) {
+					// find previous textinput field
+					for(gui_component_t* const c : components) {
+						if (c == comp_focus) break;
+						if (c->is_focusable()) {
+							new_focus = c;
+						}
+					}
+				}
+				else {
+					// or next input field
+					bool valid = comp_focus==NULL;
+					for(gui_component_t* const c : components) {
+						if (valid && c->is_focusable()) {
+							new_focus = c;
+							break;
+						}
+						if (c == comp_focus) {
+							valid = true;
+						}
+					}
+				}
+
+				// inner containers with focusable components may not have a focused component yet
+				// ==> give the inner container a chance to activate the first focusable component
+				if(  new_focus  &&  new_focus->get_focus()==NULL  ) {
+					event_t ev2 = *ev;
+					ev2.move_origin(new_focus->get_pos());
+					new_focus->infowin_event(&ev2);
+				}
+
+				swallowed = comp_focus!=new_focus;
+			}
+			else if(  ev->ev_code==SIM_KEYCODE_ENTER  ||  ev->ev_code==SIM_KEYCODE_ESCAPE  ) {
+				new_focus = NULL;
+				if(  ev->ev_code==SIM_KEYCODE_ESCAPE  ) {
+					// no untop message even!
+					comp_focus = NULL;
+				}
+				swallowed = comp_focus!=new_focus;
+			}
+		}
+	}
 
 	list_dirty = false;
 
@@ -253,13 +252,13 @@ void gui_container_t::draw(scr_coord offset)
 	const scr_coord screen_pos = pos + offset;
 	bool redraw_focus = false;
 
-	clip_dimension cd = display_get_clip_wh();
+	clip_dimension cd = gfx->get_clip_rect(CLIP_NUM_DEFAULT_VALUE);
 	scr_rect clip_rect(cd.x, cd.y, cd.w, cd.h);
 
 	// For debug purpose, draw the container's boundary
 #ifdef SHOW_BBOX
 #define shorten(d) clamp(d, 0, 0x4fff)
-	display_ddd_box_clip_rgb(shorten(screen_pos.x), shorten(screen_pos.y), shorten(get_size().w), shorten(get_size().h), color_idx_to_rgb(COL_RED), color_idx_to_rgb(COL_RED));
+	gfx->draw_box3d_clipped(screen_pos.x), shorten(screen_pos.y), shorten(get_size().w), shorten(get_size().h), gfx->palette_lookup(COL_RED), gfx->palette_lookup(COL_RED));
 #endif
 	// iterate backwards
 	int checker_count = 0;
@@ -277,7 +276,7 @@ void gui_container_t::draw(scr_coord offset)
 
 			if (checkered && (checker_count&1)==0) {
 				scr_coord c_pos = screen_pos + c->get_pos();
-				display_blend_wh_rgb( c_pos.x, c_pos.y, c->get_size().w, c->get_size().h, color_idx_to_rgb(COL_WHITE), 50 );
+				gfx->tint_rect( c_pos.x, c_pos.y, c->get_size().w, c->get_size().h, gfx->palette_lookup(COL_WHITE), 50 );
 			}
 
 			if(  c == comp_focus  ) {
@@ -288,7 +287,7 @@ void gui_container_t::draw(scr_coord offset)
 			if (dynamic_cast<gui_container_t*>(c) == NULL) {
 				scr_coord c_pos = screen_pos + c->get_pos();
 				int color = c->is_marginless() ? COL_BLUE : COL_YELLOW;
-				display_ddd_box_clip_rgb(shorten(c_pos.x), shorten(c_pos.y), shorten(c->get_size().w), shorten(c->get_size().h), color_idx_to_rgb(color),color_idx_to_rgb(color));
+				display_ddd_box_clip_rgb(shorten(c_pos.x), shorten(c_pos.y), shorten(c->get_size().w), shorten(c->get_size().h), gfx->palette_lookup(color),gfx->palette_lookup(color));
 			}
 #endif
 			c->draw(screen_pos);

@@ -35,7 +35,7 @@ public:
 	 * loads file, calls script
 	 * @returns error msg (or NULL if succeeded)
 	 */
-	const char* call_script(const char* filename);
+	const char* call_script(const char* filename, uint32 ops=100000);
 
 	/**
 	 * compiles and executes given string
@@ -68,6 +68,12 @@ public:
 	 * @return whether the call was suspended
 	 */
 	static bool is_call_suspended(const char* err);
+
+	/**
+	 * @param err error string returned by call_script
+	 * @return whether the script does not define the called function
+	 */
+	static bool is_function_missing(const char* err);
 
 	/**
 	 * calls scripted function

@@ -21,6 +21,8 @@ static pthread_mutex_t add_to_city_mutex = PTHREAD_MUTEX_INITIALIZER;
 #include "../gui/headquarter_info.h"
 #include "../world/simworld.h"
 #include "simobj.h"
+#include "way/schiene.h"
+#include "../simconst.h"
 #include "../simfab.h"
 #include "../display/simimg.h"
 #include "../display/simgraph.h"
@@ -123,14 +125,13 @@ gebaeude_t::~gebaeude_t()
 		// avoid book-keeping
 	}
 
-	if(get_stadt()) {
-		ptr.stadt->remove_gebaeude_from_stadt(this);
-	}
 
 	if(sync) {
 		sync = false;
 		welt->sync_buildings.remove(this);
 	}
+
+	assert(get_flag(obj_t::not_on_map)  ||  get_stadt() == NULL);
 
 	// tiles might be invalid, if no description is found during loading
 	if(tile  &&  tile->get_desc()  &&  tile->get_desc()->is_attraction()) {
@@ -368,10 +369,15 @@ image_id gebaeude_t::get_image() const
 {
 	if(env_t::hide_buildings!=0  &&  tile->has_image()) {
 		// opaque houses
-		if(is_city_building()) {
-			return env_t::hide_with_transparency ? skinverwaltung_t::fussweg->get_image_id(0) : skinverwaltung_t::construction_site->get_image_id(0);
+	if (is_city_building()) {
+		if (skinverwaltung_t::construction_site->get_count() == 1) {
+			// only one kind of construction site?
+			return skinverwaltung_t::construction_site->get_image_id(0);
 		}
-		else if(  (env_t::hide_buildings == env_t::ALL_HIDDEN_BUILDING  &&  tile->get_desc()->get_type() < building_desc_t::others)) {
+		// 6 is special building, 7-9 is res com ind (our type)
+		return skinverwaltung_t::construction_site->get_count() > 7 ? skinverwaltung_t::construction_site->get_image_id(tile->get_desc()->get_type() - building_desc_t::city_res + 7) : skinverwaltung_t::construction_site->get_image_id(0);
+	}
+	else if(  env_t::hide_buildings == env_t::ALL_HIDDEN_BUILDING  &&  tile->get_desc()->get_type() < building_desc_t::others  ) {
 			// hide with transparency or tile without information
 			if(env_t::hide_with_transparency) {
 				if(tile->get_desc()->get_type() == building_desc_t::factory  &&  ptr.fab->get_desc()->get_placement() == factory_desc_t::Water) {
@@ -380,10 +386,13 @@ image_id gebaeude_t::get_image() const
 				}
 				return skinverwaltung_t::fussweg->get_image_id(0);
 			}
-			else {
-				uint16 kind=skinverwaltung_t::construction_site->get_count()<=tile->get_desc()->get_type() ? skinverwaltung_t::construction_site->get_count()-1 : tile->get_desc()->get_type();
-				return skinverwaltung_t::construction_site->get_image_id( kind );
+			// only one kind of construction site
+			if (skinverwaltung_t::construction_site->get_count() == 1) {
+				return skinverwaltung_t::construction_site->get_image_id(0);
 			}
+			// 6 is special building, 7-9 is res com ind (handled above) => we only go up to 6
+			uint16 kind = tile->get_desc()->get_type() > 6 ? 6 : tile->get_desc()->get_type();
+			return skinverwaltung_t::construction_site->get_image_id( kind );
 		}
 	}
 
@@ -413,11 +422,11 @@ FLAGGED_PIXVAL gebaeude_t::get_outline_colour() const
 	FLAGGED_PIXVAL disp_colour = 0;
 	if(env_t::hide_buildings!=env_t::NOT_HIDE) {
 		if(is_city_building()) {
-			disp_colour = color_idx_to_rgb(colours[0]) | TRANSPARENT50_FLAG | OUTLINE_FLAG;
+			disp_colour = gfx->palette_lookup(colours[0]) | TRANSPARENT50_FLAG | OUTLINE_FLAG;
 		}
 		else if (env_t::hide_buildings == env_t::ALL_HIDDEN_BUILDING && tile->get_desc()->get_type() < building_desc_t::others) {
 			// special building
-			disp_colour = color_idx_to_rgb(colours[tile->get_desc()->get_type()]) | TRANSPARENT50_FLAG | OUTLINE_FLAG;
+			disp_colour = gfx->palette_lookup(colours[tile->get_desc()->get_type()]) | TRANSPARENT50_FLAG | OUTLINE_FLAG;
 		}
 	}
 	return disp_colour;
@@ -426,10 +435,10 @@ FLAGGED_PIXVAL gebaeude_t::get_outline_colour() const
 
 void gebaeude_t::display(int xpos, int ypos  CLIP_NUM_DEF) const
 {
-
-	const int raster_width = get_current_tile_raster_width();
 	const bool is_dirty = get_flag(obj_t::dirty);
 	uint8 owner_n = get_owner_nr();
+	const int raster_width = gfx->get_current_tile_raster_width();
+	ypos += tile_raster_scale_y(get_yoff(), raster_width); // if there is a slope below
 
 	if (env_t::hide_buildings != 0 && env_t::hide_with_transparency && !zeige_baugrube) {
 		// transparent building
@@ -440,34 +449,42 @@ void gebaeude_t::display(int xpos, int ypos  CLIP_NUM_DEF) const
 		uint8 colours[] = { COL_BLACK, COL_YELLOW, COL_YELLOW, COL_PURPLE, COL_RED, COL_GREEN };
 		FLAGGED_PIXVAL disp_colour = 0;
 		if (is_city_building()) {
-			disp_colour = color_idx_to_rgb(colours[0]) | TRANSPARENT50_FLAG | OUTLINE_FLAG;
+			disp_colour = gfx->palette_lookup(colours[0]) | TRANSPARENT50_FLAG | OUTLINE_FLAG;
 		}
 		else if (env_t::hide_buildings == env_t::ALL_HIDDEN_BUILDING && tile->get_desc()->get_type() < building_desc_t::others) {
 			// special building
-			disp_colour = color_idx_to_rgb(colours[tile->get_desc()->get_type()]) | TRANSPARENT50_FLAG | OUTLINE_FLAG;
+			disp_colour = gfx->palette_lookup(colours[tile->get_desc()->get_type()]) | TRANSPARENT50_FLAG | OUTLINE_FLAG;
 		}
 
 		if (image_id ground = get_image()) {
 			if (owner_n != PLAYER_UNOWNED) {
 				if (obj_t::show_owner) {
-					display_blend(ground, xpos, ypos, owner_n, color_idx_to_rgb(welt->get_player(owner_n)->get_player_color1() + 2) | OUTLINE_FLAG | TRANSPARENT75_FLAG, 0, is_dirty  CLIP_NUM_PAR);
+					gfx->draw_blend(ground, xpos, ypos, owner_n, gfx->palette_lookup(welt->get_player(owner_n)->get_player_color1() + 2) | OUTLINE_FLAG | TRANSPARENT75_FLAG, 0, is_dirty  CLIP_NUM_PAR);
 				}
 				else {
-					display_color(ground, xpos, ypos, owner_n, true, is_dirty  CLIP_NUM_PAR);
+					if (schiene_t::show_reservations && tile->get_desc()->is_transport_building()) {
+						if (grund_t* gr = welt->lookup(get_pos())) {
+							if (gr->is_halt() && gr->get_halt()->get_reserved(gr).is_bound()) {
+								gfx->draw_blend(ground, xpos, ypos, owner_n, gfx->palette_lookup(COL_GREEN) | OUTLINE_FLAG | TRANSPARENT75_FLAG, 0, true  CLIP_NUM_PAR);
+								return;
+							}
+						}
+					}
+					gfx->draw_color(ground, xpos, ypos, owner_n, true, is_dirty  CLIP_NUM_PAR);
 				}
 			}
 			else {
-				display_normal(ground, xpos, ypos, 0, true, is_dirty  CLIP_NUM_PAR);
+				gfx->draw_normal(ground, xpos, ypos, 0, true, is_dirty  CLIP_NUM_PAR);
 			}
 		}
 
 		if (TRANSPARENT_FLAGS & disp_colour) {
 			// only transparent outline
-			display_blend(get_outline_image(), xpos, ypos, owner_n, disp_colour, 0, is_dirty  CLIP_NUM_PAR);
+			gfx->draw_blend(get_outline_image(), xpos, ypos, owner_n, disp_colour, 0, is_dirty  CLIP_NUM_PAR);
 		}
 		else if (obj_t::get_flag(highlight)) {
 			// highlight this tile
-			display_blend(get_image(), xpos, ypos, owner_n, SYSCOL_OBJECT_HIGHLIGHT | OUTLINE_FLAG | TRANSPARENT75_FLAG, 0, is_dirty  CLIP_NUM_PAR);
+			gfx->draw_blend(get_image(), xpos, ypos, owner_n, SYSCOL_OBJECT_HIGHLIGHT | OUTLINE_FLAG | TRANSPARENT75_FLAG, 0, is_dirty  CLIP_NUM_PAR);
 		}
 		// finish
 		return;
@@ -476,7 +493,6 @@ void gebaeude_t::display(int xpos, int ypos  CLIP_NUM_DEF) const
 	// not hidden
 	image_id image = get_image();
 	if (image != IMG_EMPTY) {
-		const int raster_width = get_current_tile_raster_width();
 		const bool is_dirty = get_flag(obj_t::dirty);
 
 		const int start_ypos = ypos;
@@ -484,19 +500,19 @@ void gebaeude_t::display(int xpos, int ypos  CLIP_NUM_DEF) const
 
 			if (owner_n != PLAYER_UNOWNED) {
 				if (obj_t::show_owner) {
-					display_blend(image, xpos, ypos, owner_n, color_idx_to_rgb(welt->get_player(owner_n)->get_player_color1() + 2) | OUTLINE_FLAG | TRANSPARENT75_FLAG, 0, is_dirty  CLIP_NUM_PAR);
+					gfx->draw_blend(image, xpos, ypos, owner_n, gfx->palette_lookup(welt->get_player(owner_n)->get_player_color1() + 2) | OUTLINE_FLAG | TRANSPARENT75_FLAG, 0, is_dirty  CLIP_NUM_PAR);
 				}
 				else {
-					display_color(image, xpos, ypos, owner_n, true, is_dirty  CLIP_NUM_PAR);
+					gfx->draw_color(image, xpos, ypos, owner_n, true, is_dirty  CLIP_NUM_PAR);
 				}
 			}
 			else {
-				display_normal(image, xpos, ypos, 0, true, is_dirty  CLIP_NUM_PAR);
+				gfx->draw_normal(image, xpos, ypos, 0, true, is_dirty  CLIP_NUM_PAR);
 			}
 
 			if (obj_t::get_flag(highlight)) {
 				// highlight this tile
-				display_blend(image, xpos, start_ypos, owner_n, SYSCOL_OBJECT_HIGHLIGHT | OUTLINE_FLAG | TRANSPARENT75_FLAG, 0, is_dirty  CLIP_NUM_PAR);
+				gfx->draw_blend(image, xpos, start_ypos, owner_n, SYSCOL_OBJECT_HIGHLIGHT | OUTLINE_FLAG | TRANSPARENT75_FLAG, 0, is_dirty  CLIP_NUM_PAR);
 			}
 
 			// this obj has another image on top (e.g. skyscraper)
@@ -839,8 +855,6 @@ void gebaeude_t::info(cbuffer_t & buf) const
 #ifdef DEBUG
 		buf.append( "\n\nrotation " );
 		buf.append( tile->get_layout(), 0 );
-		buf.append( " best layout " );
-		buf.append( stadt_t::orient_city_building( get_pos().get_2d() - tile->get_offset(), tile->get_desc(), koord(3,3) ), 0 );
 		buf.append( "\n" );
 #endif
 	}
@@ -930,9 +944,9 @@ void gebaeude_t::rdwr(loadsave_t *file)
 				switch(type) {
 					case building_desc_t::city_res:
 						{
-							const building_desc_t *bdsc = hausbauer_t::get_residential( level, welt->get_timeline_year_month(), welt->get_climate( get_pos().get_2d() ), 0, koord(1,1), koord(1,1) );
+							const building_desc_t *bdsc = hausbauer_t::get_residential( level, welt->get_timeline_year_month(), welt->get_climate( get_pos().get_2d() ), 0, 1, 1 );
 							if(bdsc==NULL) {
-								bdsc = hausbauer_t::get_residential(level,0, MAX_CLIMATES, 0, koord(1,1), koord(1,1) );
+								bdsc = hausbauer_t::get_residential(level,0, MAX_CLIMATES, 0, 1, 1 );
 							}
 							if( bdsc) {
 								dbg->message("gebaeude_t::rwdr", "replace unknown building %s with residence level %i by %s",buf,level,bdsc->get_name());
@@ -944,9 +958,9 @@ void gebaeude_t::rdwr(loadsave_t *file)
 					case building_desc_t::city_com:
 						{
 							// for replacement, ignore cluster and size
-							const building_desc_t *bdsc = hausbauer_t::get_commercial( level, welt->get_timeline_year_month(), welt->get_climate( get_pos().get_2d() ), 0, koord(1,1), koord(1,1) );
+							const building_desc_t *bdsc = hausbauer_t::get_commercial( level, welt->get_timeline_year_month(), welt->get_climate( get_pos().get_2d() ), 0, 1, 1 );
 							if(bdsc==NULL) {
-								bdsc = hausbauer_t::get_commercial(level, 0, MAX_CLIMATES, 0, koord(1,1), koord(1,1) );
+								bdsc = hausbauer_t::get_commercial(level, 0, MAX_CLIMATES, 0, 1, 1 );
 							}
 							if(bdsc) {
 								dbg->message("gebaeude_t::rwdr", "replace unknown building %s with commercial level %i by %s",buf,level,bdsc->get_name());
@@ -957,11 +971,11 @@ void gebaeude_t::rdwr(loadsave_t *file)
 
 					case building_desc_t::city_ind:
 						{
-							const building_desc_t *bdsc = hausbauer_t::get_industrial( level, welt->get_timeline_year_month(), welt->get_climate( get_pos().get_2d() ), 0, koord(1,1), koord(1,1) );
+							const building_desc_t *bdsc = hausbauer_t::get_industrial( level, welt->get_timeline_year_month(), welt->get_climate( get_pos().get_2d() ), 0, 1, 1 );
 							if(bdsc==NULL) {
-								bdsc = hausbauer_t::get_industrial(level, 0, MAX_CLIMATES, 0, koord(1,1), koord(1,1) );
+								bdsc = hausbauer_t::get_industrial(level, 0, MAX_CLIMATES, 0, 1, 1 );
 								if(bdsc==NULL) {
-									bdsc = hausbauer_t::get_residential(level, 0, MAX_CLIMATES, 0, koord(1,1), koord(1,1) );
+									bdsc = hausbauer_t::get_residential(level, 0, MAX_CLIMATES, 0, 1, 1 );
 								}
 							}
 							if (bdsc) {
@@ -972,7 +986,6 @@ void gebaeude_t::rdwr(loadsave_t *file)
 						break;
 
 					default:
-						dbg->warning("gebaeude_t::rwdr", "description %s for building at %d,%d not found (will be removed)!", buf, get_pos().x, get_pos().y);
 						pakset_manager_t::add_missing_paks( buf, MISSING_BUILDING );
 				}
 			}
@@ -1004,8 +1017,13 @@ void gebaeude_t::rdwr(loadsave_t *file)
 			city_index = welt->get_cities().index_of( ptr.stadt );
 		}
 		file->rdwr_long(city_index);
-		if(  file->is_loading()  &&  city_index!=-1  &&  (tile==NULL  ||  tile->get_desc()==NULL  ||  tile->get_desc()->is_connected_with_town())  ) {
-			ptr.stadt = welt->get_cities()[city_index];
+		if(  file->is_loading()  &&  (tile==NULL  ||  tile->get_desc()==NULL  ||  tile->get_desc()->is_connected_with_town())  ) {
+			if (city_index != -1) {
+				ptr.stadt = welt->get_cities()[city_index];
+			}
+			else {
+				ptr.stadt = NULL;
+			}
 		}
 	}
 
@@ -1022,7 +1040,7 @@ void gebaeude_t::rdwr(loadsave_t *file)
 }
 
 
-void gebaeude_t::finish_rd()
+bool gebaeude_t::finish_rd()
 {
 	player_t::add_maintenance(get_owner(), tile->get_desc()->get_maintenance(welt), tile->get_desc()->get_finance_waytype());
 
@@ -1068,6 +1086,7 @@ void gebaeude_t::finish_rd()
 		}
 #endif
 	}
+	return false;
 }
 
 
@@ -1084,8 +1103,12 @@ void gebaeude_t::cleanup(player_t *player)
 
 	player_t::book_construction_costs(player, cost, get_pos().get_2d(), tile->get_desc()->get_finance_waytype());
 
-	// may need to update next buildings, in the case of start, middle, end buildings
-	if(tile->get_desc()->get_all_layouts()>1  &&  !is_city_building()) {
+	if (stadt_t *city=get_stadt()) {
+		city->remove_gebaeude_from_stadt(this);
+	}
+
+	// may need to update next buildings, in the case of start, middle, end buildings (only for stations for now)
+	if(tile->get_desc()->get_all_layouts()>1  &&  tile->get_desc()->is_transport_building()) {
 
 		// realign surrounding buildings...
 		uint32 layout = tile->get_layout();
@@ -1136,6 +1159,7 @@ void gebaeude_t::cleanup(player_t *player)
 			}
 		}
 	}
+
 	mark_images_dirty();
 }
 
@@ -1153,7 +1177,7 @@ void gebaeude_t::mark_images_dirty() const
 	else {
 		img = tile->get_background( anim_frame, 0, season ) ;
 		for (int i = 0; img != IMG_EMPTY; ) {
-			mark_image_dirty(img, -(i * get_tile_raster_width()));
+			mark_image_dirty(img, -(i * gfx->get_tile_raster_width()));
 			img = tile->get_background(anim_frame, ++i, season);
 		}
 	}

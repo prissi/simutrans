@@ -56,6 +56,7 @@ public:
 	enum {
 		WELCOME,
 		CHANGE_NICK,
+		NICK_TAKEN,
 		FAREWELL
 	};
 
@@ -63,6 +64,7 @@ public:
 	 * Server-side nickname related stuff:
 	 * what = WELCOME     .. new player joined: send welcome message
 	 * what = CHANGE_NICK .. change nickname: in socket_list per client, send new nick back to client, tell others as well
+	 * what = NICK_TAKEN  .. player tried to use a nickname already taken, send old nick instead
 	 * what = FAREWELL    .. player has left: send message
 	 */
 	static void server_tools(karte_t *welt, uint32 client_id, uint8 what, const char* nick);
@@ -299,11 +301,11 @@ public:
 	// do some special checks
 	network_broadcast_world_command_t* clone(karte_t *) OVERRIDE;
 
-	uint8 cmd;
-	uint8 player_nr;
-	uint16 param;
-	bool scripted_call;
-	connection_info_t* pending_company_creator; // this client want to create new company (not sent)
+	uint8 cmd          = 0xFF;
+	uint8 player_nr    = 0xFF;
+	uint16 param       = 0;
+	bool scripted_call = false;
+	connection_info_t* pending_company_creator = NULL; // this client want to create new company (not sent)
 
 	/// store information about client that created a company
 	static connection_info_t* company_creator[PLAYER_UNOWNED];

@@ -25,9 +25,6 @@
 #include "loadfont_frame.h"
 #include "simwin.h"
 
-// display text label in player colors
-void display_text_label(sint16 xpos, sint16 ypos, const char* text, const player_t *player, bool dirty); // grund.cc
-
 enum {
 	IDBTN_SCROLL_INVERSE,
 	IDBTN_IGNORE_NUMLOCK,
@@ -51,6 +48,7 @@ enum {
 	IDBTN_CHANGE_FONT,
 	IDBTN_INFINITE_SCROLL,
 	IDBTN_LEFTDRAG_MINIMAP,
+	IDBTN_SHARED_HORIZONTAL,
 	COLORS_MAX_BUTTONS
 };
 
@@ -69,11 +67,8 @@ public:
 	void draw(scr_coord offset) OVERRIDE
 	{
 		scr_coord p = pos + offset;
-
-		const player_t* player = welt->get_active_player();
 		const char *text = get_text_pointer();
-
-		display_text_label(p.x, p.y, text, player, true);
+		grund_t::display_text_label(p.x, p.y, text, 1 << welt->get_active_player_nr(), true);
 	}
 
 	scr_size get_min_size() const OVERRIDE
@@ -117,12 +112,12 @@ gui_settings_t::gui_settings_t()
 	base_icon_height = 32;
 	if (tool_t::general_tool[TOOL_QUERY]->get_icon(NULL) != IMG_EMPTY)
 	{
-		scr_coord_val dummy;
-		display_get_base_image_offset(tool_t::general_tool[TOOL_QUERY]->get_icon(NULL), &dummy, &dummy, &dummy, &base_icon_height);
+		scr_rect r = gfx->get_base_image_offset(tool_t::general_tool[TOOL_QUERY]->get_icon(NULL));
+		base_icon_height = r.h;
 	}
 	// find current zoom factor
 	for (icon_zoom = 0; icon_zoom <= MAX_ZOOM_FACTOR; icon_zoom++) {
-		if (env_t::iconsize.h >= (base_icon_height * zoom_num[icon_zoom]) / zoom_den[icon_zoom]) {
+		if (env_t::iconsize.h >= (base_icon_height * gfx->zoom_num[icon_zoom]) / gfx->zoom_den[icon_zoom]) {
 			// since we go from large size
 			break;
 		}
@@ -153,9 +148,17 @@ gui_settings_t::gui_settings_t()
 	single_toolbar.pressed = ( env_t::single_toolbar_mode );
 	add_component( &single_toolbar, 3 );
 
+	stack_toolbars.init( button_t::square_state, "Stack toolbars" );
+	stack_toolbars.pressed = ( env_t::stack_toolbars );
+	add_component( &stack_toolbars, 3 );
+
 	reselect_closes_tool.init( button_t::square_state, "Reselect closes tools" );
 	reselect_closes_tool.pressed = env_t::reselect_closes_tool;
 	add_component( &reselect_closes_tool, 3 );
+
+	show_construction_info.init( button_t::square_state, "show_construction_info" );
+	show_construction_info.pressed = env_t::show_construction_info;
+	add_component( &show_construction_info, 3 );
 
 	fullscreen.init( button_t::square_state, "Fullscreen (changed after restart)" );
 	fullscreen.pressed = ( dr_get_fullscreen() == FULLSCREEN );
@@ -202,22 +205,24 @@ void gui_settings_t::draw(scr_coord offset)
 	uint32 loops = world()->get_realFPS();
 	PIXVAL color = SYSCOL_TEXT_HIGHLIGHT;
 	if(  loops < (target_fps*16*3)/4  ) {
-		color = color_idx_to_rgb(( loops <= target_fps*16/2 ) ? COL_RED : COL_YELLOW);
+		color = gfx->palette_lookup(( loops <= target_fps*16/2 ) ? COL_RED : COL_YELLOW);
 	}
 	fps_value_label.set_color(color);
-	fps_value_label.buf().printf(" %d fps", loops/16 );
+	uint32 zoom = gfx->get_zoom_factor();
+	fps_value_label.buf().printf(" %d fps at zoom %d %%", loops/16, (100*gfx->zoom_num[zoom])/gfx->zoom_den[zoom]);
 #if MSG_LEVEL >= 3
 	if(  env_t::simple_drawing  ) {
 		fps_value_label.buf().append( "*" );
 	}
 #endif
 	fps_value_label.update();
+	fps_value_label.set_size(scr_size(get_size().w - D_MARGINS_X, fps_value_label.get_size().h));
 
 	//simloops_label
 	loops = world()->get_simloops();
 	color = SYSCOL_TEXT_HIGHLIGHT;
 	if(  loops <= 30  ) {
-		color = color_idx_to_rgb((loops<=20) ? COL_RED : COL_YELLOW);
+		color = gfx->palette_lookup((loops<=20) ? COL_RED : COL_YELLOW);
 	}
 	simloops_value_label.set_color(color);
 	simloops_value_label.buf().printf(" %d%c%d", loops/10, get_fraction_sep(), loops%10 );
@@ -259,7 +264,7 @@ bool gui_settings_t::action_triggered(gui_action_creator_t *comp, value_t v)
 	return true;
 
 icon_resize:
-	scr_coord_val new_size = (zoom_num[icon_zoom] * base_icon_height) / zoom_den[icon_zoom];
+	scr_coord_val new_size = (gfx->zoom_num[icon_zoom] * base_icon_height) / gfx->zoom_den[icon_zoom];
 	env_t::iconsize.h = env_t::iconsize.w = new_size;
 
 	// reload windows to update
@@ -495,6 +500,11 @@ station_settings_t::station_settings_t()
 	buttons[ IDBTN_SHOW_WAITING_BARS ].init( button_t::square_state, "show waiting bars" );
 	buttons[ IDBTN_SHOW_WAITING_BARS ].pressed = env_t::show_names & 2;
 	add_component( buttons + IDBTN_SHOW_WAITING_BARS, 2 );
+
+	// Show waiting bars checkbox
+	buttons[IDBTN_SHARED_HORIZONTAL].init(button_t::square_state, "Horizontal stripe ownership");
+	buttons[IDBTN_SHARED_HORIZONTAL].pressed = env_t::horizontal_stripe_owner;
+	add_component(buttons + IDBTN_SHARED_HORIZONTAL, 2);
 }
 
 traffic_settings_t::traffic_settings_t()
@@ -614,7 +624,9 @@ color_gui_t::color_gui_t() :
 	}
 	gui_settings.toolbar_pos.add_listener( this );
 	gui_settings.single_toolbar.add_listener(this);
+	gui_settings.stack_toolbars.add_listener(this);
 	gui_settings.reselect_closes_tool.add_listener(this);
+	gui_settings.show_construction_info.add_listener(this);
 	gui_settings.fullscreen.add_listener( this );
 	gui_settings.borderless.add_listener( this );
 
@@ -669,6 +681,18 @@ bool color_gui_t::action_triggered( gui_action_creator_t *comp, value_t)
 	if(  comp == &gui_settings.single_toolbar  ) {
 		env_t::single_toolbar_mode = !env_t::single_toolbar_mode;
 		gui_settings.single_toolbar.pressed = env_t::single_toolbar_mode;
+		return true;
+	}
+
+	if(  comp == &gui_settings.stack_toolbars  ) {
+		env_t::stack_toolbars = !env_t::stack_toolbars;
+		gui_settings.stack_toolbars.pressed = env_t::stack_toolbars;
+		return true;
+	}
+
+	if(  comp == &gui_settings.show_construction_info  ) {
+		env_t::show_construction_info = !env_t::show_construction_info;
+		gui_settings.show_construction_info.pressed = env_t::show_construction_info;
 		return true;
 	}
 
@@ -734,6 +758,9 @@ bool color_gui_t::action_triggered( gui_action_creator_t *comp, value_t)
 	case IDBTN_SHOW_WAITING_BARS:
 		env_t::show_names ^= 2;
 		break;
+	case IDBTN_SHARED_HORIZONTAL:
+		env_t::horizontal_stripe_owner ^= 1;
+		break;
 	case IDBTN_HIDE_LABELS:
 		env_t::show_names ^= 1;
 		break;
@@ -786,7 +813,8 @@ void color_gui_t::draw(scr_coord pos, scr_size size)
 	buttons[IDBTN_SHOW_STATION_COVERAGE].pressed = env_t::station_coverage_show;
 	buttons[IDBTN_UNDERGROUND_VIEW].pressed = grund_t::underground_mode == grund_t::ugm_all;
 	buttons[IDBTN_SHOW_GRID].pressed = grund_t::show_grid;
-	buttons[IDBTN_SHOW_WAITING_BARS].pressed = (env_t::show_names&2)!=0;
+	buttons[IDBTN_SHOW_WAITING_BARS].pressed = (env_t::show_names & 2) != 0;
+	buttons[IDBTN_SHARED_HORIZONTAL].pressed = env_t::horizontal_stripe_owner;
 	buttons[IDBTN_HIDE_LABELS].pressed = (env_t::show_names & 1) == 0;
 	buttons[IDBTN_SHOW_SLICE_MAP_VIEW].pressed = grund_t::underground_mode == grund_t::ugm_level;
 	buttons[IDBTN_SHOW_SCHEDULES_STOP].pressed = env_t::visualize_schedule;

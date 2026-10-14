@@ -111,10 +111,11 @@ private:
 
 	uint8 withdraw            : 1; ///< the convoi is being withdrawn from service
 	uint8 no_load             : 1; ///< nothing will be loaded onto this convoi
-	uint8 freight_info_resort : 1; ///< the convoi caches its freight info; it is only recalculation after loading or resorting
 	uint8 has_obsolete        : 1; ///< true, if at least one vehicle of a convoi is obsolete
-	uint8 is_electric         : 1; ///< true, if there is at least one engine that requires catenary
-	// 3 bits free
+	bool  needs_electric      : 1; ///< true, if needs catenary
+	// 5 bits free
+
+	uint8 old_sort_mode;	///< the convoi caches its freight info; only recalculate after loading or resorting
 
 	states state;
 
@@ -123,6 +124,7 @@ private:
 	 * Used in movement calculations.
 	 */
 	sint32 sum_gear_and_power;
+	uint32 sum_gear_and_power_non_electric, sum_gear_and_power_electric;
 
 	// 32 bytes
 
@@ -209,9 +211,6 @@ private:
 	// 160 bytes
 
 	koord3d schedule_target;
-
-	/// the convoi caches its freight info; it is only recalculation after loading or resorting
-	uint8 freight_info_order;
 
 	/// this give the index until which the route has been reserved.
 	/// It is used for restoring reservations after loading a game.
@@ -358,7 +357,13 @@ public:
 	linehandle_t get_line() const {return line;}
 
 	/* true, if electrification needed for this convoi */
-	bool needs_electrification() const { return is_electric; }
+	bool needs_electrification() const { return needs_electric; }
+
+	/* set it here and on every vehicle, since check_next_tile() reads it there */
+	void set_needs_electrification(bool janein);
+
+	/* true, if electrification needed for this convoi */
+	bool can_use_electrification() const { return sum_gear_and_power_electric!=0; }
 
 	/**
 	* set line
@@ -625,14 +630,22 @@ public:
 	* @param[out] buf Filled with freight description
 	*/
 	void get_freight_info(cbuffer_t & buf);
-	void set_sortby(uint8 order);
-	uint8 get_sortby() const { return freight_info_order; }
+
+	void reset_freight_info() { old_sort_mode = 255; }
 
 	/**
 	* Opens the schedule window
 	* @see simwin
 	*/
 	void open_schedule_window( bool show );
+
+	/**
+	 * Closes an open schedule editing session of this convoy, if any.
+	 * The schedule editor is the schedule tab of the convoy info window;
+	 * closing that window applies the pending entries, like every other
+	 * way of leaving the editor. No-op when nobody is editing.
+	 */
+	void close_schedule_editor();
 
 	/**
 	* pruefe ob Beschraenkungen fuer alle Fahrzeuge erfuellt sind

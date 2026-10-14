@@ -87,7 +87,9 @@ public:
 	/// Returns if slope prefers certain way directions (either n/s or e/w).
 	static bool is_single(type x) { return (flags[x] & single) != 0; }
 	/// Returns if way can be build on this slope.
-	static bool is_way(type x)  { return (flags[x] & (way_ns | way_ew)) != 0; }
+	static bool is_way(type x) { return (flags[x] & (way_ns | way_ew)) != 0; }
+	/// Returns if way can be build on this slope. If allow_double is true, double slopes are allowed
+	static bool is_way_double(type x, bool allow_double) { return (flags[x] & (way_ns | way_ew)) != 0  &&  (allow_double  ||  max_diff(x)<2); }
 	/// Returns if way in n/s direction can be build on this slope.
 	static bool is_way_ns(type x)  { return (flags[x] & way_ns) != 0; }
 	/// Returns if way in e/w direction can be build on this slope.
@@ -212,6 +214,8 @@ private:
 	static const dir  dirs[16];
 
 public:
+	/// Lookup table to convert ribi mask to string
+	static const char names[16][5];
 
 	/// Table containing the four compass directions (now as function)
 	struct _nesw {

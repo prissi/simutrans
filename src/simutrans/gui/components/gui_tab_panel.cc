@@ -55,11 +55,11 @@ void gui_tab_panel_t::set_size(scr_size size)
 	for(tab & i : tabs) {
 		i.x_offset = required_size.w - 4;
 		if( i.title ) {
-			i.width = D_H_SPACE*2 + proportional_string_width( i.title );
+			i.width = D_H_SPACE*2 + gfx->calc_text_width( i.title );
 			required_size.h = max( required_size.h, LINESPACE + D_V_SPACE );
 		}
 		else if( i.img ) {
-			i.width = max( 2 + i.img->get_pic()->w, D_H_SPACE*2+IMG_WIDTH );;
+			i.width = max( 2 + i.img->get_pic()->w, D_H_SPACE*2+IMG_WIDTH );
 			required_size.h = max( required_size.h, i.img->get_pic()->h + D_V_SPACE );
 		}
 		else {
@@ -205,7 +205,7 @@ bool gui_tab_panel_t::infowin_event(const event_t *ev)
 	}
 
 	// navigate among the tabs using shift+tab and tab
-	if(  ev->ev_class==EVENT_KEYBOARD  &&  ev->ev_code == SIM_KEY_TAB  ) {
+	if(  IS_KEYDOWN(ev)  &&  ev->ev_code == SIM_KEYCODE_TAB  ) {
 		int di = 1; // tab -> go to the next tab
 		if(  IS_SHIFT_PRESSED(ev)  ) {
 			// shift+tab -> go to the previous tab
@@ -223,12 +223,13 @@ bool gui_tab_panel_t::infowin_event(const event_t *ev)
 		return true;
 	}
 
-	if(  ev->ev_class == EVENT_KEYBOARD  ||  DOES_WINDOW_CHILDREN_NEED(ev)  ||  get_aktives_tab()->getroffen(ev->mouse_pos)  ||  get_aktives_tab()->getroffen(ev->click_pos)) {
+	if(  IS_KEYDOWN(ev)  ||  DOES_WINDOW_CHILDREN_NEED(ev)  ||  get_aktives_tab()->getroffen(ev->mouse_pos)  ||  get_aktives_tab()->getroffen(ev->click_pos)) {
 		// active tab was hit
 		event_t ev2 = *ev;
 		ev2.move_origin(get_aktives_tab()->get_pos());
 		return get_aktives_tab()->infowin_event(&ev2);
 	}
+
 	return false;
 }
 
@@ -253,16 +254,16 @@ void gui_tab_panel_t::draw(scr_coord parent_pos)
 	if(  required_size.w>size.w  || tab_offset_x > 0) {
 		left.draw( parent_pos+pos );
 		right.draw( parent_pos+pos );
-		//display_fillbox_wh_clip_rgb(xpos, ypos+required_size.h-1, 10, 1, SYSCOL_TEXT_HIGHLIGHT, true);
-		display_fillbox_wh_clip_rgb(xpos, ypos+required_size.h-1, D_ARROW_LEFT_WIDTH, 1, SYSCOL_HIGHLIGHT, true);
+		//gfx->draw_rect_clipped(xpos, ypos+required_size.h-1, 10, 1, SYSCOL_TEXT_HIGHLIGHT, true CLIP_NUM_DEFAULT);
+		gfx->draw_rect_clipped(xpos, ypos+required_size.h-1, D_ARROW_LEFT_WIDTH, 1, SYSCOL_HIGHLIGHT, true CLIP_NUM_DEFAULT);
 		xpos += D_ARROW_LEFT_WIDTH;
 	}
 
 	int text_x = xpos + D_H_SPACE;
 	int text_y = ypos + (required_size.h - LINESPACE)/2;
 
-	//display_fillbox_wh_clip_rgb(xpos, ypos+required_size.h-1, 4, 1, color_idx_to_rgb(COL_WHITE), true);
-	display_fillbox_wh_clip_rgb(xpos, ypos+required_size.h-1, 4, 1, SYSCOL_HIGHLIGHT, true);
+	//gfx->draw_rect_clipped(xpos, ypos+required_size.h-1, 4, 1, gfx->palette_lookup(COL_WHITE), true CLIP_NUM_DEFAULT);
+	gfx->draw_rect_clipped(xpos, ypos+required_size.h-1, 4, 1, SYSCOL_HIGHLIGHT, true CLIP_NUM_DEFAULT);
 
 	// do not draw under right button
 	int xx = required_size.w>get_size().w ? get_size().w-(D_ARROW_LEFT_WIDTH+2+D_ARROW_RIGHT_WIDTH) : get_size().w;
@@ -281,45 +282,46 @@ void gui_tab_panel_t::draw(scr_coord parent_pos)
 
 		if (i != active_tab) {
 			// Non active tabs
-			display_fillbox_wh_clip_rgb(text_x+1, ypos+2, iter.width-2, 1, SYSCOL_HIGHLIGHT, true);
-			display_fillbox_wh_clip_rgb(text_x, ypos+required_size.h-1, iter.width-2, 1, SYSCOL_HIGHLIGHT, true);
+			gfx->draw_rect_clipped(text_x+1, ypos+2, iter.width-2, 1, SYSCOL_HIGHLIGHT, true CLIP_NUM_DEFAULT);
+			gfx->draw_rect_clipped(text_x, ypos+required_size.h-1, iter.width-2, 1, SYSCOL_HIGHLIGHT, true CLIP_NUM_DEFAULT);
 
-			display_vline_wh_clip_rgb(text_x, ypos+3, required_size.h-4, SYSCOL_HIGHLIGHT, true);
-			display_vline_wh_clip_rgb(text_x+iter.width-1, ypos+3, required_size.h-4, SYSCOL_SHADOW, true);
+			gfx->draw_vline_clipped(text_x,              ypos+3, required_size.h-4, SYSCOL_HIGHLIGHT, true CLIP_NUM_DEFAULT);
+			gfx->draw_vline_clipped(text_x+iter.width-1, ypos+3, required_size.h-4, SYSCOL_SHADOW,    true CLIP_NUM_DEFAULT);
 
 			if(text) {
-				display_proportional_clip_rgb(text_x+D_H_SPACE, text_y+2, text, ALIGN_LEFT, SYSCOL_TEXT, true);
+				gfx->draw_text_clipped(text_x+D_H_SPACE, text_y+2, text, ALIGN_LEFT, SYSCOL_TEXT, true);
 			}
 			else {
 				scr_coord_val const y = ypos   - iter.img->get_pic()->y + required_size.h / 2 - iter.img->get_pic()->h / 2 + 1;
 				scr_coord_val const x = text_x - iter.img->get_pic()->x + iter.width / 2      - iter.img->get_pic()->w / 2;
 //					display_img_blend(iter.img->get_id(), x, y, TRANSPARENT50_FLAG, false, true);
-				display_base_img(iter.img->get_id(), x, y, 1, false, true);
+				gfx->draw_base_img(iter.img->get_id(), x, y, 1, false, true CLIP_NUM_DEFAULT);
 			}
 		}
 		else {
 			// Active tab
-			display_fillbox_wh_clip_rgb(text_x+1, ypos, iter.width-2, 1, SYSCOL_HIGHLIGHT, true);
+			gfx->draw_rect_clipped(text_x+1, ypos, iter.width-2, 1, SYSCOL_HIGHLIGHT, true CLIP_NUM_DEFAULT);
 
-			display_vline_wh_clip_rgb(text_x, ypos+1, required_size.h-2, SYSCOL_HIGHLIGHT, true);
-			display_vline_wh_clip_rgb(text_x+iter.width-1, ypos+1, required_size.h-2, SYSCOL_SHADOW, true);
+			gfx->draw_vline_clipped(text_x,              ypos+1, required_size.h-2, SYSCOL_HIGHLIGHT, true CLIP_NUM_DEFAULT);
+			gfx->draw_vline_clipped(text_x+iter.width-1, ypos+1, required_size.h-2, SYSCOL_SHADOW,    true CLIP_NUM_DEFAULT);
 
 			if(text) {
-				display_proportional_clip_rgb(text_x+D_H_SPACE, text_y, text, ALIGN_LEFT, SYSCOL_TEXT_HIGHLIGHT, true);
+				gfx->draw_text_clipped(text_x+D_H_SPACE, text_y, text, ALIGN_LEFT, SYSCOL_TEXT_HIGHLIGHT, true);
 			}
 			else {
 				scr_coord_val const y = ypos   - iter.img->get_pic()->y + required_size.h / 2 - iter.img->get_pic()->h / 2 - 1;
 				scr_coord_val const x = text_x - iter.img->get_pic()->x + iter.width / 2      - iter.img->get_pic()->w / 2;
-				display_base_img(iter.img->get_id(), x, y, 1, false, true);
+				gfx->draw_base_img(iter.img->get_id(), x, y, 1, false, true CLIP_NUM_DEFAULT);
 			}
 		}
+
 		text_x += iter.width;
 		// reset clipping
 		POP_CLIP();
 
 		i++;
 	}
-	display_fillbox_wh_clip_rgb(text_x, ypos+required_size.h-1, xpos+size.w-text_x, 1, SYSCOL_HIGHLIGHT, true);
+	gfx->draw_rect_clipped(text_x, ypos+required_size.h-1, xpos+size.w-text_x, 1, SYSCOL_HIGHLIGHT, true CLIP_NUM_DEFAULT);
 
 	// draw tab content after tab row
 	// (combobox may open to above, and tab row may draw into it)

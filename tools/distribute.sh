@@ -103,15 +103,20 @@ elif [ "$OST" = "haiku" ]; then
  simarchivbase=simuhaiku
 elif [ "$OST" = "mingw" ]; then
   simexe=.exe
-  SDLTEST=`grep "^BACKEND" config.default | sed "s/BACKEND[ ]*[:]*=[ ]*//" | sed "s/[ ]*\#.*//"`
-  if [ "$SDLTEST" = "sdl" ]  ||  [ "$SDLTEST" = "sdl2" ]; then
-    simarchivbase=simuwin-sdl
+  if [[ "mingw-w64-x86_64" == "$MINGW_PACKAGE_PREFIX" ]]; then
+    simarchivbase=simuwin-x64
   else
     simarchivbase=simuwin
-# Missing: Copy matching SDL dll!
+  fi
+  SDLTEST=`grep "^BACKEND" config.default | sed "s/BACKEND[ ]*[:]*=[ ]*//" | sed "s/[ ]*\#.*//"`
+  if [ "$SDLTEST" = "sdl" ]  ||  [ "$SDLTEST" = "sdl2" ]; then
+    simarchivbase=$simarchivbase"-sdl"
+  fi
+  if [ "$SDLTEST" = "sdl3" ]; then
+    simarchivbase=$simarchivbase"-sdl3"
   fi
   cd simutrans
-  if [ "$PGC" -ne 0 ]; then
+  if [ -n "$PGC" ]; then
     getDLL
   fi
   cd ..
@@ -159,9 +164,15 @@ echo "Targeting archive $simarchiv"
 # (otherwise there will be many .svn included under windows)
 distribute()
 {
+if [ "$OST" = "mingw" ]; then
+	# pack all files of the current release (no pixelfont for windows)
+	FILELISTE=`find simutrans -type f "(" -name "*.tab" -o -name "*.mid" -o  -name "*.txt" -o -name "*.dll" -o -name "*.pak" -o -name "*.nut" -o -name "*.dll" ")"`
+else
 	# pack all files of the current release
 	FILELISTE=`find simutrans -type f "(" -name "*.tab" -o -name "*.mid" -o -name "*.bdf" -o -name "*.fnt" -o -name "*.txt"  -o -name "*.dll" -o -name "*.pak" -o -name "*.nut" -o -name "*.dll" ")"`
+fi
 	zip -9 $simarchiv.zip $FILELISTE simutrans/simutrans$simexe simutrans/$updater
+	du -s -c -B 1024 $FILELISTE simutrans/simutrans$simexe simutrans/$updater |tail -1|sed "s/ total//"
 }
 
 buildOSX()

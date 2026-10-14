@@ -70,9 +70,9 @@ void interaction_t::move_cursor( const event_t &ev )
 
 	// move cursor
 	const koord3d prev_pos = zeiger->get_pos();
-	if(  (prev_pos != pos ||  ev.button_state != mb_alt)  ) {
+	if(  (prev_pos != pos ||  ev.mouse_button_state != mb_alt)  ) {
 
-		mb_alt = ev.button_state;
+		mb_alt = ev.mouse_button_state;
 
 		zeiger->change_pos(pos);
 
@@ -82,7 +82,7 @@ void interaction_t::move_cursor( const event_t &ev )
 		else {
 			tool->flags = (event_get_last_control_shift() ^ tool_t::control_invert) | tool_t::WFL_LOCAL;
 			if(tool->check_pos( world->get_active_player(), zeiger->get_pos() )==NULL) {
-				if(  ev.button_state == 0  ) {
+				if(  ev.mouse_button_state == 0  ) {
 					is_dragging = false;
 				}
 				else if(ev.ev_class==EVENT_DRAG) {
@@ -97,7 +97,7 @@ void interaction_t::move_cursor( const event_t &ev )
 			tool->flags = 0;
 		}
 
-		if(  (ev.button_state&7)==0  ) {
+		if(  (ev.mouse_button_state&7)==0  ) {
 			// time, since mouse got here
 			world->set_mouse_rest_time(dr_time());
 			world->set_sound_wait_time(AMBIENT_SOUND_INTERVALL); // 13s no movement: play sound
@@ -108,41 +108,41 @@ void interaction_t::move_cursor( const event_t &ev )
 
 void interaction_t::interactive_event( const event_t &ev )
 {
-	if(ev.ev_class == EVENT_KEYBOARD) {
-		DBG_MESSAGE("interaction_t::interactive_event()","Keyboard event with code %d '%c'", ev.ev_code, (ev.ev_code>=32  &&  ev.ev_code<=126) ? ev.ev_code : '?' );
+	if (IS_KEYDOWN(&ev)) {
+		DBG_MESSAGE("interaction_t::interactive_event()", "Key-down event with code %d '%c'", ev.ev_code, (ev.ev_code>=32  &&  ev.ev_code<=126) ? ev.ev_code : '?' );
 
 		switch(ev.ev_code) {
 
 			// cursor movements
-			case SIM_KEY_UPRIGHT:
+			case SIM_KEYCODE_UPRIGHT:
 				viewport->change_world_position(viewport->get_world_position() + koord::north);
 				world->set_dirty();
 				break;
-			case SIM_KEY_DOWNLEFT:
+			case SIM_KEYCODE_DOWNLEFT:
 				viewport->change_world_position(viewport->get_world_position() + koord::south);
 				world->set_dirty();
 				break;
-			case SIM_KEY_UPLEFT:
+			case SIM_KEYCODE_UPLEFT:
 				viewport->change_world_position(viewport->get_world_position() + koord::west);
 				world->set_dirty();
 				break;
-			case SIM_KEY_DOWNRIGHT:
+			case SIM_KEYCODE_DOWNRIGHT:
 				viewport->change_world_position(viewport->get_world_position() + koord::east);
 				world->set_dirty();
 				break;
-			case SIM_KEY_RIGHT:
+			case SIM_KEYCODE_RIGHT:
 				viewport->change_world_position(viewport->get_world_position() + koord(+1,-1));
 				world->set_dirty();
 				break;
-			case SIM_KEY_DOWN:
+			case SIM_KEYCODE_DOWN:
 				viewport->change_world_position(viewport->get_world_position() + koord(+1,+1));
 				world->set_dirty();
 				break;
-			case SIM_KEY_UP:
+			case SIM_KEYCODE_UP:
 				viewport->change_world_position(viewport->get_world_position() + koord(-1,-1));
 				world->set_dirty();
 				break;
-			case SIM_KEY_LEFT:
+			case SIM_KEYCODE_LEFT:
 				viewport->change_world_position(viewport->get_world_position() + koord(-1,+1));
 				world->set_dirty();
 				break;
@@ -156,7 +156,7 @@ void interaction_t::interactive_event( const event_t &ev )
 				}
 				break;
 
-			case SIM_KEY_F1:
+			case SIM_KEYCODE_F1:
 				if(  gui_frame_t *win = win_get_top()  ) {
 					if(  const char *helpfile = win->get_help_filename()  ) {
 						help_frame_t::open_help_on( helpfile );
@@ -190,7 +190,7 @@ void interaction_t::interactive_event( const event_t &ev )
 					bool ok=false;
 					for(tool_t* const i : tool_t::char_to_tool) {
 						if(  i->command_key == ev.ev_code  ) {
-							if(  i->command_flags == 0  ||  (ev.ev_key_mod & (SIM_MOD_SHIFT|SIM_MOD_CTRL)) == i->command_flags  ) {
+							if(  i->command_flags == 0  ||  (ev.ev_key_mod & (SIM_KEYMOD_SHIFT|SIM_KEYMOD_CTRL)) == i->command_flags  ) {
 								world->set_tool(i, world->get_active_player());
 								ok = true;
 								break;
@@ -199,7 +199,7 @@ void interaction_t::interactive_event( const event_t &ev )
 					}
 #ifdef STEAM_BUILT
 					// Block F12 from bringing up Keyboard Help (for Steam Screenshot) - but still allow F12 to be used if defined in pakset
-					if (ev.ev_code==SIM_KEY_F12) {
+					if (ev.ev_code==SIM_KEYCODE_F12) {
 						ok=true;
 					}
 #endif
@@ -211,7 +211,7 @@ void interaction_t::interactive_event( const event_t &ev )
 		}
 	}
 
-	if(  !is_dragging  &&  IS_LEFTRELEASE(&ev)  &&  ev.mouse_pos.y < display_get_height() -16 -(TICKER_HEIGHT*ticker::empty())  ) {
+	if(  !is_dragging  &&  IS_LEFTRELEASE(&ev)  &&  ev.mouse_pos.y < gfx->get_screen_size().h -16 -(TICKER_HEIGHT*ticker::empty())  ) {
 
 		DBG_MESSAGE("interaction_t::interactive_event(event_t &ev)", "calling a tool");
 
@@ -243,11 +243,17 @@ void interaction_t::interactive_event( const event_t &ev )
 	}
 
 	// mouse wheel scrolled -> rezoom
-	if (ev.ev_class == EVENT_CLICK) {
+	if (ev.ev_class == EVENT_CLICK  &&  (ev.ev_code==MOUSE_WHEELUP  ||  ev.ev_code==MOUSE_WHEELDOWN)) {
+
+		/* anchor zooming on the tile under the mouse; the zeiger position may be
+		 * stale here, since it is only updated by move_cursor(): after navigating
+		 * with the minimap it still holds the tile from before the jump, and
+		 * anchoring there would make the view jump away again
+		 */
+		tool_t *tool = world->get_tool(world->get_active_player_nr());
+		const koord3d cursor_pos = viewport->get_new_cursor_position(scr_coord(ev.mouse_pos.x,ev.mouse_pos.y), tool->is_grid_tool());
 
 		// first, we need to check cursor is valid, won't zoom otherwise
-
-		const koord3d cursor_pos = world->get_zeiger()->get_pos();
 
 		if( cursor_pos == koord3d::invalid) {
 			//ignore event
@@ -314,10 +320,10 @@ bool interaction_t::process_event( event_t &ev )
 
 	// Handle map drag with right-click
 	if(IS_RIGHTCLICK(&ev)) {
-		display_show_pointer(false);
+		gfx->set_cursor_visible(false);
 	}
 	else if(IS_RIGHTRELEASE(&ev)) {
-		display_show_pointer(true);
+		gfx->set_cursor_visible(true);
 	}
 	else if(IS_RIGHTDRAG(&ev)) {
 		// unset following
@@ -328,9 +334,9 @@ bool interaction_t::process_event( event_t &ev )
 	else if(  IS_LEFTDRAG(&ev)  &&  IS_LEFT_BUTTON_PRESSED(&ev)  &&  (is_world_dragging  ||  (!world->get_tool(world->get_active_player_nr())->move_has_effects()  &&  !IS_CONTROL_PRESSED(&ev))  )  ) {
 		/* ok, we have a general tool selected, and we have a left drag or left release event with an actual difference
 		 * => move the map, if we are beyond a threshold */
-		if(  is_world_dragging  ||  abs(ev.click_pos.x-ev.mouse_pos.x)+abs(ev.click_pos.y-ev.mouse_pos.y)>=max(1,(env_t::scroll_threshold* get_tile_raster_width())/get_base_tile_raster_width())  ) {
+		if(  is_world_dragging  ||  abs(ev.click_pos.x-ev.mouse_pos.x)+abs(ev.click_pos.y-ev.mouse_pos.y)>=max(1,(env_t::scroll_threshold * gfx->get_tile_raster_width()) / gfx->get_base_tile_raster_width())  ) {
 			if (!is_world_dragging) {
-				display_show_pointer(false);
+				gfx->set_cursor_visible(false);
 				is_world_dragging = true;
 			}
 			world->get_viewport()->set_follow_convoi(convoihandle_t());
@@ -343,7 +349,7 @@ bool interaction_t::process_event( event_t &ev )
 	if( !IS_LEFT_BUTTON_PRESSED(&ev)  &&  is_world_dragging  ) {
 		// show the mouse and swallow this event if we were dragging before
 		ev.ev_code = IGNORE_EVENT;
-		display_show_pointer(true);
+		gfx->set_cursor_visible(true);
 		is_world_dragging = false;
 	}
 
@@ -351,7 +357,7 @@ bool interaction_t::process_event( event_t &ev )
 	DBG_DEBUG4("interaction_t::process_event", "check if cursor needs movement");
 
 
-	if( (ev.ev_class==EVENT_DRAG  &&  ev.ev_code==MOUSE_LEFTBUTTON)  ||  (ev.button_state==0  &&  ev.ev_class==EVENT_MOVE)  ||  ev.ev_class==EVENT_RELEASE) {
+	if( (ev.ev_class==EVENT_DRAG  &&  ev.ev_code==MOUSE_LEFTBUTTON)  ||  (ev.mouse_button_state==0  &&  ev.ev_class==EVENT_MOVE)  ||  ev.ev_class==EVENT_RELEASE) {
 		move_cursor(ev);
 	}
 

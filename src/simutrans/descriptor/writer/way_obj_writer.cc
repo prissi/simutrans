@@ -27,13 +27,10 @@ void way_obj_writer_t::write_obj(FILE* outfp, obj_node_t& parent, tabfileobj_t& 
 		"nse1", "new1", "nsw1", "sew1", "nsew1", // different crossings: northwest/southeast is oneway
 		"nse2", "new2", "nsw2", "sew2", "nsew2",
 	};
-	int ribi, slope;
 
-	// Version needs high bit set as trigger -> this is required
-	// as marker because formerly nodes were unversionend
-	uint32 price       = obj.get_int("cost",        100);
-	uint32 maintenance = obj.get_int("maintenance", 100);
-	sint32 topspeed    = obj.get_int("topspeed",    999);
+	const sint64 price       = obj.get_int64("cost",        100);
+	const sint64 maintenance = obj.get_int64("maintenance", 100);
+	const sint32 topspeed    = obj.get_int  ("topspeed",    999);
 
 	uint16 intro  = obj.get_int("intro_year", DEFAULT_INTRO_YEAR) * 12;
 	intro +=        obj.get_int("intro_month", 1) - 1;
@@ -44,11 +41,11 @@ void way_obj_writer_t::write_obj(FILE* outfp, obj_node_t& parent, tabfileobj_t& 
 	uint8 wtyp     =  get_waytype(obj.get("waytype"));
 	uint8 own_wtyp =  get_waytype(obj.get("own_waytype"));
 
-	obj_node_t node(this, 20, &parent);
+	obj_node_t node(this, 28, &parent);
 
-	node.write_version(outfp, 1);
-	node.write_uint32(outfp, price);
-	node.write_uint32(outfp, maintenance);
+	node.write_version(outfp, 2);
+	node.write_sint64(outfp, price);
+	node.write_sint64(outfp, maintenance);
 	node.write_sint32(outfp, topspeed);
 	node.write_uint16(outfp, intro);
 	node.write_uint16(outfp, retire);
@@ -60,7 +57,7 @@ void way_obj_writer_t::write_obj(FILE* outfp, obj_node_t& parent, tabfileobj_t& 
 	slist_tpl<string> front_list;
 	slist_tpl<string> back_list;
 
-	for (ribi = 0; ribi < lengthof(ribi_codes); ribi++) {
+	for (size_t ribi = 0; ribi < lengthof(ribi_codes); ribi++) {
 		char buf[40];
 		sprintf(buf, "frontimage[%s]", ribi_codes[ribi]);
 		string str = obj.get(buf);
@@ -75,7 +72,7 @@ void way_obj_writer_t::write_obj(FILE* outfp, obj_node_t& parent, tabfileobj_t& 
 	front_list.clear();
 	back_list.clear();
 
-	for(  slope = 3;  slope <= 12;  slope += 3  ) {
+	for(  int slope = 3;  slope <= 12;  slope += 3  ) {
 		char buf[40];
 		sprintf( buf, "frontimageup[%d]", slope );
 		string str = obj.get(buf);
@@ -84,7 +81,7 @@ void way_obj_writer_t::write_obj(FILE* outfp, obj_node_t& parent, tabfileobj_t& 
 		string str2 = obj.get(buf);
 		back_list.append(str2);
 	}
-	for(  slope = 3;  slope <= 12;  slope += 3  ) {
+	for(  int slope = 3;  slope <= 12;  slope += 3  ) {
 		char buf[40];
 		sprintf( buf, "frontimageup2[%d]", slope );
 		string str = obj.get(buf);
@@ -103,7 +100,7 @@ void way_obj_writer_t::write_obj(FILE* outfp, obj_node_t& parent, tabfileobj_t& 
 	front_list.clear();
 	back_list.clear();
 
-	for (ribi = 3; ribi <= 12; ribi += 3) {
+	for (size_t ribi = 3; ribi <= 12; ribi += 3) {
 		char buf[40];
 		sprintf(buf, "frontdiagonal[%s]", ribi_codes[ribi]);
 		string str = obj.get(buf);
@@ -112,6 +109,11 @@ void way_obj_writer_t::write_obj(FILE* outfp, obj_node_t& parent, tabfileobj_t& 
 		string str2 = obj.get(buf);
 		back_list.append(str2);
 	}
+	// close diagonals
+	front_list.append(obj.get("frontdiagonal[close1]"));
+	front_list.append(obj.get("frontdiagonal[close2]"));
+	back_list.append(obj.get("backdiagonal[close1]"));
+	back_list.append(obj.get("backdiagonal[close2]"));
 	imagelist_writer_t::instance()->write_obj(outfp, node, front_list);
 	imagelist_writer_t::instance()->write_obj(outfp, node, back_list);
 

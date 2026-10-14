@@ -22,6 +22,7 @@
 #include "password_frame.h" // for the password
 #include "ai_selector.h"
 #include "player_frame.h"
+#include "sprachen.h"
 
 
 class password_button_t : public button_t
@@ -67,7 +68,7 @@ ki_kontroll_t::ki_kontroll_t() :
 
 		// Prepare finances button
 		player_get_finances[i].init( button_t::box | button_t::flexible, "");
-		player_get_finances[i].background_color = PLAYER_FLAG | color_idx_to_rgb((player ? player->get_player_color1():i*8)+env_t::gui_player_color_bright);
+		player_get_finances[i].background_color = PLAYER_FLAG | gfx->palette_lookup((player ? player->get_player_color1():i*8)+env_t::gui_player_color_bright);
 		player_get_finances[i].add_listener(this);
 
 		// Player type selector, Combobox
@@ -93,7 +94,7 @@ ki_kontroll_t::ki_kontroll_t() :
 
 		// password/locked button
 		player_lock[i] = new_component<password_button_t>();
-		player_lock[i]->background_color = color_idx_to_rgb((player && player->is_locked()) ? (player->is_unlock_pending() ? COL_YELLOW : COL_RED) : COL_GREEN);
+		player_lock[i]->background_color = gfx->palette_lookup((player && player->is_locked()) ? (player->is_unlock_pending() ? COL_YELLOW : COL_RED) : COL_GREEN);
 		player_lock[i]->add_listener(this);
 		player_lock[i]->set_rigid(true);
 
@@ -108,6 +109,20 @@ ki_kontroll_t::ki_kontroll_t() :
 	freeplay.pressed = welt->get_settings().is_freeplay();
 	add_component( &freeplay, 5 );
 
+	sprachengui_t::init_currency_from_lang();	// not yet init when reloaded
+
+	// currency position
+	currency_left.init(button_t::square_automatic, "currency left");
+	currency_left.add_listener(this);
+	currency_left.pressed = get_currency_left();
+	add_component(&currency_left, 3);
+
+	// and symbol
+	strcpy(currency_symbol, get_currency_string());
+	currency_string.set_text(currency_symbol, lengthof(currency_symbol));
+	currency_string.add_listener(this);
+	add_component(&currency_string, 2);
+
 	update_data(); // calls reset_min_windowsize
 
 	set_windowsize(get_min_windowsize());
@@ -117,11 +132,27 @@ ki_kontroll_t::ki_kontroll_t() :
 /**
  * This method is called if an action is triggered
  */
-bool ki_kontroll_t::action_triggered( gui_action_creator_t *comp,value_t p )
+bool ki_kontroll_t::action_triggered( gui_action_creator_t *comp, value_t p )
 {
 	// Free play button?
 	if(	comp == &freeplay	) {
 		welt->call_change_player_tool(karte_t::toggle_freeplay, 255, 0);
+		return true;
+	}
+
+	if (comp == &currency_string  || comp == &currency_left) {
+		bool text_changed = strcmp(get_currency_string(), currency_symbol);
+		env_t::currency_left = currency_left.pressed;
+		if (text_changed) {
+			strcpy(env_t::currency_symbol, currency_symbol);
+		}
+		else {
+			env_t::currency_left = currency_left.pressed;
+		}
+		// set the values
+		sprachengui_t::init_currency_from_lang();
+		strcpy(currency_symbol, get_currency_string());
+		currency_left.pressed = env_t::currency_left;
 		return true;
 	}
 
@@ -258,8 +289,8 @@ void ki_kontroll_t::update_data()
 			}
 
 			// always update locking status
-			player_get_finances[i].background_color = PLAYER_FLAG | color_idx_to_rgb(player->get_player_color1()+env_t::gui_player_color_bright);
-			player_lock[i]->background_color = color_idx_to_rgb(player->is_locked() ? (player->is_unlock_pending() ? COL_YELLOW : COL_RED) : COL_GREEN);
+			player_get_finances[i].background_color = PLAYER_FLAG | gfx->palette_lookup(player->get_player_color1()+env_t::gui_player_color_bright);
+			player_lock[i]->background_color = gfx->palette_lookup(player->is_locked() ? (player->is_unlock_pending() ? COL_YELLOW : COL_RED) : COL_GREEN);
 
 			// human players cannot be deactivated
 			if (i>1) {
@@ -359,7 +390,7 @@ void ki_kontroll_t::draw(scr_coord pos, scr_size size)
 			player_active[i-2].pressed = player !=NULL	&&	player->is_active();
 		}
 
-		player_lock[i]->background_color = color_idx_to_rgb(player	&&	player->is_locked() ? (player->is_unlock_pending() ? COL_YELLOW : COL_RED) : COL_GREEN);
+		player_lock[i]->background_color = gfx->palette_lookup(player	&&	player->is_locked() ? (player->is_unlock_pending() ? COL_YELLOW : COL_RED) : COL_GREEN);
 	}
 
 	player_change_to[welt->get_active_player_nr()].pressed = true;

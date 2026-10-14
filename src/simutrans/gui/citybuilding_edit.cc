@@ -37,7 +37,7 @@ static bool compare_building_desc(const building_desc_t* a, const building_desc_
 }
 static bool compare_building_desc_name(const building_desc_t* a, const building_desc_t* b)
 {
-	int diff = strcmp( translator::translate(a->get_name()), translator::translate(b->get_name()) );
+	int diff = translator::translate_compare( a->get_name(), b->get_name() );
 	if(  diff==0  ) {
 		diff = strcmp(a->get_name(), b->get_name());
 	}
@@ -189,9 +189,9 @@ void citybuilding_edit_frame_t::fill_list()
 		// color code for objects: BLACK: normal, YELLOW: consumer only, GREEN: source only
 		PIXVAL color;
 		switch (i->get_type()) {
-			case building_desc_t::city_res: color = color_idx_to_rgb(COL_DARK_BLUE + env_t::gui_player_color_dark); break;
-			case building_desc_t::city_com: color = color_idx_to_rgb(40 + env_t::gui_player_color_dark);            break;
-			default:                        color = SYSCOL_TEXT;                                                    break;
+			case building_desc_t::city_res: color = gfx->palette_lookup(COL_DARK_BLUE + env_t::gui_player_color_dark); break;
+			case building_desc_t::city_com: color = gfx->palette_lookup(40            + env_t::gui_player_color_dark); break;
+			default:                        color = SYSCOL_TEXT;                                                              break;
 		}
 		char const* const name = get_sortedby()==gui_sorting_item_t::BY_NAME_OBJECT ?  i->get_name() : translator::translate(i->get_name());
 		scl.new_component<gui_scrolled_list_t::const_text_scrollitem_t>(name, color);

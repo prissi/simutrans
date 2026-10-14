@@ -23,7 +23,9 @@
 #include "../dataobj/translator.h"
 #include "../sys/simsys.h"
 #include "../utils/simstring.h"
+#include "../utils/unicode.h"
 #include "../world/simworld.h"
+
 
 
 int sprachengui_t::cmp_language_button(sprachengui_t::language_button_t a, sprachengui_t::language_button_t b)
@@ -31,41 +33,76 @@ int sprachengui_t::cmp_language_button(sprachengui_t::language_button_t a, sprac
 	return strcmp( a.button->get_text(), b.button->get_text() )<0;
 }
 
+
+// set currency symbol
+void sprachengui_t::init_currency_from_lang()
+{
+	const char* org = "CURRENCY";
+	const char* trans = translator::translate(org);
+	if (trans != org && env_t::currency_symbol[0] == 0) {
+		// no special symbol selected
+		bool left = *translator::translate("CURRENCY_LEFT") == '1';
+		set_currency_string(trans, left);
+		env_t::currency_symbol[0] = 0;
+		env_t::currency_left = left;
+	}
+	else if (env_t::currency_symbol[0]) {
+		set_currency_string(env_t::currency_symbol, env_t::currency_left);
+	}
+	else {
+		env_t::currency_left = false;
+		set_currency_string("$", false);
+	}
+}
+
+
 /**
  * Causes the required fonts for currently selected
  * language to be loaded
  */
 void sprachengui_t::init_font_from_lang()
 {
-	bool reload_font = !has_character( translator::get_lang()->highest_character );
+#if COLOUR_DEPTH != 0
+	const utf8* new_world = (const utf8*)translator::translate("Beenden");
+	size_t len;
+	utf16 testfor_this_character = utf8_decoder_t::decode(new_world, len);
 
-	// the real fonts for the current language
-	std::string old_font = env_t::fontname;
+	bool reload_font = !gfx->font_has_character(testfor_this_character);
 
-	static const char *default_name = "PROP_FONT_FILE";
-	const char *prop_font_file = translator::translate(default_name);
+	if(reload_font) {
+		if (env_t::fontsize == 11) {
+			// can only use fixed default with current font size
+			std::string old_font = env_t::fontname;
 
-	// fallback if entry is missing -> use latin-1 font
-	if(  prop_font_file == default_name  ) {
-		prop_font_file = "cyr.bdf";
-	}
+			static const char* default_name = "PROP_FONT_FILE";
+			const char* prop_font_file = translator::translate(default_name);
 
-	if(  reload_font  ) {
-		// load large font
-		dr_chdir( env_t::base_dir );
-		bool ok = false;
-		char prop_font_file_name[4096];
-		tstrncpy( prop_font_file_name, prop_font_file, lengthof(prop_font_file_name) );
-		char *f = strtok( prop_font_file_name, ";" );
-		do {
-			std::string fname = FONT_PATH_X;
-			fname += prop_font_file_name;
-			ok = display_load_font(fname.c_str());
-			f = strtok( NULL, ";" );
+			if (prop_font_file == default_name) {
+				// missing font	
+			}
+			else {
+				// load large font
+				dr_chdir(env_t::base_dir);
+				bool ok = false;
+				char prop_font_file_name[4096];
+				tstrncpy(prop_font_file_name, prop_font_file, lengthof(prop_font_file_name));
+				char* f = strtok(prop_font_file_name, ";");
+				do {
+					std::string fname = FONT_PATH_X;
+					fname += prop_font_file_name;
+					ok = gfx->load_font(fname.c_str(), false);
+					f = strtok(NULL, ";");
+				} while (!ok && f);
+				dr_chdir(env_t::user_dir);
+				reload_font = false;
+			}
+
 		}
-		while(  !ok  &&  f  );
-		dr_chdir( env_t::user_dir );
+		// if nothing is found => display font selector
 	}
+#endif
+
+	init_currency_from_lang();
 
 	const char * p = translator::translate("SEP_THOUSAND");
 	char c = ',';
@@ -114,7 +151,18 @@ sprachengui_t::sprachengui_t() :
 		new_component<gui_empty_t>();
 	}
 
-	new_component_span<gui_divider_t>(2);
+	tab.add_tab(&button_plane, translator::translate("GUI"));
+	if (env_t::networkmode  ||  !world()) {
+		new_component_span<gui_divider_t>(2);
+		add_component(&button_plane, 2);
+		tab.set_active_tab_index(0);
+	}
+	else {
+		tab.add_tab(&button_plane, translator::translate("Names"));
+		add_component(&tab,2);
+		tab.add_listener(this);
+	}
+	button_plane.set_table_layout(0, 2);
 
 	const translator::lang_info* lang = translator::get_langs();
 	dr_chdir( env_t::base_dir );
@@ -130,7 +178,7 @@ sprachengui_t::sprachengui_t() :
 		b->add_listener(this);
 
 		// press button
-		int id = translator::get_language(lang->iso);
+		int id = translator::get_language(lang->iso_base);
 		if(  translator::get_language() == id  ) {
 			b->pressed = true;
 		}
@@ -144,50 +192,73 @@ sprachengui_t::sprachengui_t() :
 	dr_chdir(env_t::user_dir);
 
 	// insert buttons such that language appears columnswise
+	button_plane.set_table_layout(3, 0);
 	const uint32 count = buttons.get_count();
 	const uint32 half = (count+1)/2;
 	for(uint32 i=0; i < half; i++) {
-		add_component(buttons[i].button);
+		button_plane.add_component(buttons[i].button);
 		if (i+ half < count) {
-			add_component(buttons[i+half].button);
+			button_plane.add_component(buttons[i+half].button);
 		}
 	}
+	button_plane.set_size(button_plane.get_max_size());
 
 	reset_min_windowsize();
 	set_windowsize(get_min_windowsize() );
 }
 
 
-bool sprachengui_t::action_triggered( gui_action_creator_t *comp, value_t)
+bool sprachengui_t::action_triggered( gui_action_creator_t *comp, value_t p)
 {
+	if (comp == &tab) {
+		int lang_id = (p.i == 0) ? translator::get_language() : world()->get_settings().get_name_language_id();
+		for (int i = 0; i < translator::get_language_count(); i++) {
+			button_t* b = buttons[i].button;
+			b->pressed = lang_id == buttons[i].id;
+		}
+		return true;
+	}
+
 	for(int i=0; i<translator::get_language_count(); i++) {
 		button_t *b = buttons[i].button;
 
 		if(b == comp) {
 			b->pressed = true;
 
-			translator::set_language( buttons[i].id );
-			init_font_from_lang();
+			if(p.i==0) {
+				env_t::language_names_iso = NULL;
+				translator::set_language( buttons[i].id );
+				init_font_from_lang();
 
-			event_t* ev = new event_t();
-			ev->ev_class = EVENT_SYSTEM;
-			ev->ev_code = SYSTEM_RELOAD_WINDOWS;
-			queue_event( ev );
+				event_t* ev = new event_t();
+				ev->ev_class = EVENT_SYSTEM;
+				ev->ev_code = SYSTEM_RELOAD_WINDOWS;
+				queue_event( ev );
 
-			// check if we need another font ...
-			{
+				// check if we need another font ...
+
 				// we only show matching fonts for this language
 				const utf8 *new_world = (const utf8 *)translator::translate("Beenden");
 				size_t len;
-				if (!has_character(utf8_decoder_t::decode(new_world, len))) {
+				if (!gfx->font_has_character(utf8_decoder_t::decode(new_world, len))) {
 					// load a matching font ...
 					create_win(new loadfont_frame_t(), w_info, magic_font);
 				}
-			}
 
-			if (world()) {
-				// must not update non-existent toolbars
-				tool_t::update_toolbars();
+				if (world()) {
+					// must not update non-existent toolbars
+					tool_t::update_toolbars();
+				}
+			}
+			else {
+				if (translator::get_language() == buttons[i].id) {
+					world()->get_settings().set_name_language_iso(NULL);
+				}
+				else {
+					world()->get_settings().set_name_language_iso((translator::get_langs())[buttons[i].id].iso_base);
+					// maybe we should warn that there might no be a matching font in not unicode ...
+					translator::init_custom_names(world()->get_settings().get_name_language_id());
+				}
 			}
 		}
 		else {

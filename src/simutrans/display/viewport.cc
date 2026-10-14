@@ -205,8 +205,8 @@ grund_t* viewport_t::get_ground_on_screen_coordinate(scr_coord screen_pos, sint3
 		const int base_i = (screen_pos.x/2 + screen_pos.y   + tile_raster_scale_y((hgt*TILE_HEIGHT_STEP),rw1))/2;
 		const int base_j = (screen_pos.y   - screen_pos.x/2 + tile_raster_scale_y((hgt*TILE_HEIGHT_STEP),rw1))/2;
 
-		found_i = (base_i + i_off) / rw4;;
-		found_j = (base_j + j_off) / rw4;;
+		found_i = (base_i + i_off) / rw4;
+		found_j = (base_j + j_off) / rw4;
 
 		gr = world->lookup(koord3d(found_i,found_j,hgt));
 		if (gr != NULL) {
@@ -305,9 +305,10 @@ koord3d viewport_t::get_new_cursor_position( const scr_coord &screen_pos, bool g
 
 void viewport_t::metrics_updated()
 {
-	cached_disp_width = display_get_width();
-	cached_disp_height = display_get_height();
-	cached_img_size = get_tile_raster_width();
+	const scr_size screen = gfx->get_screen_size();
+	cached_disp_width  = screen.w;
+	cached_disp_height = screen.h;
+	cached_img_size    = gfx->get_tile_raster_width();
 
 	set_viewport_ij_offset(koord(
 		- cached_disp_width/(2*cached_img_size) - cached_disp_height/cached_img_size,

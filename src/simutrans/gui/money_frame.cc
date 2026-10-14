@@ -71,7 +71,7 @@ static const uint8 cost_type_color[MAX_PLAYER_COST_BUTTON] =
 static const uint8 cost_type[3*MAX_PLAYER_COST_BUTTON] =
 {
 	ATV_TRANSPORTED,                TT_ALL, gui_chart_t::STANDARD, // all transported goods
-	ATV_REVENUE_TRANSPORT,          TT_ALL, gui_chart_t::MONEY,    // Income
+	ATV_REVENUE,                    TT_ALL, gui_chart_t::MONEY,    // Income
 	ATV_RUNNING_COST,               TT_ALL, gui_chart_t::MONEY,    // Vehicle running costs
 	ATV_INFRASTRUCTURE_MAINTENANCE, TT_ALL, gui_chart_t::MONEY,    // Upkeep
 	ATV_WAY_TOLL,                   TT_ALL, gui_chart_t::MONEY,
@@ -104,8 +104,8 @@ static const uint16 label_type[] =
 {
 	TT_ALL, ATV_TRANSPORTED,                0, gui_chart_t::STANDARD,
 	TT_ALL, ATV_TRANSPORTED,                1, gui_chart_t::STANDARD,
-	TT_ALL, ATV_REVENUE_TRANSPORT,          0, gui_chart_t::MONEY,
-	TT_ALL, ATV_REVENUE_TRANSPORT,          1, gui_chart_t::MONEY,
+	TT_ALL, ATV_REVENUE,                    0, gui_chart_t::MONEY,
+	TT_ALL, ATV_REVENUE,                    1, gui_chart_t::MONEY,
 	TT_ALL, ATV_RUNNING_COST,               0, gui_chart_t::MONEY,
 	TT_ALL, ATV_RUNNING_COST,               1, gui_chart_t::MONEY,
 	TT_ALL, ATV_INFRASTRUCTURE_MAINTENANCE, 0, gui_chart_t::MONEY,
@@ -365,14 +365,14 @@ money_frame_t::money_frame_t(player_t *player) :
 					const int curve_type = cost_type[3*cost+2];
 					const int curve_precision = curve_type == gui_chart_t::STANDARD ? 0 : 2;
 					sint16 curve = i == 0
-					? chart.add_curve(  color_idx_to_rgb(cost_type_color[cost]), *chart_table_year,  MAX_PLAYER_COST_BUTTON, cost, MAX_PLAYER_HISTORY_YEARS,  curve_type, false, true, curve_precision)
-					: mchart.add_curve( color_idx_to_rgb(cost_type_color[cost]), *chart_table_month, MAX_PLAYER_COST_BUTTON, cost, MAX_PLAYER_HISTORY_MONTHS, curve_type, false, true, curve_precision);
+					? chart.add_curve(  gfx->palette_lookup(cost_type_color[cost]), *chart_table_year,  MAX_PLAYER_COST_BUTTON, cost, MAX_PLAYER_HISTORY_YEARS,  curve_type, false, true, curve_precision)
+					: mchart.add_curve( gfx->palette_lookup(cost_type_color[cost]), *chart_table_month, MAX_PLAYER_COST_BUTTON, cost, MAX_PLAYER_HISTORY_MONTHS, curve_type, false, true, curve_precision);
 					// add button
 					button_t *b;
 					if (i == 0) {
 						b = current->new_component<button_t>();
 						b->init(button_t::box_state_automatic | button_t::flexible, cost_type_name[cost]);
-						b->background_color = color_idx_to_rgb(cost_type_color[cost]);
+						b->background_color = gfx->palette_lookup(cost_type_color[cost]);
 						b->pressed = false;
 						buttons[cost] = b;
 					}
@@ -449,8 +449,9 @@ void money_frame_t::update_labels()
 	}
 
 	// scenario
-	if(player->get_player_nr()!=1  &&  welt->get_scenario()->active()) {
+	if(player->get_player_nr()!=1  &&  welt->get_scenario()->active()  &&  welt->get_scenario()->description_text) {
 		// the text are updated asynchron from the scenario
+		welt->get_scenario()->update_scenario_texts(scenario_t::DESCRIPTION);
 		scenario_desc.buf().append( welt->get_scenario()->description_text );
 		scenario_desc.buf().append( ":" );
 		scenario_desc.update();

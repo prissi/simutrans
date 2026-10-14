@@ -22,6 +22,7 @@
 
 #include "../dataobj/environment.h"
 #include "../dataobj/translator.h"
+#include "../utils/simstring.h"
 
 #include "../display/viewport.h"
 
@@ -32,14 +33,14 @@ class koord;
 class way_builder_t;
 class building_desc_t;
 class roadsign_desc_t;
+class factory_desc_t;
 class way_desc_t;
+class bridge_desc_t;
+class tunnel_desc_t;
 class route_t;
 class way_obj_desc_t;
 
 /****************************** helper functions: *****************************/
-
-char *tooltip_with_price(const char * tip, sint64 price);
-char *tooltip_with_price_length(const char * tip, sint64 price, sint64 length);
 
 void open_error_msg_win(const char* error);
 
@@ -144,7 +145,7 @@ public:
 	bool is_init_keeps_game_state() const OVERRIDE { return true; }
 	char const* check_pos(player_t*, koord3d) OVERRIDE;
 	char const* work(player_t* const player, koord3d const k) OVERRIDE { return tool_set_slope_work(player, k, default_param ? atoi(default_param) : 0, old_slope_compatibility_mode); }
-	bool init(player_t*) OVERRIDE { return default_param != NULL; }
+	bool init(player_t*) OVERRIDE { return !strempty(default_param); }
 };
 
 class tool_restoreslope_t : public tool_t {
@@ -286,6 +287,18 @@ public:
 	bool is_work_here_keeps_game_state(player_t*, koord3d) OVERRIDE { return true; }
 };
 
+
+/** tool_build_way_t
+ * deafult string either
+ * way_name[,arst,span[,bridge_name,tunnelname]
+ * 'a' bridges and tunnels
+ * 't' terraform
+ * 'r' for replace all ways
+ * 's' only straight ways
+ * span the maximum length of a way (-1: no limit)
+ * bridge and tunnel names for desc to be used (will switch tinnels and bridges on)
+ * 
+ */
 class tool_build_way_t : public two_click_tool_t {
 private:
 	static const way_desc_t *defaults[17]; // default ways for all types
@@ -296,20 +309,34 @@ private:
 
 protected:
 	const way_desc_t *desc;
+	const bridge_desc_t* bridge;
+	const tunnel_desc_t* tunnel;
+	bool   automatic_tunnel_and_bridges;
+	bool   terraform_only;
+	uint32 max_length;
+	bool  straight_ways, keep_ways;
 
-	virtual way_desc_t const* get_desc(uint16 timeline_year_month) const;
+	virtual way_desc_t const* get_desc() const;
 	const char *calc_route( way_builder_t &bauigel, const koord3d &, const koord3d & );
 	void start_at( koord3d &new_start ) OVERRIDE;
 
 public:
-	tool_build_way_t(uint16 const id = TOOL_BUILD_WAY | GENERAL_TOOL) : two_click_tool_t(id), desc() {}
+	tool_build_way_t(uint16 const id = TOOL_BUILD_WAY | GENERAL_TOOL) : two_click_tool_t(id), desc() {
+		automatic_tunnel_and_bridges = false;
+		terraform_only = false;
+		max_length = 0x7FFFFFFFul;
+	}
 	image_id get_icon(player_t*) const OVERRIDE;
+	static const way_desc_t* get_default_desc(waytype_t wt);
 	char const* get_tooltip(player_t const*) const OVERRIDE;
+	char const* get_context_label() const OVERRIDE;
+	uint8 get_modifier_hints(tool_hint_t*, uint8) const OVERRIDE;
 	char const* get_default_param(player_t*) const OVERRIDE;
 	bool is_selected() const OVERRIDE;
 	bool init(player_t*) OVERRIDE;
 	bool is_init_keeps_game_state() const OVERRIDE { return true; }
 	waytype_t get_waytype() const OVERRIDE;
+	void rdwr_custom_data(memory_rw_t*) OVERRIDE;
 	// remove preview necessary while building elevated ways
 	bool remove_preview_necessary() const OVERRIDE { return !is_first_click()  &&  (desc  &&  (desc->get_styp() == type_elevated  &&  desc->get_wtyp() != air_wt)); }
 };
@@ -317,9 +344,12 @@ public:
 class tool_build_cityroad : public tool_build_way_t {
 private:
 	char const* do_work(player_t*, koord3d const&, koord3d const&) OVERRIDE;
+#ifdef USE_TOWN_ROAD_BUILDER_TOOL
+	uint8 is_valid_pos(player_t*, koord3d const&, char const*&, koord3d const&) OVERRIDE;
+#endif
 public:
 	tool_build_cityroad() : tool_build_way_t(TOOL_BUILD_CITYROAD | GENERAL_TOOL) {}
-	way_desc_t const* get_desc(uint16) const OVERRIDE;
+	way_desc_t const* get_desc() const OVERRIDE;
 	image_id get_icon(player_t* const player) const OVERRIDE { return tool_t::get_icon(player); }
 	bool is_selected() const OVERRIDE { return tool_t::is_selected(); }
 	bool is_init_keeps_game_state() const OVERRIDE { return true; }
@@ -337,6 +367,8 @@ public:
 	tool_build_bridge_t() : two_click_tool_t(TOOL_BUILD_BRIDGE | GENERAL_TOOL) {}
 	image_id get_icon(player_t*) const OVERRIDE { return grund_t::underground_mode==grund_t::ugm_all ? IMG_EMPTY : icon; }
 	char const* get_tooltip(player_t const*) const OVERRIDE;
+	char const* get_context_label() const OVERRIDE;
+	// no get_modifier_hints(): the bridge builder reads neither Ctrl nor Shift
 	bool is_init_keeps_game_state() const OVERRIDE { return true; }
 	waytype_t get_waytype() const OVERRIDE;
 	bool remove_preview_necessary() const OVERRIDE { return !is_first_click(); }
@@ -353,6 +385,8 @@ private:
 public:
 	tool_build_tunnel_t() : two_click_tool_t(TOOL_BUILD_TUNNEL | GENERAL_TOOL) {}
 	char const* get_tooltip(player_t const*) const OVERRIDE;
+	char const* get_context_label() const OVERRIDE;
+	uint8 get_modifier_hints(tool_hint_t*, uint8) const OVERRIDE;
 	char const* check_pos(player_t*, koord3d) OVERRIDE;
 	bool is_init_keeps_game_state() const OVERRIDE { return true; }
 	waytype_t get_waytype() const OVERRIDE;
@@ -394,6 +428,8 @@ private:
 public:
 	tool_build_wayobj_t(uint16 const id = TOOL_BUILD_WAYOBJ | GENERAL_TOOL, bool b = true) : two_click_tool_t(id), build(b) {}
 	char const* get_tooltip(player_t const*) const OVERRIDE;
+	char const* get_context_label() const OVERRIDE;
+	uint8 get_modifier_hints(tool_hint_t*, uint8) const OVERRIDE;
 	bool is_selected() const OVERRIDE;
 	bool init(player_t*) OVERRIDE;
 	bool is_init_keeps_game_state() const OVERRIDE { return true; }
@@ -447,7 +483,7 @@ class tool_build_roadsign_t : public two_click_tool_t
 {
 	struct signal_info_t
 	{
-		uint8 spacing = 2; // place signals every n tiles
+		uint8 spacing = 5; // place signals every n tiles (smaller than 4 will hut maximum speed if not all clear some tiles ahead)
 		bool  remove_intermediate = true;
 		bool  replace_other = true;
 	};
@@ -469,6 +505,12 @@ public:
 public:
 	/// @copydoc tool_t::get_tooltip
 	const char *get_tooltip(const player_t *player) const OVERRIDE;
+
+	/// @copydoc tool_t::get_context_label
+	const char *get_context_label() const OVERRIDE;
+
+	// no get_modifier_hints(): Ctrl opens the spacing dialogue at init() time,
+	// it is not a modifier that changes what a drag builds
 
 	/// @copydoc tool_t::init
 	bool init(player_t*) OVERRIDE;
@@ -567,14 +609,23 @@ public:
 	bool init(player_t*) OVERRIDE;
 	char const* work(player_t*, koord3d) OVERRIDE;
 	bool is_init_keeps_game_state() const OVERRIDE { return true; }
+
+private:
+	bool can_build_factory_here(const factory_desc_t *desc, koord topleft, int rotation, climate_bits cl);
 };
+
 
 class tool_link_factory_t : public two_click_tool_t {
 public:
 	tool_link_factory_t() : two_click_tool_t(TOOL_LINK_FACTORY | GENERAL_TOOL) {}
+	image_id get_icon(player_t*) const  OVERRIDE { return world()->get_settings().is_crossconnect_factories() ? IMG_EMPTY : icon; }
 	char const* get_tooltip(player_t const*) const OVERRIDE { return translator::translate("Connect factory"); }
 	bool is_init_keeps_game_state() const OVERRIDE { return true; }
 private:
+	bool init(player_t*pl) OVERRIDE {
+		if (world()->get_settings().is_crossconnect_factories()) return false;
+		return two_click_tool_t::init(pl);
+	}
 	char const* do_work(player_t*, koord3d const&, koord3d const&) OVERRIDE;
 	void mark_tiles(player_t*, koord3d const&, koord3d const&) OVERRIDE {}
 	uint8 is_valid_pos(player_t*, koord3d const&, char const*&, koord3d const&) OVERRIDE;
@@ -737,17 +788,11 @@ public:
 class tool_pause_t : public tool_t {
 public:
 	tool_pause_t() : tool_t(TOOL_PAUSE | SIMPLE_TOOL) {}
-	char const* get_tooltip(player_t const*) const OVERRIDE { return env_t::networkmode ? translator::translate("deactivated in online mode") : translator::translate("Pause"); }
-	image_id get_icon(player_t*) const OVERRIDE { return env_t::networkmode ? IMG_EMPTY : icon; }
-	bool is_selected() const OVERRIDE { return welt->is_paused(); }
-	bool init( player_t * ) OVERRIDE {
-		if(  !env_t::networkmode  ) {
-			welt->set_fast_forward(0);
-			welt->set_pause( welt->is_paused()^1 );
-		}
-		return false;
-	}
-	bool exit(player_t *s ) OVERRIDE { return init(s); }
+	char const* get_tooltip(player_t const*) const OVERRIDE;
+	image_id get_icon(player_t*) const OVERRIDE { return (env_t::networkmode && !env_t::server) ? IMG_EMPTY : icon; }
+	bool is_selected() const OVERRIDE { return env_t::networkmode ? env_t::pause_server_no_clients : welt->is_paused(); }
+	bool init(player_t*) OVERRIDE;
+	bool exit(player_t *s) OVERRIDE { return init(s); }
 	bool is_init_keeps_game_state() const OVERRIDE { return !env_t::networkmode; }
 	bool is_work_keeps_game_state() const OVERRIDE { return !env_t::networkmode; }
 };
@@ -979,10 +1024,9 @@ public:
 	bool is_selected() const OVERRIDE;
 	void draw_after(scr_coord, bool dirty) const OVERRIDE;
 	bool init(player_t *) OVERRIDE;
-	char const* work(player_t*, koord3d) OVERRIDE;
-	bool exit(player_t *) OVERRIDE;
 	bool is_init_keeps_game_state() const OVERRIDE { return true; }
 	bool is_work_keeps_game_state() const OVERRIDE { return true; }
+	bool exit(player_t*) OVERRIDE;
 };
 
 class tool_toggle_control_t : public tool_t {
@@ -1008,6 +1052,17 @@ class tool_load_scenario_t : public tool_t {
 	// if i==1, start as easyserver
 public:
 	tool_load_scenario_t() : tool_t(TOOL_LOAD_SCENARIO | SIMPLE_TOOL) { flags = WFL_LOCAL | WFL_NO_CHK; }
+	bool init(player_t*) OVERRIDE;
+	bool is_init_keeps_game_state() const OVERRIDE { return false; }
+	bool is_work_keeps_game_state() const OVERRIDE { return false; }
+};
+
+class tool_work_world_t : public tool_t {
+	// internal tool to start a scenario
+	// command i.filename
+	// if i==1, start as easyserver
+public:
+	tool_work_world_t() : tool_t(TOOL_WORK_WORLD | SIMPLE_TOOL) { flags = WFL_LOCAL | WFL_NO_CHK; }
 	bool init(player_t*) OVERRIDE;
 	bool is_init_keeps_game_state() const OVERRIDE { return false; }
 	bool is_work_keeps_game_state() const OVERRIDE { return false; }
@@ -1105,7 +1160,8 @@ public:
 	char const* get_tooltip(player_t const*) const OVERRIDE { return translator::translate("show/hide block reservations"); }
 	bool is_selected() const OVERRIDE;
 	bool init( player_t * ) OVERRIDE {
-		schiene_t::show_reservations ^= 1;
+		schiene_t::show_reservations = !schiene_t::show_reservations;
+		env_t::show_single_ways = false;
 		welt->set_dirty();
 		return false;
 	}
@@ -1180,6 +1236,23 @@ public:
 	bool is_selected() const OVERRIDE { return env_t::night_shift; }
 	bool init(player_t*) OVERRIDE {
 		env_t::night_shift = !env_t::night_shift;
+		welt->set_dirty();
+		return false;
+	}
+	bool exit(player_t* s) OVERRIDE { return init(s); }
+	bool is_init_keeps_game_state() const OVERRIDE { return true; }
+	bool is_work_keeps_game_state() const OVERRIDE { return true; }
+};
+
+// highlight line single way tiles
+class tool_show_single_ways_t : public tool_t {
+public:
+	tool_show_single_ways_t() : tool_t(TOOL_SINGLE_WAY_TOOGLE | SIMPLE_TOOL) {}
+	char const* get_tooltip(player_t const*) const OVERRIDE { return translator::translate("highlight single ways"); }
+	bool is_selected() const OVERRIDE { return env_t::show_single_ways; }
+	bool init(player_t*) OVERRIDE {
+		env_t::show_single_ways = !env_t::show_single_ways;
+		schiene_t::show_reservations = false;
 		welt->set_dirty();
 		return false;
 	}
@@ -1276,13 +1349,22 @@ public:
 	// work is not safe, has to be send over network
 };
 
-// internal tool: rename stuff
+// internal tool: set owner
 class tool_change_owner_t : public tool_t {
 public:
 	tool_change_owner_t() : tool_t(TOOL_SET_OWNER | GENERAL_TOOL) {}
 	const char *work( player_t*, koord3d) OVERRIDE;
 	bool is_init_keeps_game_state() const OVERRIDE { return true; }
 	// work is not safe, has to be send over network
+};
+
+// internal tool: set permissions
+class tool_change_permission_t : public tool_t {
+public:
+	tool_change_permission_t() : tool_t(TOOL_HALT_PERMISSION | SIMPLE_TOOL) {}
+	bool init(player_t*) OVERRIDE;
+	bool is_init_keeps_game_state() const OVERRIDE { return false; }
+	virtual bool is_init_network_save() const { return false; }
 };
 
 #endif

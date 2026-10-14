@@ -21,6 +21,7 @@ class building_desc_t;
 class karte_ptr_t;
 class player_t;
 class rule_t;
+class way_desc_t;
 
 
 #define MAX_CITY_HISTORY_YEARS  (12) // number of years to keep history
@@ -72,6 +73,27 @@ static const uint32 GENERATE_RATIO_PASS = 3;
 // Mail generation ratio. This many parts to passenger generation ratio parts.
 static const uint32 GENERATE_RATIO_MAIL = 1;
 
+
+/// When a passenger attempts to travel from a city,
+/// this is the reachability status of the desination
+/// (as shown in the city info window)
+/// @sa haltestelle_t::routing_result_flags
+enum pax_dest_status_t : uint8
+{
+	PAX_DEST_STATUS_REACHABLE         = 1,
+	PAX_DEST_STATUS_ROUTE_OVERCROWDED = 2,
+	PAX_DEST_STATUS_NO_ROUTE          = 3
+};
+
+
+static const uint8 pax_dest_status_colors[4] = {
+	0,
+	COL_YELLOW,      // OK/reachable
+	COL_ORANGE,      // route overcrowded
+	COL_MAGENTA,     // no route
+};
+
+
 /**
  * Die Objecte der Klasse stadt_t bilden die Staedte in Simu. Sie
  * wachsen automatisch.
@@ -113,6 +135,9 @@ public:
 	 */
 	static void cityrules_rdwr(loadsave_t *file);
 
+	//  current city road; can change monthly
+	static const way_desc_t* city_road;
+
 	static uint32 get_industry_increase();
 	static void set_industry_increase(uint32 ind_increase);
 	static uint32 get_minimum_city_distance();
@@ -127,8 +152,8 @@ private:
 
 	weighted_vector_tpl <gebaeude_t *> buildings;
 
-	sparse_tpl<PIXVAL> pax_destinations_old;
-	sparse_tpl<PIXVAL> pax_destinations_new;
+	sparse_tpl<pax_dest_status_t> pax_destinations_old;
+	sparse_tpl<pax_dest_status_t> pax_destinations_new;
 
 	// this counter will increment by one for every change => dialogs can question, if they need to update map
 	uint32 pax_destinations_new_change;
@@ -137,7 +162,7 @@ private:
 	koord townhall_road;   // road in front of townhall
 	koord lo, ur;          // max size of housing area
 	koord last_center;
-	bool  has_low_density; // in this case extend borders by two
+	bool  has_high_density; // in this case extend borders by two
 
 	bool allow_citygrowth; // town can be static and will grow (true by default)
 
@@ -248,6 +273,13 @@ private:
 	best_t best_strasse;
 
 public:
+
+	// helper function to check for empty tile
+	bool check_ground_tile_for_house(grund_t* gr, sint8 zpos) const;
+
+	// returns random tile
+	gebaeude_t* build_city_house(koord3d base_pos, const building_desc_t* h, uint8 rotation, uint32 cl, vector_tpl<const building_desc_t*>* exclude_desc);
+
 	/**
 	 * Classes for storing and manipulating target factories and their data
 	 */
@@ -339,17 +371,17 @@ private:
 	/**
 	 * ein Passagierziel in die Zielkarte eintragen
 	 */
-	void merke_passagier_ziel(koord ziel, PIXVAL color);
+	void merke_passagier_ziel(koord ziel, pax_dest_status_t status);
 
 	/**
-	 * baut Spezialgebaeude, z.B Stadion
+	 * builds tourist attractions
 	 */
 	void check_bau_spezial(bool);
 
 	/**
-	 * baut ein angemessenes Rathaus
+	 * Builds or renovates townhall
 	 */
-	void check_bau_townhall(bool new_town, const building_desc_t* th, sint16 rotation);
+	void check_bau_townhall(const building_desc_t* th, sint16 rotation);
 
 	/**
 	 * constructs a new consumer
@@ -357,21 +389,27 @@ private:
 	void check_bau_factory(bool);
 
 
-	// find out, what building matches best
-	void bewerte_res_com_ind(const koord pos, int &ind, int &com, int &res);
+	// find out, what building matches best and return offset, if larger area needs offset
+	// extend_y : swap axis from max_size
+	koord evaluate_size_res_com_ind(const koord pos, int& ind_score, int& com_score, int& res_score, sint16& max_area, uint8& rotations, uint32& neighbor_building_clusters, vector_tpl<const building_desc_t*>& exclude);
 
 	/**
-	 * Build/renovates a city building at Planquadrat (tile) x,y
+	 * Builds a city building at Planquadrat (tile) x,y
 	 */
 	void build_city_building(koord pos);
-	void renovate_city_building(gebaeude_t *gb);
+
+	/**
+	 * Renovates a city building at Planquadrat (tile) x,y
+	 * true, if somethign was renovated
+	 */
+	bool renovate_city_building(gebaeude_t *gb);
 
 #ifdef DESTINATION_CITYCARS
 	sint16 number_of_cars; // allowed number of cars to spawn per month
 	void generate_private_cars(koord pos, koord target);
 #endif
 
-protected:
+public:
 	/**
 	 * builds a piece of road
 	 * 
@@ -380,6 +418,9 @@ protected:
 	 * @param forced 
 	 */
 	bool build_road(const koord k, player_t *player_, bool forced);
+
+	// build a piece of straight road in front of a townhall and take care of flattening the ground etc
+	bool test_and_build_cityroad(koord start, koord end);
 
 private:
 	void build();
@@ -399,12 +440,6 @@ private:
 
 	void bewerte_strasse(koord pos, sint32 rd, const rule_t &regel);
 	void bewerte_haus(koord pos, sint32 rd, const rule_t &regel);
-
-	/**
-	 * Updates city limits: tile at @p pos belongs to city.
-	 * @warning Do not call this during multithreaded loading!
-	 */
-	void pruefe_grenzen(koord pos, koord extend);
 
 public:
 	bool is_within_players_network( const player_t* player ) const;
@@ -450,7 +485,14 @@ public:
 	/**
 	 * ermittelt die Einwohnerzahl der City
 	 */
-	sint32 get_einwohner() const {return (buildings.get_sum_weight()*6)+((2*bev-arb-won)>>1);}
+	sint32 get_einwohner() const
+	{
+		const sint32 pop_from_buildings = 6 * (sint32)buildings.get_sum_weight();
+		const sint32 pop_from_citizens  = (2 * bev - arb - won) / 2;
+		const sint32 pop = pop_from_buildings + pop_from_citizens;
+
+		return std::max(pop, 0);
+	}
 
 	uint32 get_buildings()  const { return buildings.get_count(); }
 	sint32 get_unemployed() const { return bev - arb; }
@@ -463,10 +505,10 @@ public:
 	koord get_zufallspunkt() const;
 
 	/// @returns passenger destination statistics for the last month
-	const sparse_tpl<PIXVAL>* get_pax_destinations_old() const { return &pax_destinations_old; }
+	const sparse_tpl<pax_dest_status_t> &get_pax_destinations_old() const { return pax_destinations_old; }
 
 	/// @returns passenger destination statistics for the current month
-	const sparse_tpl<PIXVAL>* get_pax_destinations_new() const { return &pax_destinations_new; }
+	const sparse_tpl<pax_dest_status_t> &get_pax_destinations_new() const { return pax_destinations_new; }
 
 	/* this counter will increment by one for every change
 	 * => dialogs can question, if they need to update map

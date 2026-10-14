@@ -15,7 +15,8 @@
 
 #include "../../simdebug.h"
 #include "../../network/pakset_info.h"
-#include "../../tpl/array_tpl.h"
+
+#include <cinttypes>
 
 
 void roadsign_reader_t::register_obj(obj_desc_t *&data)
@@ -36,71 +37,80 @@ bool roadsign_reader_t::successfully_loaded() const
 }
 
 
-obj_desc_t * roadsign_reader_t::read_node(FILE *fp, obj_node_info_t &node)
+obj_desc_t *roadsign_reader_t::read_node(FILE *fp, obj_node_info_t &node)
 {
-	array_tpl<char> desc_buf(node.size);
-	if (fread(desc_buf.begin(), node.size, 1, fp) != 1) {
-		return NULL;
-	}
-	char *p = desc_buf.begin();
+	node_body_t p(fp, node.size, get_type_name());
+	if (!p) return NULL;
 
 	const uint16 v = decode_uint16(p);
 	const int version = v & 0x8000 ? v & 0x7FFF : 0;
 	roadsign_desc_t *desc = new roadsign_desc_t();
 
-	if(version==5) {
-		// Versioned node, version 5
-		desc->min_speed = kmh_to_speed(decode_uint16(p));
-		desc->price = decode_uint32(p);
-		desc->flags = decode_uint16(p);
+	if (version == 6) {
+		// cost as sint64, maintenance added
+		desc->min_speed   = kmh_to_speed(decode_uint16(p));
+		desc->price       = decode_sint64(p);
+		desc->maintenance = decode_sint64(p);
+		desc->flags       = decode_uint16(p);
 		desc->offset_left = decode_sint8(p);
-		desc->wtyp = decode_uint8(p);
-		desc->intro_date = decode_uint16(p);
+		desc->wtyp        = decode_uint8(p);
+		desc->intro_date  = decode_uint16(p);
 		desc->retire_date = decode_uint16(p);
 	}
-	else if(version==4) {
-		// Versioned node, version 4
-		desc->min_speed = kmh_to_speed(decode_uint16(p));
-		desc->price = decode_uint32(p);
-		desc->flags = decode_uint8(p);
+	else if (version == 5) {
+		desc->min_speed   = kmh_to_speed(decode_uint16(p));
+		desc->price       = decode_uint32(p);
+		desc->flags       = decode_uint16(p);
 		desc->offset_left = decode_sint8(p);
-		desc->wtyp = decode_uint8(p);
-		desc->intro_date = decode_uint16(p);
+		desc->wtyp        = decode_uint8(p);
+		desc->intro_date  = decode_uint16(p);
 		desc->retire_date = decode_uint16(p);
 	}
-	else if(version==3) {
-		// Versioned node, version 3
-		desc->min_speed = kmh_to_speed(decode_uint16(p));
-		desc->price = decode_uint32(p);
-		desc->flags = decode_uint8(p);
-		desc->offset_left = 14;
-		desc->wtyp = decode_uint8(p);
-		desc->intro_date = decode_uint16(p);
+	else if (version == 4) {
+		desc->min_speed   = kmh_to_speed(decode_uint16(p));
+		desc->price       = decode_uint32(p);
+		desc->flags       = decode_uint8(p);
+		desc->offset_left = decode_sint8(p);
+		desc->wtyp        = decode_uint8(p);
+		desc->intro_date  = decode_uint16(p);
 		desc->retire_date = decode_uint16(p);
 	}
-	else if(version==2) {
-		// Versioned node, version 2
-		desc->min_speed = kmh_to_speed(decode_uint16(p));
-		desc->price = decode_uint32(p);
-		desc->flags = decode_uint8(p);
+	else if (version == 3) {
+		desc->min_speed   = kmh_to_speed(decode_uint16(p));
+		desc->price       = decode_uint32(p);
+		desc->flags       = decode_uint8(p);
 		desc->offset_left = 14;
-		desc->intro_date = DEFAULT_INTRO_YEAR*12;
+		desc->wtyp        = decode_uint8(p);
+		desc->intro_date  = decode_uint16(p);
+		desc->retire_date = decode_uint16(p);
+	}
+	else if (version == 2) {
+		desc->min_speed   = kmh_to_speed(decode_uint16(p));
+		desc->price       = decode_uint32(p);
+		desc->flags       = decode_uint8(p);
+		desc->offset_left = 14;
+		desc->intro_date  = DEFAULT_INTRO_YEAR*12;
 		desc->retire_date = DEFAULT_RETIRE_YEAR*12;
-		desc->wtyp = road_wt;
+		desc->wtyp        = road_wt;
 	}
-	else if(version==1) {
+	else if (version == 1) {
 		// Versioned node, version 1
-		desc->min_speed = kmh_to_speed(decode_uint16(p));
-		desc->price = 50000;
-		desc->flags = decode_uint8(p);
+		desc->min_speed   = kmh_to_speed(decode_uint16(p));
+		desc->price       = 50000;
+		desc->flags       = decode_uint8(p);
 		desc->offset_left = 14;
-		desc->intro_date = DEFAULT_INTRO_YEAR*12;
+		desc->intro_date  = DEFAULT_INTRO_YEAR*12;
 		desc->retire_date = DEFAULT_RETIRE_YEAR*12;
-		desc->wtyp = road_wt;
+		desc->wtyp        = road_wt;
 	}
 	else {
 		dbg->fatal( "roadsign_reader_t::read_node()", "Cannot handle too new node version %i", version );
 	}
+
+	// the optional image lists (diagonal, front, drive-on-left) are additional
+	// nodes behind the cursor, found by their position; the child count says
+	// how many of them are there
+	desc->children = (uint8)node.nchildren;
 
 	if(  version<=3  &&  (  desc->is_choose_sign() ||  desc->is_private_way()  )  &&  desc->get_waytype() == road_wt  ) {
 		// do not shift these signs to the left for compatibility
@@ -108,10 +118,11 @@ obj_desc_t * roadsign_reader_t::read_node(FILE *fp, obj_node_info_t &node)
 	}
 
 	PAKSET_INFO("roadsign_reader_t::read_node()",
-		"version=%i, min_speed=%i, price=%i, flags=%x, wtyp=%i, offset_left=%i, intro=%i/%i, retire=%i/%i",
+		"version=%i, min_speed=%i, price=%" PRId64 ", maintenance=%" PRId64 ", flags=%x, wtyp=%i, offset_left=%i, intro=%i/%i, retire=%i/%i",
 		version,
 		desc->min_speed,
 		desc->price/100,
+		desc->maintenance,
 		desc->flags,
 		desc->wtyp,
 		desc->offset_left,

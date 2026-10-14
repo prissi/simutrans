@@ -16,11 +16,6 @@
 #include "simroadtraffic.h"
 #include "vehicle.h"
 
-#ifdef DESTINATION_CITYCARS
-// for final citycar destinations
-#include "simpeople.h"
-#endif
-
 #include "../dataobj/translator.h"
 #include "../dataobj/loadsave.h"
 #include "../dataobj/environment.h"
@@ -223,10 +218,11 @@ void road_user_t::rdwr(loadsave_t *file)
 	weg_next &= 65535;
 }
 
-void road_user_t::finish_rd()
+bool road_user_t::finish_rd()
 {
 	calc_height(NULL);
 	calc_image();
+	return false;
 }
 
 
@@ -293,7 +289,7 @@ void private_car_t::build_timeline_list(karte_t *welt)
 			}
 		}
 	}
-	liste_timeline.resize( temp_liste.get_count() );
+	liste_timeline.reserve( temp_liste.get_count() );
 	for(citycar_desc_t const* const i : temp_liste) {
 		liste_timeline.append(i, i->get_distribution_weight());
 	}
@@ -370,7 +366,7 @@ sync_result private_car_t::sync_step(uint32 delta_t)
 			else {
 				if(  ms_traffic_jam > welt->ticks_per_world_month  &&  old_ms_traffic_jam<=welt->ticks_per_world_month  ) {
 					// message after two month, reset waiting timer
-					welt->get_message()->add_message( translator::translate("To heavy traffic\nresults in traffic jam.\n"), get_pos(), message_t::traffic_jams|message_t::EXPIRE_AFTER_ONE_MONTH_MSG, color_idx_to_rgb(COL_ORANGE) );
+					welt->get_message()->add_message( translator::translate("To heavy traffic\nresults in traffic jam.\n"), get_pos(), message_t::traffic_jams|message_t::EXPIRE_AFTER_ONE_MONTH_MSG, gfx->palette_lookup(COL_ORANGE) );
 				}
 			}
 		}
@@ -496,7 +492,7 @@ bool private_car_t::can_enter_tile(grund_t *gr)
 		if(ribi_t::is_threeway(str->get_ribi_unmasked())) {
 			// but leaving from railroad crossing is more important
 			if (grund_t* gr_current = welt->lookup(get_pos())) {
-				if (crossing_t* cr = gr_current->get_crossing()) {
+				if (gr_current->get_crossing() != NULL) {
 					return true;
 				}
 			}
@@ -559,7 +555,7 @@ bool private_car_t::can_enter_tile(grund_t *gr)
 			}
 			// but leaving from railroad crossing is more important
 			if (grund_t* gr_current = welt->lookup(get_pos())) {
-				if (crossing_t* cr = gr_current->get_crossing()) {
+				if (gr_current->get_crossing()) {
 					return true;
 				}
 			}
@@ -689,7 +685,8 @@ grund_t* private_car_t::hop_check()
 		static weighted_vector_tpl<koord3d> posliste(4);
 		posliste.clear();
 		const uint8 offset = ribi_t::is_single(ribi) ? 0 : simrand(4);
-		for(uint8 r = 0; r < 4; r++) {
+		for(uint8 i = 0; i < 4; i++) {
+			const uint8 r = (i+offset)&3;
 			if(  get_pos().get_2d()==koord::nesw[r]+pos_next.get_2d()  ) {
 				continue;
 			}

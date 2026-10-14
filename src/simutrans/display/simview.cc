@@ -71,8 +71,8 @@ void *display_region_thread( void *ptr )
 
 	while(true) {
 		simthread_barrier_wait( &display_barrier_start ); // wait for all to start
-		clear_all_poly_clip( view->thread_num );
-		display_set_clip_wh( view->lt_cl.x, view->lt_cl.y, view->wh_cl.x, view->wh_cl.y, view->thread_num );
+		gfx->clear_all_poly_clip( view->thread_num );
+		gfx->set_clip_rect( view->lt_cl.x, view->lt_cl.y, view->wh_cl.x, view->wh_cl.y, view->thread_num, false);
 		view->show_routine->display_region( view->lt, view->wh, view->y_min, view->y_max, false, true, view->thread_num );
 		simthread_barrier_wait( &display_barrier_end ); // wait for all to finish
 	}
@@ -92,21 +92,283 @@ static bool can_multithreading = true;
 #endif
 
 
+/**
+ * @copydoc schedule_route_way_height2
+ *
+ * The way crosses a whole tile, so the middle of one is halfway between the heights of
+ * the two edges the way crosses there. The route touches one edge only where a stretch
+ * ends, and where it turns back on itself at the last stop of a leg and so leaves by the
+ * edge it came in through; the opposite edge is the second one in both of those cases.
+ */
+sint32 schedule_route_way_height2(const karte_t *welt, const vector_tpl<koord3d> &route, uint32 step, bool is_edge)
+{
+	const koord3d &pos = route[step];
+	const grund_t *gr = welt->lookup( pos );
+	if(  gr == NULL  ) {
+		// the ground went away under a route that has not been recalculated yet
+		return 2*(sint32)pos.z;
+	}
+	if(  is_edge  ) {
+		// both tiles answer the same height for the way on the edge they share, which is
+		// what makes them neighbours on a route in the first place
+		return 2*(sint32)gr->get_vmove( ribi_type( pos, route[step+1] ) );
+	}
+	// steps of a route are always neighbouring tiles, so each of these is a single
+	// direction, as get_vmove() requires
+	const bool has_prev = step > 0  &&  route[step-1] != koord3d::invalid;
+	const bool has_next = step+1 < route.get_count()  &&  route[step+1] != koord3d::invalid;
+	const ribi_t::ribi in  = has_prev ? ribi_type( pos, route[step-1] ) : (ribi_t::ribi)ribi_t::none;
+	const ribi_t::ribi out = has_next ? ribi_type( pos, route[step+1] ) : (ribi_t::ribi)ribi_t::none;
+	const ribi_t::ribi a = in ? in : ribi_t::backward( out );
+	const ribi_t::ribi b = out  &&  out != a ? out : ribi_t::backward( a );
+	return (sint32)gr->get_vmove( a ) + (sint32)gr->get_vmove( b );
+}
+
+
+/**
+ * @copydoc schedule_route_edge_is_corner
+ */
+bool schedule_route_edge_is_corner(const karte_t *welt, const vector_tpl<koord3d> &route, uint32 step)
+{
+	// the middle of the line between the two centres against the way on the edge itself
+	return 2*schedule_route_way_height2( welt, route, step, true ) !=
+		schedule_route_way_height2( welt, route, step, false ) + schedule_route_way_height2( welt, route, step+1, false );
+}
+
+
+#if COLOUR_DEPTH != 0
+/**
+ * The area the tile loop of main_view_t::display() covers, in the rotated coordinates
+ * it uses itself: u across, v down. A route runs anywhere on the map, while
+ * get_screen_coord() returns sint16 and wraps a few hundred tiles away from the view,
+ * so tiles are checked here, before they are projected.
+ */
+struct route_area_t {
+	sint32 i_off, j_off;
+	sint32 u_lim, v_lo, v_hi;
+
+	/// which borders @p pos lies beyond, as a bit per border
+	uint8 outcode(const koord3d &pos) const {
+		const sint32 di = (sint32)pos.x - i_off;
+		const sint32 dj = (sint32)pos.y - j_off;
+		const sint32 u = di - dj;
+		const sint32 v = di + dj;
+		return (u < -u_lim ? 1 : 0) | (u > u_lim ? 2 : 0) | (v < v_lo ? 4 : 0) | (v > v_hi ? 8 : 0);
+	}
+};
+
+
+/**
+ * The offset get_screen_coord() needs to put a point of the route on the surface of the
+ * way instead of on the ground below it.
+ *
+ * @param height2 height of the way there, in half height levels, from schedule_route_way_height2()
+ */
+static koord route_way_offset(const koord &centre, const koord3d &pos, sint32 height2)
+{
+	return koord( centre.x, centre.y - (sint16)((TILE_HEIGHT_STEP*(height2 - 2*(sint32)pos.z))/2) );
+}
+
+
+/**
+ * A corner of the route shown by a schedule editor, held as a place on the route
+ * rather than as a screen position: either the centre of the tile route[step], or the
+ * midpoint of the tile edge the step from route[step] to route[step+1] crosses.
+ *
+ * It is projected only once the segment it belongs to is known to be drawn, because
+ * get_screen_coord() works in sint16 (see viewport.cc) and wraps a few hundred tiles
+ * away from the view: a tile that far never reaches it this way. The ground is looked
+ * up there for the same reason.
+ */
+struct route_point_t {
+	uint32 step;
+	bool   is_edge;
+	uint8  code;
+
+	scr_coord project(const karte_t *welt, const viewport_t *viewport, const vector_tpl<koord3d> &route, const koord &centre) const {
+		const sint32 height2 = schedule_route_way_height2( welt, route, step, is_edge );
+		const scr_coord a = viewport->get_screen_coord( route[step], route_way_offset( centre, route[step], height2 ) );
+		if(  !is_edge  ) {
+			return a;
+		}
+		// scr_coord_val is 32 bit, so the two ends can be added before halving them
+		const scr_coord b = viewport->get_screen_coord( route[step+1], route_way_offset( centre, route[step+1], height2 ) );
+		return scr_coord( (a.x+b.x)/2, (a.y+b.y)/2 );
+	}
+};
+
+
+/// @p n divided by @p d and rounded to nearest, for a positive @p d and either sign of @p n
+static sint32 route_line_offset(sint32 n, sint32 d)
+{
+	return n >= 0 ? (2*n + d) / (2*d) : -((-2*n + d) / (2*d));
+}
+
+
+/**
+ * One segment of the route shown by a schedule editor: a coloured core with a dark
+ * line below it, so that it stays visible on any ground. Both grow when zooming in.
+ *
+ * The copies are shifted along the normal of the segment and not simply downwards.
+ * A diagonal way runs straight down the screen, and shifting such a line in y only
+ * makes it longer, never thicker: it stayed one pixel wide with no dark line beside
+ * it at all, however far one zoomed in. The normal is scaled to its own length, so
+ * that one step is one pixel of width in every direction and the line keeps the width
+ * it always had; and it is turned to point down the screen, so that the dark line
+ * keeps to the same side of the coloured one whatever the direction is, which is also
+ * what makes the two directions of a leg land on each other.
+ *
+ * Nothing is drawn, and nothing is projected either, when both ends lie beyond the
+ * same border of the drawn area, so that whatever enters, leaves or crosses the view
+ * is still drawn whole.
+ */
+static void display_route_segment(const karte_t *welt, const viewport_t *viewport, const vector_tpl<koord3d> &route, const route_point_t &from, const route_point_t &to, const koord &centre, PIXVAL col, PIXVAL dark, sint16 core, sint16 edge)
+{
+	if(  (from.code & to.code) != 0  ) {
+		return;
+	}
+	const scr_coord a = from.project( welt, viewport, route, centre );
+	const scr_coord b = to.project( welt, viewport, route, centre );
+
+	sint32 nx = -(sint32)(b.y - a.y);
+	sint32 ny =  (sint32)(b.x - a.x);
+	if(  ny < 0  ||  (ny == 0  &&  nx < 0)  ) {
+		nx = -nx;
+		ny = -ny;
+	}
+	const sint32 len = (sint32)sqrt_i64( (uint64)nx*nx + (uint64)ny*ny );
+	// the coloured core sits on the line itself, so it does not drift off the way
+	const sint16 first = -((core-1)/2);
+
+	for(  sint16 i = core;  i < core+edge;  i++  ) {
+		const sint32 k  = first + i;
+		const sint32 ox = len ? route_line_offset( k*nx, len ) : 0;
+		const sint32 oy = len ? route_line_offset( k*ny, len ) : k;
+		gfx->draw_line( a.x+ox, a.y+oy, b.x+ox, b.y+oy, dark );
+	}
+	for(  sint16 i = 0;  i < core;  i++  ) {
+		const sint32 k  = first + i;
+		const sint32 ox = len ? route_line_offset( k*nx, len ) : 0;
+		const sint32 oy = len ? route_line_offset( k*ny, len ) : k;
+		gfx->draw_line( a.x+ox, a.y+oy, b.x+ox, b.y+oy, col );
+	}
+}
+
+
+/**
+ * Last step of the alternating pattern that starts at step @p a, or @p a itself when
+ * the steps there do not alternate. Step k leads from route[k] to route[k+1], and
+ * @p last is the final tile of the stretch under consideration.
+ */
+static uint32 diagonal_run_end(const vector_tpl<koord3d> &route, uint32 last, uint32 a)
+{
+	// below three steps a staircase cannot be told from a single bend
+	if(  a+3 > last  ) {
+		return a;
+	}
+	const koord d0 = (route[a+1] - route[a]).get_2d();
+	const koord d1 = (route[a+2] - route[a+1]).get_2d();
+	if(  d0 == d1  ||  d0 == -d1  ) {
+		// carrying straight on, or turning back: neither one makes a diagonal
+		return a;
+	}
+	uint32 b = a+1;
+	while(  b+2 <= last  &&  (route[b+2] - route[b+1]).get_2d() == (((b+1-a) & 1) ? d1 : d0)  ) {
+		b++;
+	}
+	return b;
+}
+
+
+/**
+ * Longest diagonal run drawn as a single line.
+ *
+ * A run advances one tile per step along one of the two screen axes, so a long one ends
+ * hundreds of tiles from the view, where get_screen_coord() wraps; and it cannot simply
+ * be dropped, because it may well cross the view. All the edge midpoints of a run are
+ * on the same straight line, so cutting it on them adds points without moving any, and
+ * every piece is then short enough to be projected: a piece display_route_segment()
+ * keeps has one end within the drawn area, hence both ends at most this many tiles
+ * beyond it, that is 64*(IMG_SIZE/2) past its border at the very most. That leaves half
+ * of the sint16 range to spare on the largest tiles and screens in use.
+ */
+static const uint32 ROUTE_DIAGONAL_MAX_STEPS = 64;
+
+
+/**
+ * Draws the tiles [first,last] of the route shown by a schedule editor, which are
+ * known to be a stretch without a gap in it.
+ *
+ * A diagonal way is a staircase of orthogonal steps, so a line from tile centre to
+ * tile centre zigzags exactly where the way graphics show a straight line. The centres
+ * of such a staircase swing half a tile to either side of the line through the midpoints
+ * of the shared tile edges, and those midpoints are collinear. A run of at least three
+ * alternating steps is therefore entered and left on the midpoint of its first and of its
+ * last step: both sit on that straight line, and both sit on the way of the straight part
+ * before and after it, because a run can only begin where the step before it either
+ * pointed the same way or turned a real corner. Straight runs and single bends keep the
+ * tile centres they always had, and so do both ends of the stretch.
+ *
+ * A segment is left undrawn only when both of its ends lie beyond the same border of
+ * @p area, so anything that enters, leaves or crosses the view is still drawn whole.
+ * The midpoint of two tiles is beyond a border whenever both of them are, hence the
+ * bitwise and of their two outcodes.
+ */
+static void display_route_stretch(const karte_t *welt, const viewport_t *viewport, const vector_tpl<koord3d> &route, uint32 first, uint32 last, const koord &centre, PIXVAL col, PIXVAL dark, sint16 core, sint16 edge, const route_area_t &area)
+{
+	route_point_t previous = { first, false, area.outcode( route[first] ) };
+	uint32 t = first;
+	while(  t < last  ) {
+		const uint32 b = diagonal_run_end( route, last, t );
+		if(  b >= t+2  ) {
+			// a diagonal: cross it in one straight line, from edge midpoint to edge
+			// midpoint, in pieces of at most ROUTE_DIAGONAL_MAX_STEPS steps each
+			uint32 s = t;
+			while(  true  ) {
+				const route_point_t here = { s, true, (uint8)(area.outcode( route[s] ) & area.outcode( route[s+1] )) };
+				display_route_segment( welt, viewport, route, previous, here, centre, col, dark, core, edge );
+				previous = here;
+				if(  s == b  ) {
+					break;
+				}
+				s = ( b-s > ROUTE_DIAGONAL_MAX_STEPS ? s+ROUTE_DIAGONAL_MAX_STEPS : b );
+			}
+			// the tile the run ends on keeps its centre, so that the next corner is drawn there
+			t = b+1;
+		}
+		else {
+			// a way changes its grade on the edge between two tiles, so the line bends
+			// there too. The corner is left out where the grade does not change, which
+			// is every tile of level ground: those keep the corners they always had.
+			const route_point_t corner = { t, true, (uint8)(area.outcode( route[t] ) & area.outcode( route[t+1] )) };
+			if(  corner.code == 0  &&  schedule_route_edge_is_corner( welt, route, t )  ) {
+				display_route_segment( welt, viewport, route, previous, corner, centre, col, dark, core, edge );
+				previous = corner;
+			}
+			t++;
+		}
+		const route_point_t here = { t, false, area.outcode( route[t] ) };
+		display_route_segment( welt, viewport, route, previous, here, centre, col, dark, core, edge );
+		previous = here;
+	}
+}
+#endif
+
+
 void main_view_t::display(bool force_dirty)
 {
 	const uint32 rs = get_random_seed();
 
 #if COLOUR_DEPTH != 0
 	DBG_DEBUG4("main_view_t::display", "starting ...");
-	display_set_image_proc(true);
+	gfx->set_image_procs(true);
 
-	const sint16 disp_width = display_get_width();
-	const sint16 disp_real_height = display_get_height();
-	const sint16 IMG_SIZE = get_tile_raster_width();
+	const scr_size screen = gfx->get_screen_size();
+	const sint16 IMG_SIZE = gfx->get_tile_raster_width();
 
-	const sint16 disp_height = display_get_height() - win_get_statusbar_height() - (!ticker::empty() ? TICKER_HEIGHT : 0);
+	const sint16 disp_height = screen.h - win_get_statusbar_height() - (!ticker::empty() ? TICKER_HEIGHT : 0);
 
-	scr_rect clip_rr(0, env_t::iconsize.w, disp_width, disp_height - env_t::iconsize.h);
+	scr_rect clip_rr(0, env_t::iconsize.w, screen.w, disp_height - env_t::iconsize.h);
 	switch (env_t::menupos) {
 	case MENU_TOP:
 		// rect default
@@ -115,25 +377,26 @@ void main_view_t::display(bool force_dirty)
 		clip_rr.y = win_get_statusbar_height() + (!ticker::empty() ? TICKER_HEIGHT : 0);
 		break;
 	case MENU_LEFT:
-		clip_rr = scr_rect(env_t::iconsize.w, 0, disp_width - env_t::iconsize.w, disp_height);
+		clip_rr = scr_rect(env_t::iconsize.w, 0, screen.w - env_t::iconsize.w, disp_height);
 		break;
 	case MENU_RIGHT:
-		clip_rr = scr_rect(0, 0, disp_width - env_t::iconsize.w, disp_height);
+		clip_rr = scr_rect(0, 0, screen.w - env_t::iconsize.w, disp_height);
 		break;
 	}
-	display_set_clip_wh(clip_rr.x, clip_rr.y, clip_rr.w, clip_rr.h);
+
+	gfx->set_clip_rect(clip_rr.x, clip_rr.y, clip_rr.w, clip_rr.h CLIP_NUM_DEFAULT, false);
 
 	// redraw everything?
 	force_dirty = force_dirty || welt->is_dirty();
 	welt->unset_dirty();
 	if(  force_dirty  ) {
-		mark_screen_dirty();
+		gfx->mark_screen_dirty();
 		welt->set_background_dirty();
 		force_dirty = false;
 	}
 
-	const int dpy_width = display_get_width()/IMG_SIZE + 2;
-	const int dpy_height = (disp_real_height*4)/IMG_SIZE;
+	const int dpy_width  = screen.w / IMG_SIZE + 2;
+	const int dpy_height = (screen.h*4)/IMG_SIZE;
 
 	const int i_off = viewport->get_world_position().x + viewport->get_viewport_ij_offset().x;
 	const int j_off = viewport->get_world_position().y + viewport->get_viewport_ij_offset().y;
@@ -143,10 +406,10 @@ void main_view_t::display(bool force_dirty)
 	// change to night mode?
 	// images will be recalculated only, when there has been a change, so we set always
 	if(grund_t::underground_mode == grund_t::ugm_all) {
-		display_day_night_shift(0);
+		gfx->set_daynight_level(0);
 	}
 	else if(!env_t::night_shift) {
-		display_day_night_shift(env_t::daynight_level);
+		gfx->set_daynight_level(env_t::daynight_level);
 	}
 	else {
 		// calculate also days if desired
@@ -161,13 +424,13 @@ void main_view_t::display(bool force_dirty)
 		else {
 			hours2 = ( (ticks_this_month * 3) >> (welt->ticks_per_world_month_shift-4) )%48;
 		}
-		display_day_night_shift(hours2night[hours2]+env_t::daynight_level);
+		gfx->set_daynight_level(hours2night[hours2]+env_t::daynight_level);
 	}
 
 	// not very elegant, but works:
 	// fill everything with black for Underground mode ...
 	if( grund_t::underground_mode ) {
-		display_fillbox_wh_rgb(clip_rr.x, clip_rr.y, clip_rr.w, clip_rr.h, color_idx_to_rgb(COL_BLACK), force_dirty);
+		gfx->draw_rect(clip_rr.x, clip_rr.y, clip_rr.w, clip_rr.h, gfx->palette_lookup(COL_BLACK), force_dirty);
 	}
 	else if( welt->is_background_dirty()  &&  outside_visible  ) {
 		// we check if background will be visible, no need to clear screen if it's not.
@@ -191,7 +454,7 @@ void main_view_t::display(bool force_dirty)
 		((y_min-(clip_rr.w - const_x_off) / (IMG_SIZE/2) - 1) >> 1) + j_off);
 
 	sint16 const worst_case_mountain_extra = (welt->max_height - welt->min_height) / 2;
-	koord const estimated_max((((dpy_height+4*4)+(disp_width - const_x_off) / (IMG_SIZE/2) - 1) >> 1) + i_off + worst_case_mountain_extra,
+	koord const estimated_max((((dpy_height+4*4)+(screen.w - const_x_off) / (IMG_SIZE/2) - 1) >> 1) + i_off + worst_case_mountain_extra,
 		(((dpy_height+4*4)-(-2-(((dpy_height+4*4)+dpy_width) & 1))) >> 1) + j_off + worst_case_mountain_extra);
 
 	rect_t view_rect(estimated_min, estimated_max - estimated_min + koord(1, 1));
@@ -249,22 +512,22 @@ void main_view_t::display(bool force_dirty)
 		simthread_barrier_wait( &display_barrier_start );
 
 		// the last we can run ourselves, setting clip_wh to the screen edge instead of wh_x (in case disp_width % num_threads != 0)
-		clear_all_poly_clip( env_t::num_threads - 1 );
-		display_set_clip_wh( lt_x, clip_rr.y, clip_rr.w, clip_rr.h, env_t::num_threads - 1 );
+		gfx->clear_all_poly_clip( env_t::num_threads - 1 );
+		gfx->set_clip_rect( lt_x, clip_rr.y, clip_rr.w, clip_rr.h, env_t::num_threads - 1, false);
 		display_region( koord( lt_x - IMG_SIZE / 2, clip_rr.y ), koord( clip_rr.x + clip_rr.w + IMG_SIZE, clip_rr.h ), y_min, dpy_height + 4 * 4, false, true, env_t::num_threads - 1 );
 
 		simthread_barrier_wait( &display_barrier_end );
 
-		clear_all_poly_clip( 0 );
-		display_set_clip_wh(clip_rr.x, clip_rr.y, clip_rr.w, clip_rr.h);
+		gfx->clear_all_poly_clip( CLIP_NUM_DEFAULT_VALUE );
+		gfx->set_clip_rect(clip_rr.x, clip_rr.y, clip_rr.w, clip_rr.h CLIP_NUM_DEFAULT, false);
 	}
 	else {
 		// slow serial way of display
-		clear_all_poly_clip( 0 );
+		gfx->clear_all_poly_clip( CLIP_NUM_DEFAULT_VALUE );
 		display_region( koord(clip_rr.x, clip_rr.y), koord(clip_rr.w, clip_rr.h), y_min, dpy_height + 4 * 4, false, false, 0 );
 	}
 #else
-	clear_all_poly_clip();
+	gfx->clear_all_poly_clip();
 	display_region(koord(clip_rr.x, clip_rr.y), koord(clip_rr.w, clip_rr.h), y_min, dpy_height + 4 * 4, false );
 #endif
 
@@ -294,6 +557,47 @@ void main_view_t::display(bool force_dirty)
 		}
 	}
 
+	// route of the schedule shown by a schedule editor (display only, see karte_t)
+	const vector_tpl<koord3d> &schedule_route = welt->get_schedule_route();
+	if(  !schedule_route.empty()  ) {
+		DBG_DEBUG4("main_view_t::display", "display schedule route");
+		const player_t *pl = welt->get_player( welt->get_schedule_route_player_nr() );
+		const PIXVAL col  = gfx->palette_lookup( pl ? pl->get_player_color1()+3 : COL_WHITE );
+		const PIXVAL dark = gfx->palette_lookup( COL_BLACK );
+		// centre of the top surface of a tile, in the internal 64 per tile units
+		const koord centre( OBJECT_OFFSET_STEPS*2, OBJECT_OFFSET_STEPS*3 );
+		// The line grows when zooming in, so that it does not get lost on a large tile,
+		// and keeps a visible minimum when zooming out. Zooming in only reaches twice the
+		// tile size, hence the half steps; even at its widest the line is a few pixels on
+		// a tile of at least 128, so the way below it stays visible.
+		const sint16 core = clamp( (2*IMG_SIZE)/gfx->get_base_tile_raster_width() - 1, 1, 3 );
+		const sint16 edge = (core+1)/2;
+		// the same area the tile loop above walked, with room to spare for the line width,
+		// for tall ground and for a tile that only sticks into the view by a corner
+		route_area_t area;
+		area.i_off = i_off;
+		area.j_off = j_off;
+		area.u_lim = dpy_width + 16;
+		area.v_lo  = -64;
+		area.v_hi  = dpy_height + 4*4 + 64;
+
+		// koord3d::invalid separates legs without a route: each stretch is drawn on its own
+		const uint32 count = schedule_route.get_count();
+		uint32 first = 0;
+		while(  first < count  ) {
+			if(  schedule_route[first] == koord3d::invalid  ) {
+				first++;
+				continue;
+			}
+			uint32 last = first;
+			while(  last+1 < count  &&  schedule_route[last+1] != koord3d::invalid  ) {
+				last++;
+			}
+			display_route_stretch( welt, viewport, schedule_route, first, last, centre, col, dark, core, edge, area );
+			first = last+1;
+		}
+	}
+
 	obj_t *zeiger = welt->get_zeiger();
 	DBG_DEBUG4("main_view_t::display", "display pointer");
 	if( zeiger  &&  zeiger->get_pos() != koord3d::invalid ) {
@@ -309,17 +613,17 @@ void main_view_t::display(bool force_dirty)
 				const FLAGGED_PIXVAL transparent = TRANSPARENT25_FLAG|OUTLINE_FLAG| env_t::cursor_overlay_color;
 				if(  gr->get_image()==IMG_EMPTY  ) {
 					if(  gr->hat_wege()  ) {
-						display_img_blend( gr->obj_bei(0)->get_image(), background_pos.x, background_pos.y, transparent, 0, dirty );
+						gfx->draw_img_blend( gr->obj_bei(0)->get_image(), background_pos.x, background_pos.y, transparent, 0, dirty );
 					}
 					else {
-						display_img_blend( ground_desc_t::get_ground_tile(gr), background_pos.x, background_pos.y, transparent, 0, dirty );
+						gfx->draw_img_blend( ground_desc_t::get_ground_tile(gr), background_pos.x, background_pos.y, transparent, 0, dirty );
 					}
 				}
 				else if(  gr->get_typ()==grund_t::wasser  ) {
-					display_img_blend( ground_desc_t::sea->get_image(gr->get_image(),wasser_t::stage), background_pos.x, background_pos.y, transparent, 0, dirty );
+					gfx->draw_img_blend( ground_desc_t::sea->get_image(gr->get_image(),wasser_t::stage), background_pos.x, background_pos.y, transparent, 0, dirty );
 				}
 				else {
-					display_img_blend( gr->get_image(), background_pos.x, background_pos.y, transparent, 0, dirty );
+					gfx->draw_img_blend( gr->get_image(), background_pos.x, background_pos.y, transparent, 0, dirty );
 				}
 			}
 		}
@@ -373,14 +677,15 @@ void main_view_t::display_region( koord lt, koord wh, sint16 y_min, sint16 y_max
 void main_view_t::display_region( koord lt, koord wh, sint16 y_min, sint16 y_max, bool /*force_dirty*/ )
 #endif
 {
-	const sint16 IMG_SIZE = get_tile_raster_width();
+	const sint16 IMG_SIZE = gfx->get_tile_raster_width();
 
 	const int i_off = viewport->get_world_position().x + viewport->get_viewport_ij_offset().x;
 	const int j_off = viewport->get_world_position().y + viewport->get_viewport_ij_offset().y;
 	const int const_x_off = viewport->get_x_off();
 	const int const_y_off = viewport->get_y_off();
 
-	const int dpy_width = display_get_width() / IMG_SIZE + 2;
+	const scr_size screen = gfx->get_screen_size();
+	const int dpy_width = screen.w / IMG_SIZE + 2;
 
 	// to save calls to grund_t::get_disp_height
 	const sint8 hmax_ground = (grund_t::underground_mode == grund_t::ugm_level) ? grund_t::underground_level : 127;
@@ -446,7 +751,7 @@ void main_view_t::display_region( koord lt, koord wh, sint16 y_min, sint16 y_max
 					outside_visible = true;
 					if(  env_t::draw_outside_tile  ) {
 						const sint16 yypos = ypos - tile_raster_scale_y( welt->min_height * TILE_HEIGHT_STEP, IMG_SIZE );
-						display_normal( ground_desc_t::outside->get_image(0), xpos, yypos, 0, true, false  CLIP_NUM_PAR);
+						gfx->draw_normal( ground_desc_t::outside->get_image(0), xpos, yypos, 0, true, false  CLIP_NUM_PAR);
 					}
 				}
 			}
@@ -596,6 +901,6 @@ void main_view_t::display_region( koord lt, koord wh, sint16 y_min, sint16 y_max
 void main_view_t::display_background( scr_coord_val xp, scr_coord_val yp, scr_coord_val w, scr_coord_val h, bool dirty )
 {
 	if(  !(env_t::draw_earth_border  &&  env_t::draw_outside_tile)  ) {
-		display_fillbox_wh_rgb(xp, yp, w, h, env_t::background_color, dirty );
+		gfx->draw_rect(xp, yp, w, h, env_t::background_color, dirty );
 	}
 }

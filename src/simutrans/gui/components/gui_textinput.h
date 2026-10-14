@@ -8,26 +8,33 @@
 
 
 #include "gui_action_creator.h"
+#include "action_listener.h"
 #include "gui_component.h"
+#include "gui_scrolled_list.h"
 #include "../../simcolor.h"
 #include "../../display/simgraph.h"
 #include "../../utils/cbuffer.h"
-
 
 /**
  * A simple text input field. It has no Text Buffer,
  * only a pointer to a buffer created by someone else.
  */
 class gui_textinput_t :
+	public action_listener_t,
 	public gui_action_creator_t,
 	public gui_component_t
 {
 protected:
-
 	/**
 	 * The string buffer
 	 */
 	char *text;
+
+	/**
+	 * Placeholder text to be displayed when no text has been typed
+	 * if NULL, nothing will be shown
+	 */
+	const char *placeholder_text;
 
 	// text, which has not yet inputted (i.e. by an IME)
 	cbuffer_t composition;
@@ -71,6 +78,9 @@ protected:
 	 */
 	bool focus_received : 1;
 
+	// otherwise just draw empty frame
+	bool enabled : 1;
+
 	/**
 	 * whether focus has been received
 	 */
@@ -81,6 +91,17 @@ protected:
 	 * reference time for regulating cursor blinking
 	 */
 	uint32 cursor_reference_time;
+
+	gui_scrolled_list_t edit_menu;
+
+	/// the long press that opened the menu has not been lifted yet
+	bool edit_menu_opening_gesture;
+
+	/// the label of a command, translated
+	static const char *get_command_text( int cmd );
+
+	/// which entry lies under a point, -1 for none
+	int edit_menu_index_at( const scr_coord &point ) const;
 
 	/**
 	 * determine new cursor position from event coordinates
@@ -99,6 +120,8 @@ public:
 
 	gui_textinput_t();
 
+	~gui_textinput_t();
+
 	// update changes with delay (in ms), 0=immeadiately 0xFFFF=never
 	void set_notify_all_changes_delay(uint16 _n) { notify_all_changes_delay = _n; }
 
@@ -106,6 +129,8 @@ public:
 	 * Sets the Text buffer
 	 */
 	void set_text(char *text, size_t max);
+
+	void set_placeholder_text(const char *ptext) { placeholder_text = ptext; };
 
 	// text which is not yet inputed (i.e. for east asian text), assuming either native or utf8 encoding
 	void set_composition_status( char *composition, int target_start, int target_length );
@@ -126,6 +151,12 @@ public:
 	// x position of the current cursor (for IME purposes)
 	scr_coord_val get_current_cursor_x() { return calc_cursor_pos(head_cursor_pos); }
 
+	// set current selection (not checks!)
+	void set_cursor(sint32 h, sint32 t) {
+		head_cursor_pos = h;
+		tail_cursor_pos = t;
+	}
+
 	/**
 	 * Detect change of focus state and determine whether cursor should be displayed,
 	 * and call the function that performs the actual display
@@ -144,11 +175,21 @@ public:
 	scr_size get_max_size() const OVERRIDE;
 
 	scr_size get_min_size() const OVERRIDE;
+
+	void set_enabled(bool e) { enabled = e; }
+
+	/// true when the content must never leave the field (a password)
+	virtual bool is_secret() const { return false; }
+
+	bool action_triggered(gui_action_creator_t* comp, value_t extra) OVERRIDE;
 };
 
 
 class gui_hidden_textinput_t : public gui_textinput_t
 {
+public:
+	gui_hidden_textinput_t();
+
 	// and set the cursor right when clicking with the mouse
 	bool infowin_event(event_t const*) OVERRIDE;
 

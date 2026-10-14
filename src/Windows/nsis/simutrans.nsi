@@ -12,7 +12,7 @@
 ; untgz
 ; ShellLink
 
-!define VERSION "0.124.3.0"
+!define VERSION "0.125.0.1"
 
 VIProductVersion "${VERSION}"
 VIFileVersion "${VERSION}"
@@ -54,7 +54,7 @@ Function PostExeInstall
 
   ; just change to simuconf.tab "singleuser_install = 1"
   FileOpen $0 "$INSTDIR\config\simuconf.tab" a
-  FileSeek $0 924
+  FileSeek $0 903
   FileWrite $0 "singleuser_install = 1 "
   FileClose $0
   goto finishGDIexe
@@ -74,40 +74,50 @@ finishGDIexe:
 FunctionEnd
 
 Section /o "Executable (GDI)" GDIexe
-  AddSize 19612
-  StrCpy $downloadlink "http://downloads.sourceforge.net/project/simutrans/simutrans/124-3/simuwin-124-3.zip"
-  StrCpy $archievename "simuwin-124-3.zip"
-  StrCpy $downloadname "Simutrans Executable (GDI)"
+  AddSize 21504
+  StrCpy $downloadlink "http://downloads.sourceforge.net/project/simutrans/simutrans/125-0-1/simuwin-125-0-1.zip"
+  StrCpy $archievename "simuwin-125-0-1.zip"
+  StrCpy $downloadname "nodelete"
   SetOutPath $INSTDIR
   Call DownloadInstallZip
   Call PostExeInstall
 SectionEnd
 
 Section "Executable (SDL2)" SDLexe
-  AddSize 21988
-  StrCpy $downloadlink "http://downloads.sourceforge.net/project/simutrans/simutrans/124-3/simuwin-sdl-124-3.zip"
-  StrCpy $archievename "simuwin-sdl-124-3.zip"
-  StrCpy $downloadname "Simutrans Executable (SDL2)"
+  AddSize 23728
+  StrCpy $downloadlink "http://downloads.sourceforge.net/project/simutrans/simutrans/125-0-1/simuwin-sdl-125-0-1.zip"
+  StrCpy $archievename "simuwin-sdl-125-0-1.zip"
+  StrCpy $downloadname "nodelete"
   SetOutPath $INSTDIR
   Call DownloadInstallZip
   Call PostExeInstall
 SectionEnd
 
 Section /o "Executable (GDI 64bit)" GDI64exe
-  AddSize 18940
-  StrCpy $downloadlink "http://downloads.sourceforge.net/project/simutrans/simutrans/124-3/simuwin-x64-124-3.zip"
-  StrCpy $archievename "simuwin-x64-124-3.zip"
-  StrCpy $downloadname "Simutrans Executable (GDI) only needed for huge maps"
+  AddSize 20728
+  StrCpy $downloadlink "http://downloads.sourceforge.net/project/simutrans/simutrans/125-0-1/simuwin-x64-125-0-1.zip"
+  StrCpy $archievename "simuwin-x64-125-0-1.zip"
+  StrCpy $downloadname "nodelete"
   SetOutPath $INSTDIR
   Call DownloadInstallZip
   Call PostExeInstall
 SectionEnd
 
 Section /o "Executable (SDL2 64bit)" SDL64exe
-  AddSize 21128
-  StrCpy $downloadlink "http://downloads.sourceforge.net/project/simutrans/simutrans/124-3/simuwin-x64-sdl-124-3.zip"
-  StrCpy $archievename "simuwin-sdl-x64-124-3.zip"
-  StrCpy $downloadname "Simutrans Executable (SDL2) only needed for huge maps"
+  AddSize 22936
+  StrCpy $downloadlink "http://downloads.sourceforge.net/project/simutrans/simutrans/125-0-1/simuwin-x64-sdl-125-0-1.zip"
+  StrCpy $archievename "simuwin-x64-sdl-125-0-1.zip"
+  StrCpy $downloadname "nodelete"
+  SetOutPath $INSTDIR
+  Call DownloadInstallZip
+  Call PostExeInstall
+SectionEnd
+
+Section /o "Executable (SDL3 64bit beta)" SDL364exe
+  AddSize 24573
+  StrCpy $downloadlink "http://downloads.sourceforge.net/project/simutrans/simutrans/125-0-1/simuwin-x64-sdl3-125-0-1.zip"
+  StrCpy $archievename "simuwin-x64-sdl-125-0-1.zip"
+  StrCpy $downloadname "nodelete"
   SetOutPath $INSTDIR
   Call DownloadInstallZip
   Call PostExeInstall
@@ -144,11 +154,12 @@ SectionEnd
 
 ; make sure, at least one executable is installed
 Function .onSelChange
-!insertmacro StartRadioButtons $9
-    !insertmacro RadioButton ${GDIexe}
-    !insertmacro RadioButton ${SDLexe}
-    !insertmacro RadioButton ${GDI64exe}
-    !insertmacro RadioButton ${SDL64exe}
+!insertmacro StartRadioButtons $ExecutableRadioState
+  !insertmacro RadioButton ${GDIexe}
+  !insertmacro RadioButton ${SDLexe}
+  !insertmacro RadioButton ${GDI64exe}
+  !insertmacro RadioButton ${SDL64exe}
+  !insertmacro RadioButton ${SDL364exe}
 !insertmacro EndRadioButtons
 
 test_for_pak:

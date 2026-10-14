@@ -295,8 +295,8 @@ SOCKET network_open_address(char const* cp, char const*& err)
 
 				DBG_MESSAGE( "network_open_address()", "Potential remote address: %s", ipstr_remote );
 
-				// put socked in non-blocking mode...
 #ifdef WIN32
+				// put socked in non-blocking mode... (does only work for windows)
 				u_long block = 1;
 				if(  ioctlsocket(my_client_socket, FIONBIO, &block) != 0  )	{
 					my_client_socket = INVALID_SOCKET;
@@ -308,9 +308,10 @@ SOCKET network_open_address(char const* cp, char const*& err)
 				if (connect(my_client_socket, walk_remote->ai_addr, (socklen_t)walk_remote->ai_addrlen) != 0) {
 
 					if(  GET_LAST_ERROR() != EINPROGRESS) {
-						// connection failed
+						// connection failed: close this socket here, once, and do not use it again
 						network_close_socket(my_client_socket);
-						continue;
+						my_client_socket = INVALID_SOCKET;
+						break;
 					}
 
 					// connection pending
@@ -328,39 +329,50 @@ SOCKET network_open_address(char const* cp, char const*& err)
 					int ret = select(my_client_socket+1, NULL, &setW, &setE, &time_out);
 					if (ret <= 0) {
 						// select() failed or connection timed out
-						DBG_MESSAGE("network_open_address()", "Could not connect using this socket. select() Error: \"%s\"", strerror(GET_LAST_ERROR()));
-						network_close_socket(my_client_socket);
+						if (ret < 0) {
+							DBG_MESSAGE("network_open_address()", "Could not connect using this socket. select() Error: \"%s\"", strerror(GET_LAST_ERROR()));
+						}
+						else {
+							DBG_MESSAGE("network_open_address()", "Could not connect using this socket. select() timeout" );
+							err = "Connection timeout";
+						}
+#ifdef WIN32
+						ioctlsocket(my_client_socket, FIONBIO, &block);  // back to blocking
+#endif
 						continue;
 					}
 
 					if(  FD_ISSET(my_client_socket, &setE)  ) {
 						// connection failed
 						DBG_MESSAGE("network_open_address()", "Could not connect FD_ISSET failed.");
-						network_close_socket(my_client_socket);
+#ifdef WIN32
+						ioctlsocket(my_client_socket, FIONBIO, &block); // back to blocking
+#endif
 						continue;
 					}
 					// connection successful
 
-					// put socket in blocking mode...
 #ifdef WIN32
+					// put socket in blocking mode...
 					block = 0;
 					bool blocking_mode = ioctlsocket(my_client_socket, FIONBIO, &block) == 0;
 					if (!blocking_mode) {
 						DBG_MESSAGE("network_open_address()", "Could not reset to non-blocking.");
 						network_close_socket(my_client_socket);
-						continue;
+						my_client_socket = INVALID_SOCKET;
+						break;
 					}
 					// linux non-blocking sockets seems to not work at all!
 #endif
 				}
-
 				connected = true;
 			}
-			// If no connection throw away this socket and try the next one
-			if (  !connected  ) {
-				network_close_socket( my_client_socket );
-				my_client_socket = INVALID_SOCKET;
-			}
+		}
+
+		// If no connection throw away this socket and try the next one
+		if (!connected) {
+			network_close_socket(my_client_socket);
+			my_client_socket = INVALID_SOCKET;
 		}
 
 		freeaddrinfo( local );
@@ -790,7 +802,7 @@ bool network_send_data( SOCKET dest, const char *buf, const uint16 size, uint16 
  * @param sender
  * @param dest the destination buffer
  * @param len length of destination buffer and number of bytes to be received
- * @param received number of received bytes is returned here
+ * @param[out] received number of received bytes is returned here
  * @param timeout_ms
  * @return true if connection is still valid, false if an error occurs and connection needs to be closed
  */
@@ -989,32 +1001,35 @@ bool prepare_for_server( char *externalIPAddress, char *externalAltIPAddress, in
 		struct IGDdatas data;
 
 #if MINIUPNPC_API_VERSION <= 17
-		UPNP_GetValidIGD( devlist, &urls, &data, lanaddr, sizeof(lanaddr) );
+		int status = UPNP_GetValidIGD( devlist, &urls, &data, lanaddr, sizeof(lanaddr) );
 #else
 		char wanaddr[64] = "uset";
-		UPNP_GetValidIGD(devlist, &urls, &data, lanaddr, sizeof(lanaddr), wanaddr, sizeof(lanaddr));
+		int status = UPNP_GetValidIGD(devlist, &urls, &data, lanaddr, sizeof(lanaddr), wanaddr, sizeof(wanaddr));
 #endif
-		// we must know our IP address first
-		if(  UPNP_GetExternalIPAddress(urls.controlURL, data.first.servicetype, externalIPAddress) ==  UPNPCOMMAND_SUCCESS  ) {
-			// this is our ID (at least the routes tells us this)
-			char eport[19];
-			char *iport = eport;
-			sprintf( eport, "%d", port );
-			// remove anz forwarding
-			UPNP_DeletePortMapping(urls.controlURL, data.first.servicetype, eport, "TCP", NULL);
-			// setting up tcp redirect forever (last parameter "0")
-			if(  UPNP_AddPortMapping(urls.controlURL, data.first.servicetype, eport, iport, lanaddr, "simutrans", "TCP", 0, "0")  ==  UPNPCOMMAND_SUCCESS  ) {
-				// ok, we have our ID and redirected a port to us
-				has_IP = true;
+//		if (status == UPNP_PRIVATEIP_IGD || status == UPNP_CONNECTED_IGD) {
+		if (status == 1 || status == 2) {
+				// we must know our IP address first
+			if (UPNP_GetExternalIPAddress(urls.controlURL, data.first.servicetype, externalIPAddress) == UPNPCOMMAND_SUCCESS) {
+				// this is our ID (at least the routes tells us this)
+				char eport[19];
+				char* iport = eport;
+				sprintf(eport, "%d", port);
+				// remove anz forwarding
+				UPNP_DeletePortMapping(urls.controlURL, data.first.servicetype, eport, "TCP", NULL);
+				// setting up tcp redirect forever (last parameter "0")
+				if (UPNP_AddPortMapping(urls.controlURL, data.first.servicetype, eport, iport, lanaddr, "simutrans", "TCP", 0, "0") == UPNPCOMMAND_SUCCESS) {
+					// ok, we have our ID and redirected a port to us
+					has_IP = true;
+				}
+				else {
+					dbg->warning("prepare_for_server()", "Could not redirect port (but may be still ok");
+					has_IP = true;
+				}
 			}
-			else {
-				dbg->warning( "prepare_for_server()", "Could not redirect port (but may be still ok" );
-				has_IP = true;
-			}
+			FreeUPNPUrls(&urls);
 		}
-		FreeUPNPUrls(&urls);
+		freeUPNPDevlist(devlist);
 	}
-	freeUPNPDevlist(devlist);
 
 	externalAltIPAddress[0] = 0;
 	// use the same routine as later the announce routine, otherwise update with dynamic IP fails

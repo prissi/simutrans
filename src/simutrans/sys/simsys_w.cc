@@ -304,8 +304,14 @@ int dr_textur_resize(unsigned short** const textur, int w, int const h)
 
 	AllDib->bmiHeader.biWidth  = img_w;
 	AllDib->bmiHeader.biHeight = img_h;
-	WindowSize.right           = w;
-	WindowSize.bottom          = h;
+	// WindowSize is in physical client pixels: dr_os_open fills it that way and
+	// WM_PAINT consumes it that way, both as the blit destination and to derive
+	// the framebuffer height. w and h arrive here in logical pixels, so they have
+	// to be scaled back up. Storing them unscaled only matches at 100% scaling;
+	// above it every repaint after a resize paints into a too small rectangle and
+	// overwrites biHeight with a framebuffer height that is too small.
+	WindowSize.right           = (w * x_scale) / 32;
+	WindowSize.bottom          = (h * y_scale) / 32;
 
 #ifdef MULTI_THREAD
 	LeaveCriticalSection( &redraw_underway );
@@ -346,7 +352,7 @@ DWORD WINAPI dr_flush_screen(LPVOID /*lpParam*/)
 		// wait for finish of thread
 		EnterCriticalSection( &redraw_underway );
 		hdc = GetDC(hwnd);
-		display_flush_buffer();
+		gfx->flush_framebuffer();
 		ReleaseDC(hwnd, hdc);
 		hdc = NULL;
 		LeaveCriticalSection( &redraw_underway );
@@ -374,7 +380,7 @@ void dr_flush()
 #else
 	assert(hdc==NULL);
 	hdc = GetDC(hwnd);
-	display_flush_buffer();
+	gfx->flush_framebuffer();
 	ReleaseDC(hwnd, hdc);
 	hdc = NULL;
 #endif
@@ -493,6 +499,17 @@ static inline unsigned int ModifierKeys()
 		(GetKeyState(VK_SHIFT)   < 0  ? 1 : 0) |
 		(GetKeyState(VK_CONTROL) < 0  ? 2 : 0); // highest bit set or return value<0 -> key is pressed
 }
+
+
+// The client size is state, not history. sys_event holds a single pending
+// event and one message retrieval can dispatch several messages (the sent
+// ones, WM_SIZE among them, before the posted one is returned), so a resize
+// written into the slot is lost when a later message of the same retrieval
+// overwrites it. Keep only the newest client size here and let GetEvents()
+// hand it to the slot as soon as the slot is free.
+static bool   resize_pending = false;
+static uint16 resize_pending_w = 0;
+static uint16 resize_pending_h = 0;
 
 
 /* Windows eventhandler: does most of the work */
@@ -621,18 +638,20 @@ LRESULT WINAPI WindowProc(HWND this_hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 
 		case WM_SIZE: // resize client area
 			if(lParam!=0) {
-				sys_event.type = SIM_SYSTEM;
-				sys_event.code = SYSTEM_RESIZE;
-
-				sys_event.new_window_size_w = (LOWORD(lParam)*32)/x_scale;
-				if (sys_event.new_window_size_w <= 0) {
-					sys_event.new_window_size_w = 4;
+				// only the newest size matters; GetEvents() delivers it
+				int w = (LOWORD(lParam)*32)/x_scale;
+				if (w <= 0) {
+					w = 4;
 				}
 
-				sys_event.new_window_size_h = (HIWORD(lParam)*32)/y_scale;
-				if (sys_event.new_window_size_h <= 1) {
-					sys_event.new_window_size_h = 64;
+				int h = (HIWORD(lParam)*32)/y_scale;
+				if (h <= 1) {
+					h = 64;
 				}
+
+				resize_pending_w = (uint16)w;
+				resize_pending_h = (uint16)h;
+				resize_pending   = true;
 			}
 			break;
 
@@ -659,18 +678,18 @@ LRESULT WINAPI WindowProc(HWND this_hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 			if(  code >= 0x47  &&  code <= 0x52  &&  code != 0x4A  &&  code != 0x4e  ) {
 				if(  (GetKeyState( VK_NUMLOCK ) & 1) == 0  ||  (env_t::numpad_always_moves_map  &&  !win_is_textinput())  ) { // numlock off?
 					switch( code ) {
-						case 0x47: code = SIM_KEY_UPLEFT; break;
-						case 0x48: code = SIM_KEY_UP; break;
-						case 0x49: code = SIM_KEY_UPRIGHT; break;
-						case 0x4B: code = SIM_KEY_LEFT; break;
-						case 0x4C: code = SIM_KEY_CENTER; break;
-						case 0x4D: code = SIM_KEY_RIGHT; break;
-						case 0x4F: code = SIM_KEY_DOWNLEFT; break;
-						case 0x50: code = SIM_KEY_DOWN; break;
-						case 0x51: code = SIM_KEY_DOWNRIGHT; break;
-						case 0x52: code = SIM_KEY_NUMPAD_BASE; break;
+						case 0x47: code = SIM_KEYCODE_UPLEFT; break;
+						case 0x48: code = SIM_KEYCODE_UP; break;
+						case 0x49: code = SIM_KEYCODE_UPRIGHT; break;
+						case 0x4B: code = SIM_KEYCODE_LEFT; break;
+						case 0x4C: code = SIM_KEYCODE_CENTER; break;
+						case 0x4D: code = SIM_KEYCODE_RIGHT; break;
+						case 0x4F: code = SIM_KEYCODE_DOWNLEFT; break;
+						case 0x50: code = SIM_KEYCODE_DOWN; break;
+						case 0x51: code = SIM_KEYCODE_DOWNRIGHT; break;
+						case 0x52: code = SIM_KEYCODE_NUMPAD_BASE; break;
 					}
-					if(  code>=SIM_KEY_NUMPAD_BASE  ) {
+					if(  code>=SIM_KEYCODE_NUMPAD_BASE  ) {
 						// ok found something
 						sys_event.code = code;
 						break;
@@ -680,21 +699,21 @@ LRESULT WINAPI WindowProc(HWND this_hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 
 			// do low level special stuff here
 			switch (wParam) {
-				case VK_SCROLL: sys_event.code = SIM_KEY_SCROLLLOCK; break;
-				case VK_PAUSE:  sys_event.code = SIM_KEY_PAUSE; break;
-				case VK_LEFT:   sys_event.code = SIM_KEY_LEFT;  break;
-				case VK_RIGHT:  sys_event.code = SIM_KEY_RIGHT; break;
-				case VK_UP:     sys_event.code = SIM_KEY_UP;    break;
-				case VK_DOWN:   sys_event.code = SIM_KEY_DOWN;  break;
+				case VK_SCROLL: sys_event.code = SIM_KEYCODE_SCROLLLOCK; break;
+				case VK_PAUSE:  sys_event.code = SIM_KEYCODE_PAUSE; break;
+				case VK_LEFT:   sys_event.code = SIM_KEYCODE_LEFT;  break;
+				case VK_RIGHT:  sys_event.code = SIM_KEYCODE_RIGHT; break;
+				case VK_UP:     sys_event.code = SIM_KEYCODE_UP;    break;
+				case VK_DOWN:   sys_event.code = SIM_KEYCODE_DOWN;  break;
 				case VK_PRIOR:  sys_event.code = '>';           break;
 				case VK_NEXT:   sys_event.code = '<';           break;
 				case VK_DELETE: sys_event.code = 127;           break;
-				case VK_HOME:   sys_event.code = SIM_KEY_HOME;  break;
-				case VK_END:    sys_event.code = SIM_KEY_END;   break;
+				case VK_HOME:   sys_event.code = SIM_KEYCODE_HOME;  break;
+				case VK_END:    sys_event.code = SIM_KEYCODE_END;   break;
 			}
 			// check for F-Keys!
 			if (sys_event.code == 0 && wParam >= VK_F1 && wParam <= VK_F15) {
-				sys_event.code = wParam - VK_F1 + SIM_KEY_F1;
+				sys_event.code = wParam - VK_F1 + SIM_KEYCODE_F1;
 				//printf("WindowsEvent: Key %i, (state %i)\n", sys_event.code, sys_event.key_mod);
 			}
 			// some result?
@@ -722,10 +741,13 @@ LRESULT WINAPI WindowProc(HWND this_hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 		}
 
 		case WM_IME_SETCONTEXT:
-			// attempt to avoid crash at windows 1809> just not call DefWinodwsProc seems to work for SDL2 ...
-//			DefWindowProc( this_hwnd, msg, wParam, lParam&~ISC_SHOWUICOMPOSITIONWINDOW );
-			lParam = 0;
-			return 0;
+			// Simutrans draws the composition string itself, so hide the system
+			// composition window (this mask was also the workaround for the IME
+			// crash on Windows 10 1809). The message must still reach
+			// DefWindowProcW: otherwise the IME never shows the conversion
+			// candidate window at all.
+			lParam &= ~ISC_SHOWUICOMPOSITIONWINDOW;
+			return DefWindowProcW( this_hwnd, msg, wParam, lParam );
 
 		case WM_IME_STARTCOMPOSITION:
 			break;
@@ -747,7 +769,7 @@ LRESULT WINAPI WindowProc(HWND this_hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 							}
 							unsigned char pixel_width;
 							unsigned char unused;
-							get_next_char_with_metrics( composition, unused, pixel_width );
+							gfx->get_next_char_with_metrics( composition, unused, pixel_width );
 							x += pixel_width;
 						}
 						icp->pt.x = x;
@@ -937,9 +959,9 @@ static void internal_GetEvents(bool const wait)
 {
 	do {
 		// wait for keybord/mouse event
-		GetMessage(&msg, NULL, 0, 0);
+		GetMessageW(&msg, NULL, 0, 0);
 		TranslateMessage(&msg);
-		DispatchMessage(&msg);
+		DispatchMessageW(&msg);
 	} while(wait && sys_event.type == SIM_NOEVENT);
 
 }
@@ -947,7 +969,16 @@ static void internal_GetEvents(bool const wait)
 
 void GetEvents()
 {
-	if (sys_event.type==SIM_NOEVENT  &&  PeekMessage(&msg, NULL, 0, 0, PM_NOREMOVE)) {
+	if (sys_event.type==SIM_NOEVENT  &&  resize_pending) {
+		// the newest client size goes out before anything else is fetched
+		sys_event.type = SIM_SYSTEM;
+		sys_event.code = SYSTEM_RESIZE;
+		sys_event.new_window_size_w = resize_pending_w;
+		sys_event.new_window_size_h = resize_pending_h;
+		resize_pending = false;
+		return;
+	}
+	if (sys_event.type==SIM_NOEVENT  &&  PeekMessageW(&msg, NULL, 0, 0, PM_NOREMOVE)) {
 		internal_GetEvents(false);
 	}
 }

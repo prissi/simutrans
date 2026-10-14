@@ -125,6 +125,16 @@ player_t *obj_t::get_owner() const
 }
 
 
+// true if one can change this object
+bool obj_t::check_owner(const player_t* player) const
+{
+	if (owner_n!=PLAYER_UNOWNED  &&  player  &&  !player->is_public_service()) {
+		return player->get_player_nr() == owner_n;
+	}
+	return true;
+}
+
+
 /* the only general info we can give is the name
  * we want to format it nicely,
  * with two linebreaks at the end => thus the little extra effort
@@ -159,12 +169,10 @@ bool obj_t::has_managed_lifecycle() const {
 // returns NULL, if removal is allowed
 const char *obj_t::get_removal_error(const player_t *player)
 {
-	if(owner_n==PLAYER_UNOWNED  ||  welt->get_player(owner_n) == player  ||  welt->get_public_player() == player) {
+	if (check_owner(player)) {
 		return NULL;
 	}
-	else {
-		return "Der Besitzer erlaubt das Entfernen nicht";
-	}
+	return "Der Besitzer erlaubt das Entfernen nicht";
 }
 
 
@@ -196,7 +204,7 @@ void obj_t::display(int xpos, int ypos  CLIP_NUM_DEF) const
 	image_id image = get_image();
 	image_id const outline_image = get_outline_image();
 	if(  image!=IMG_EMPTY  ||  outline_image!=IMG_EMPTY  ) {
-		const int raster_width = get_current_tile_raster_width();
+		const int raster_width = gfx->get_current_tile_raster_width();
 		const bool is_dirty = get_flag(obj_t::dirty);
 
 		if (vehicle_base_t const* const v = obj_cast<vehicle_base_t>(this)) {
@@ -208,14 +216,14 @@ void obj_t::display(int xpos, int ypos  CLIP_NUM_DEF) const
 
 		if(  owner_n != PLAYER_UNOWNED  ) {
 			if(  obj_t::show_owner  ) {
-				display_blend( image, xpos, ypos, owner_n, color_idx_to_rgb(welt->get_player(owner_n)->get_player_color1()+2) | OUTLINE_FLAG | TRANSPARENT75_FLAG, 0, is_dirty  CLIP_NUM_PAR);
+				gfx->draw_blend( image, xpos, ypos, owner_n, gfx->palette_lookup(welt->get_player(owner_n)->get_player_color1()+2) | OUTLINE_FLAG | TRANSPARENT75_FLAG, 0, is_dirty  CLIP_NUM_PAR);
 			}
 			else {
-				display_color( image, xpos, ypos, owner_n, true, is_dirty  CLIP_NUM_PAR);
+				gfx->draw_color( image, xpos, ypos, owner_n, true, is_dirty  CLIP_NUM_PAR);
 			}
 		}
 		else {
-			display_normal( image, xpos, ypos, 0, true, is_dirty  CLIP_NUM_PAR);
+			gfx->draw_normal( image, xpos, ypos, 0, true, is_dirty  CLIP_NUM_PAR);
 		}
 
 		if(  outline_image != IMG_EMPTY  ) {
@@ -223,16 +231,16 @@ void obj_t::display(int xpos, int ypos  CLIP_NUM_DEF) const
 			const FLAGGED_PIXVAL transparent = get_outline_colour();
 			if(  TRANSPARENT_FLAGS&transparent  ) {
 				// only transparent outline
-				display_blend( get_outline_image(), xpos, ypos, owner_n, transparent, 0, is_dirty  CLIP_NUM_PAR);
+				gfx->draw_blend( get_outline_image(), xpos, ypos, owner_n, transparent, 0, is_dirty  CLIP_NUM_PAR);
 			}
 			else if(  obj_t::get_flag( highlight )  ) {
 				// highlight this tile
-				display_blend( image, xpos, ypos, owner_n, SYSCOL_OBJECT_HIGHLIGHT | OUTLINE_FLAG | TRANSPARENT75_FLAG, 0, is_dirty  CLIP_NUM_PAR);
+				gfx->draw_blend( image, xpos, ypos, owner_n, SYSCOL_OBJECT_HIGHLIGHT | OUTLINE_FLAG | TRANSPARENT75_FLAG, 0, is_dirty  CLIP_NUM_PAR);
 			}
 		}
 		else if(  obj_t::get_flag( highlight )  ) {
 			// highlight this tile
-			display_blend( get_image(), xpos, ypos, owner_n, SYSCOL_OBJECT_HIGHLIGHT | OUTLINE_FLAG | TRANSPARENT75_FLAG, 0, is_dirty  CLIP_NUM_PAR);
+			gfx->draw_blend( get_image(), xpos, ypos, owner_n, SYSCOL_OBJECT_HIGHLIGHT | OUTLINE_FLAG | TRANSPARENT75_FLAG, 0, is_dirty  CLIP_NUM_PAR);
 		}
 	}
 }
@@ -257,7 +265,7 @@ void obj_t::display_after(int xpos, int ypos, bool) const
 {
 	image_id image = get_front_image();
 	if(  image != IMG_EMPTY  ) {
-		const int raster_width = get_current_tile_raster_width();
+		const int raster_width = gfx->get_current_tile_raster_width();
 		const bool is_dirty = get_flag( obj_t::dirty );
 
 		xpos += tile_raster_scale_x( get_xoff(), raster_width );
@@ -265,22 +273,22 @@ void obj_t::display_after(int xpos, int ypos, bool) const
 
 		if(  owner_n != PLAYER_UNOWNED  ) {
 			if(  obj_t::show_owner  ) {
-				display_blend( image, xpos, ypos, owner_n, color_idx_to_rgb(welt->get_player(owner_n)->get_player_color1()+2) | OUTLINE_FLAG | TRANSPARENT75_FLAG, 0, is_dirty  CLIP_NUM_PAR);
+				gfx->draw_blend( image, xpos, ypos, owner_n, gfx->palette_lookup(welt->get_player(owner_n)->get_player_color1()+2) | OUTLINE_FLAG | TRANSPARENT75_FLAG, 0, is_dirty  CLIP_NUM_PAR);
 			}
 			else if(  obj_t::get_flag( highlight )  ) {
 				// highlight this tile
-				display_blend( image, xpos, ypos, owner_n, SYSCOL_OBJECT_HIGHLIGHT | OUTLINE_FLAG | TRANSPARENT75_FLAG, 0, is_dirty  CLIP_NUM_PAR);
+				gfx->draw_blend( image, xpos, ypos, owner_n, SYSCOL_OBJECT_HIGHLIGHT | OUTLINE_FLAG | TRANSPARENT75_FLAG, 0, is_dirty  CLIP_NUM_PAR);
 			}
 			else {
-				display_color( image, xpos, ypos, owner_n, true, is_dirty  CLIP_NUM_PAR);
+				gfx->draw_color( image, xpos, ypos, owner_n, true, is_dirty  CLIP_NUM_PAR);
 			}
 		}
 		else if(  obj_t::get_flag( highlight )  ) {
 			// highlight this tile
-			display_blend( image, xpos, ypos, owner_n, SYSCOL_OBJECT_HIGHLIGHT | OUTLINE_FLAG | TRANSPARENT75_FLAG, 0, is_dirty  CLIP_NUM_PAR);
+			gfx->draw_blend( image, xpos, ypos, owner_n, SYSCOL_OBJECT_HIGHLIGHT | OUTLINE_FLAG | TRANSPARENT75_FLAG, 0, is_dirty  CLIP_NUM_PAR);
 		}
 		else {
-			display_normal( image, xpos, ypos, 0, true, is_dirty  CLIP_NUM_PAR);
+			gfx->draw_normal( image, xpos, ypos, 0, true, is_dirty  CLIP_NUM_PAR);
 		}
 	}
 }
@@ -293,12 +301,12 @@ void obj_t::display_after(int xpos, int ypos, bool) const
 void obj_t::mark_image_dirty(image_id image, sint16 yoff) const
 {
 	if(  image != IMG_EMPTY  ) {
-		const sint16 rasterweite = get_tile_raster_width();
+		const sint16 rasterweite = gfx->get_tile_raster_width();
 		int xpos=0, ypos=0;
 		if(  is_moving()  ) {
 			vehicle_base_t const* const v = obj_cast<vehicle_base_t>(this);
 			// vehicles need finer steps to appear smoother
-			v->get_screen_offset( xpos, ypos, get_tile_raster_width() );
+			v->get_screen_offset( xpos, ypos, gfx->get_tile_raster_width() );
 		}
 
 		viewport_t *vp = welt->get_viewport();
@@ -306,15 +314,16 @@ void obj_t::mark_image_dirty(image_id image, sint16 yoff) const
 		// xpos, ypos, yoff are already in pixel units, no scaling needed
 
 		// mark the region after the image as dirty
-		display_mark_img_dirty( image, scr_pos.x + xpos, scr_pos.y + ypos + yoff);
+		gfx->mark_img_dirty(image, scr_pos.x + xpos, scr_pos.y + ypos + yoff);
 
 		// too close to border => set dirty to be sure (smoke, skyscrapers, birds, or the like)
-		scr_coord_val xbild = 0, ybild = 0, wbild = 0, hbild = 0;
-		display_get_image_offset( image, &xbild, &ybild, &wbild, &hbild );
-		const sint16 distance_to_border = 3 - (yoff+get_yoff()+ybild)/(rasterweite/4);
+		const scr_rect r = gfx->get_image_offset(image);
+		const sint16 distance_to_border = 3 - (yoff+get_yoff()+r.y)/(rasterweite/4);
 		if(  pos.x <= distance_to_border  ||  pos.y <= distance_to_border  ) {
 			// but only if the image is actually visible ...
-			if(   scr_pos.x+xbild+wbild >= 0  &&  xpos <= display_get_width()  &&   scr_pos.y+ybild+hbild >= 0  &&  ypos+ybild < display_get_height()  ) {
+			const scr_size screen = gfx->get_screen_size();
+
+			if(   scr_pos.x+r.x+r.w >= 0  &&  xpos <= screen.w  &&   scr_pos.y+r.y+r.h >= 0  &&  ypos+r.y < screen.h  ) {
 				welt->set_background_dirty();
 			}
 		}

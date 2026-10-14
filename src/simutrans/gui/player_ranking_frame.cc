@@ -88,6 +88,7 @@ static int compare_atv(uint8 player_nr_a, uint8 player_nr_b, uint8 atv_index)
 
 	if (a_player && b_player) {
 		comp = b_player->get_finance()->get_history_veh_year((transport_type)player_ranking_frame_t::transport_type_option, years_back, atv_index) - a_player->get_finance()->get_history_veh_year((transport_type)player_ranking_frame_t::transport_type_option, years_back, atv_index);
+
 		if (comp == 0  &&  years_back > 0) {
 			// tie breaker: next year
 			comp = b_player->get_finance()->get_history_veh_year((transport_type)player_ranking_frame_t::transport_type_option, years_back - 1, atv_index) - a_player->get_finance()->get_history_veh_year((transport_type)player_ranking_frame_t::transport_type_option, years_back - 1, atv_index);
@@ -109,11 +110,12 @@ static int compare_atv(uint8 player_nr_a, uint8 player_nr_b, uint8 atv_index)
 static int compare_atc(uint8 player_nr_a, uint8 player_nr_b, uint8 atc_index)
 {
 	sint64 comp = 0;
-	player_t* a_player = world()->get_player(player_nr_a);
-	player_t* b_player = world()->get_player(player_nr_b);
+	const player_t *a_player = world()->get_player(player_nr_a);
+	const player_t *b_player = world()->get_player(player_nr_b);
 
 	if (a_player && b_player) {
 		comp = b_player->get_finance()->get_history_com_year(years_back, atc_index) - a_player->get_finance()->get_history_com_year(years_back, atc_index);
+
 		if (comp == 0  &&  years_back > 0) {
 			comp = b_player->get_finance()->get_history_com_year(years_back - 1, atc_index) - a_player->get_finance()->get_history_com_year(years_back - 1, atc_index);
 		}
@@ -125,9 +127,11 @@ static int compare_atc(uint8 player_nr_a, uint8 player_nr_b, uint8 atc_index)
 	else if (b_player) {
 		return false;
 	}
+
 	if (comp == 0) {
 		comp = player_nr_b - player_nr_a;
 	}
+
 	return comp>0;
 }
 
@@ -177,7 +181,7 @@ void player_button_t::update()
 	player_t* player = world()->get_player(player_nr);
 	if (player) {
 		set_text(player->get_name());
-		background_color = color_idx_to_rgb(player->get_player_color1() + env_t::gui_player_color_bright);
+		background_color = gfx->palette_lookup(player->get_player_color1() + env_t::gui_player_color_bright);
 		enable();
 		set_visible(true);
 	}
@@ -200,7 +204,8 @@ player_ranking_frame_t::player_ranking_frame_t(uint8 selected_player_nr) :
 	add_table(2, 1)->set_alignment(ALIGN_TOP);
 	{
 		add_component(&chart);
-		sint32 years_back = clamp(welt->get_last_year() - welt->get_settings().get_starting_year(), 2, MAX_PLAYER_HISTORY_YEARS);
+		// +1: span starting_year..last_year inclusive, else the first year is cut off
+		sint32 years_back = clamp(welt->get_last_year() - welt->get_settings().get_starting_year() + 1, 2, MAX_PLAYER_HISTORY_YEARS);
 		chart.set_dimension(years_back, 10000);
 		chart.set_seed(welt->get_last_year());
 		chart.set_background(SYSCOL_CHART_BACKGROUND);
@@ -246,7 +251,7 @@ player_ranking_frame_t::player_ranking_frame_t(uint8 selected_player_nr) :
 	{
 		for (uint8 i = 0; i < MAX_PLAYER_RANKING_CHARTS; i++) {
 			bt_charts[i].init(button_t::roundbox_state | button_t::flexible, cost_type_name[i]);
-			bt_charts[i].background_color = color_idx_to_rgb(cost_type_color[i]);
+			bt_charts[i].background_color = gfx->palette_lookup(cost_type_color[i]);
 			if (i == selected_item) bt_charts[i].pressed = true;
 			bt_charts[i].add_listener(this);
 			add_component(&bt_charts[i]);
@@ -386,7 +391,7 @@ void player_ranking_frame_t::update_chart(bool full_update)
 		bt_charts[i].pressed = i == selected_item;
 	}
 
-	// rebuilt list
+	// rebuild list
 	if (full_update) {
 		cont_players.remove_all();
 		cont_players.set_table_layout(3, 0);
@@ -396,15 +401,17 @@ void player_ranking_frame_t::update_chart(bool full_update)
 		count = 0;
 		for (uint i = 0; i < buttons.get_count(); i++) {
 			const uint8 player_nr = buttons.at(i)->get_player_nr();
+
 			// Exclude players who are not in the competition
 			if (player_nr == PLAYER_PUBLIC_NR || is_chart_table_zero(player_nr)) {
 				continue;
 			}
+
 			count++;
 			switch (count)
 			{
 			case 1:
-				cont_players.new_component<gui_label_t>("1", color_idx_to_rgb(COL_YELLOW), gui_label_t::centered);
+				cont_players.new_component<gui_label_t>("1", gfx->palette_lookup(COL_YELLOW), gui_label_t::centered);
 				break;
 			case 2:
 				cont_players.new_component<gui_label_t>("2", 0, gui_label_t::centered);
@@ -430,7 +437,8 @@ void player_ranking_frame_t::update_chart(bool full_update)
 	}
 
 	const bool is_atv = history_type_idx[selected_item * 2];
-	sint32 chart_years_back = clamp(welt->get_last_year() - welt->get_settings().get_starting_year(), 2, MAX_PLAYER_HISTORY_YEARS);
+	// +1: span starting_year..last_year inclusive, else the first year is cut off
+	sint32 chart_years_back = clamp(welt->get_last_year() - welt->get_settings().get_starting_year() + 1, 2, MAX_PLAYER_HISTORY_YEARS);
 	if (full_update) {
 		chart.set_dimension(chart_years_back, 10000);
 
@@ -446,7 +454,7 @@ void player_ranking_frame_t::update_chart(bool full_update)
 				const int curve_type = (int)cost_type[selected_item];
 				const int curve_precision = (curve_type == gui_chart_t::STANDARD) ? 0 : (curve_type == gui_chart_t::MONEY || curve_type == gui_chart_t::PERCENT) ? 2 : 1;
 				//			gui_chart_t::chart_marker_t marker = (np==selected_player) ? gui_chart_t::square : gui_chart_t::none;
-				chart.add_curve(color_idx_to_rgb(player->get_player_color1() + 3), *p_chart_table, MAX_PLAYER_COUNT - 1, np, chart_years_back, curve_type, true, false, curve_precision, NULL);
+				chart.add_curve(gfx->palette_lookup(player->get_player_color1() + 3), *p_chart_table, MAX_PLAYER_COUNT - 1, np, chart_years_back, curve_type, true, false, curve_precision, NULL);
 			}
 		}
 
@@ -501,6 +509,7 @@ void player_ranking_frame_t::update_chart(bool full_update)
 
 	transport_type_c.set_visible(is_atv);
 	scrolly.set_visible(count > 0);
+
 	if (full_update  ||  cont_min_sz!=cont_players.get_min_size()) {
 		resize(scr_size(0, 0));
 		reset_min_windowsize();
@@ -514,15 +523,18 @@ void player_ranking_frame_t::draw(scr_coord pos, scr_size size)
 		// new year has started:
 		last_year = world()->get_last_year();
 		sint32 years_back = clamp(last_year - welt->get_settings().get_starting_year(), 2, MAX_PLAYER_HISTORY_YEARS);
-		// rebuilt year list
+		// rebuild year list
 		sint32 sel = years_back_c.get_selection();
+
 		years_back_c.clear_elements();
 		years_back_c.new_component<gui_scrolled_list_t::const_text_scrollitem_t>(translator::translate("This Year"), SYSCOL_TEXT);
 		years_back_c.new_component<gui_scrolled_list_t::const_text_scrollitem_t>(translator::translate("Last Year"), SYSCOL_TEXT);
+
 		for (int i = 1; i < years_back; i++) {
 			sprintf(years_back_s[i - 1], "%i", last_year - i - 1);
 			years_back_c.new_component<gui_scrolled_list_t::const_text_scrollitem_t>(years_back_s[i - 1], SYSCOL_TEXT);
 		}
+
 		chart.set_seed(last_year);
 		years_back_c.set_selection(sel <= 0 ? 0 : (sel == 1 ? 1 : sel + 1));
 		update_chart(true);
@@ -546,5 +558,6 @@ void player_ranking_frame_t::rdwr(loadsave_t* file)
 		chart.set_seed(last_year);
 		update_chart(true);
 	}
+
 	scrolly.rdwr(file);
 }

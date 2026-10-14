@@ -27,17 +27,13 @@
 
 
 gameinfo_t::gameinfo_t(karte_t *welt) :
-	map_idx(MINIMAP_SIZE,MINIMAP_SIZE),
-	map_rgb(MINIMAP_SIZE,MINIMAP_SIZE),
+	map_pixval(MINIMAP_SIZE,MINIMAP_SIZE),
 	game_comment(""),
 	file_name(""),
 	pak_name("")
 {
 	size_x = welt->get_size().x;
 	size_y = welt->get_size().y;
-
-	// create a minimap
-
 
 	industries = welt->get_fab_list().get_count();
 	tourist_attractions = welt->get_attractions().get_count();
@@ -47,14 +43,14 @@ gameinfo_t::gameinfo_t(karte_t *welt) :
 		citizen_count += i->get_einwohner();
 	}
 
+	// make minimap
 	const int gr_x = welt->get_size().x;
 	const int gr_y = welt->get_size().y;
 	for( uint16 i = 0; i < MINIMAP_SIZE; i++ ) {
 		for( uint16 j = 0; j < MINIMAP_SIZE; j++ ) {
 			const koord pos(i * gr_x / MINIMAP_SIZE, j * gr_y / MINIMAP_SIZE);
 			const grund_t* gr = welt->lookup_kartenboden(pos);
-			map_rgb.at(i,j) = minimap_t::calc_ground_color(gr);
-			map_idx.at(i,j) = color_rgb_to_idx( map_rgb.at(i,j) );
+			map_pixval.at(i,j) = minimap_t::calc_ground_color(gr);
 		}
 	}
 
@@ -85,7 +81,7 @@ gameinfo_t::gameinfo_t(karte_t *welt) :
 	bits_per_month = s.get_bits_per_month();
 
 	// names of the stations ...
-	tstrncpy(language_code_names, translator::get_langs()[s.get_name_language_id()].iso, lengthof(language_code_names));
+	tstrncpy(language_code_names, translator::get_langs()[s.get_name_language_id()].iso_base, lengthof(language_code_names));
 
 	// will contain server-IP/name for network games
 	file_name = s.get_filename();
@@ -108,16 +104,18 @@ gameinfo_t::gameinfo_t(karte_t *welt) :
 	game_engine_revision = 0;
 #endif
 	pakset_checksum = *(pakset_info_t::get_checksum());
+
+	motd = welt->get_settings().motd;
 }
 
 
 gameinfo_t::gameinfo_t(loadsave_t *file) :
-	map_idx(MINIMAP_SIZE,MINIMAP_SIZE),
-	map_rgb(MINIMAP_SIZE,MINIMAP_SIZE),
+	map_pixval(MINIMAP_SIZE,MINIMAP_SIZE),
 	game_comment(""),
 	file_name(""),
 	pak_name("")
 {
+	motd = "";
 	rdwr( file );
 }
 
@@ -130,10 +128,10 @@ void gameinfo_t::rdwr(loadsave_t *file)
 	file->rdwr_long( size_y );
 	for( int y=0;  y<MINIMAP_SIZE;  y++  ) {
 		for( int x=0;  x<MINIMAP_SIZE;  x++  ) {
-			file->rdwr_short( map_idx.at(x,y) );
-			if (file->is_loading()) {
-				map_rgb.at(x,y) = color_idx_to_rgb(map_idx.at(x,y));
-			}
+			// one 16 bit word per pixel is the protocol, whatever a screen pixel is
+			NETWORK_PIXVAL c = (NETWORK_PIXVAL)map_pixval.at(x,y);
+			file->rdwr_short( c );
+			map_pixval.at(x,y) = (PIXVAL)c;
 		}
 	}
 
@@ -176,8 +174,17 @@ void gameinfo_t::rdwr(loadsave_t *file)
 	if(  file->is_loading()  ) {
 		pak_name = temp;
 	}
-	file->rdwr_long( game_engine_revision );
-
+	if (file->is_version_atleast(124, 4)) {
+		// cannot use the temp buffer above because PATH_MAX is 260 on Windows
+		// which is too small (need at least MAX_MOTD_LEN+1
+		char motd_buf[MAX_MOTD_LEN+1];
+		tstrncpy(motd_buf, motd.c_str(), lengthof(motd_buf));
+		file->rdwr_str(motd_buf, lengthof(motd_buf)); // motd for server
+		if (file->is_loading()) {
+			motd = motd_buf;
+		}
+	}
+	file->rdwr_long(game_engine_revision);
 	for(  int i=0;  i<16;  i++  ) {
 		file->rdwr_byte( player_type[i] );
 	}

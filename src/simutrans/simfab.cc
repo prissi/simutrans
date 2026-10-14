@@ -37,6 +37,7 @@
 #include "dataobj/translator.h"
 #include "dataobj/loadsave.h"
 #include "dataobj/pakset_manager.h"
+#include "dataobj/powernet.h"
 
 #include "descriptor/factory_desc.h"
 #include "builder/hausbauer.h"
@@ -44,6 +45,7 @@
 #include "builder/fabrikbauer.h"
 
 #include "gui/fabrik_info.h"
+#include "gui/minimap.h"
 
 #include "utils/simrandom.h"
 #include "utils/cbuffer.h"
@@ -422,7 +424,7 @@ void fabrik_t::update_scaled_pax_demand()
 	// formula : desc_pax_demand * (current_production_base / desc_production_base); (prod >> 1) is for rounding
 	const uint32 pax_demand = (uint32)( ( desc_pax_demand * (sint64)prodbase + (prod >> 1) ) / prod );
 	// then, scaling based on month length
-	scaled_pax_demand = (uint32)welt->scale_with_month_length(pax_demand);
+	scaled_pax_demand = min( (uint32)welt->scale_with_month_length(pax_demand), 932067 );
 	if(  scaled_pax_demand == 0  &&  desc_pax_demand > 0  ) {
 		scaled_pax_demand = 1; // since desc pax demand > 0 -> ensure no less than 1
 	}
@@ -439,7 +441,7 @@ void fabrik_t::update_scaled_mail_demand()
 	// formula : desc_mail_demand * (current_production_base / desc_production_base); (prod >> 1) is for rounding
 	const uint32 mail_demand = (uint32)( ( desc_mail_demand * (sint64)prodbase + (prod >> 1) ) / prod );
 	// then, scaling based on month length
-	scaled_mail_demand = (uint32)welt->scale_with_month_length(mail_demand);
+	scaled_mail_demand = min( (uint32)welt->scale_with_month_length(mail_demand), 932067);
 	if(  scaled_mail_demand == 0  &&  desc_mail_demand > 0  ) {
 		scaled_mail_demand = 1; // since desc mail demand > 0 -> ensure no less than 1
 	}
@@ -1006,6 +1008,23 @@ void fabrik_t::build(sint32 rotate, bool build_fields, bool force_initial_prodba
 }
 
 
+bool fabrik_t::can_build_field_on_ground(const grund_t *gr, climate cl) const
+{
+	if (!gr)                                                       return false;
+	if (gr->get_typ() != grund_t::boden || !gr->ist_natur())       return false;
+	if (gr->get_grund_hang() != slope_t::flat)                     return false;
+	if (!this->get_desc()->get_building()->is_allowed_climate(cl)) return false;
+
+	// Do not remove transformers of solar farms etc.
+	if (gr->find<pumpe_t>() || gr->find<senke_t>()) return false;
+
+	// allow building fields below power lines
+	if (gr->kann_alle_obj_entfernen(NULL) != NULL && !gr->find<leitung_t>()) return false;
+
+	return true;
+}
+
+
 /* field generation code
  */
 bool fabrik_t::add_random_field(uint16 probability)
@@ -1024,22 +1043,20 @@ bool fabrik_t::add_random_field(uint16 probability)
 	uint8 radius = 1;
 
 	// pick a coordinate to use - create a list of valid locations and choose a random one
-	slist_tpl<grund_t *> build_locations;
+	vector_tpl<grund_t *> build_locations;
 	do {
 		for(sint32 xoff = -radius; xoff < radius + get_desc()->get_building()->get_size().x ; xoff++) {
 			for(sint32 yoff =-radius ; yoff < radius + get_desc()->get_building()->get_size().y; yoff++) {
 				// if we can build on this tile then add it to the list
-				grund_t *gr = welt->lookup_kartenboden(pos.get_2d()+koord(xoff,yoff));
-				if (gr != NULL &&
-						gr->get_typ()        == grund_t::boden &&
-						get_desc()->get_building()->is_allowed_climate(welt->get_climate(pos.get_2d()+koord(xoff,yoff))) &&
-						gr->get_grund_hang() == slope_t::flat &&
-						gr->ist_natur() &&
-						(gr->find<leitung_t>() || gr->kann_alle_obj_entfernen(NULL) == NULL)) {
+				const planquadrat_t *plan = welt->access(pos.get_2d() + koord(xoff, yoff));
+				grund_t *kb = NULL;
+
+				if (plan && (kb = plan->get_kartenboden())!=NULL && this->can_build_field_on_ground(kb, plan->get_climate())) {
 					// only on same height => climate will match!
-					build_locations.append(gr);
-					assert(gr->find<field_t>() == NULL);
+					build_locations.append(kb);
+					assert(kb->find<field_t>() == NULL);
 				}
+
 				// skip inside of rectangle (already checked earlier)
 				if(radius > 1 && yoff == -radius && (xoff > -radius && xoff < radius + get_desc()->get_building()->get_size().x - 1)) {
 					yoff = radius + get_desc()->get_building()->get_size().y - 2;
@@ -1050,14 +1067,17 @@ bool fabrik_t::add_random_field(uint16 probability)
 			radius++;
 		}
 	} while (radius < 10 && build_locations.empty());
-	// built on one of the positions
-	if (!build_locations.empty()) {
-		grund_t *gr = build_locations.at(simrand(build_locations.get_count()));
+
+	// build on one of the positions
+	while (!build_locations.empty()) {
+		grund_t *gr = build_locations[simrand(build_locations.get_count())];
 		leitung_t* lt = gr->find<leitung_t>();
+
 		if(lt) {
 			gr->obj_remove(lt);
 		}
 		gr->obj_loesche_alle(NULL);
+
 		// first make foundation below
 		const koord k = gr->get_pos().get_2d();
 		field_data_t new_field(k);
@@ -1089,6 +1109,7 @@ void fabrik_t::remove_field_at(koord pos)
 	field = fields[ fields.index_of(field) ];
 	const field_class_desc_t *const field_class = desc->get_field_group()->get_field_class( field.field_class_index );
 	fields.remove(field);
+	minimap_t::get_instance()->set_dirty();
 	// revert the field's effect on production base and storage capacities
 	set_base_production( prodbase - field_class->get_field_production() );
 }
@@ -1158,14 +1179,12 @@ void fabrik_t::rdwr(loadsave_t *file)
 	else {
 		char s[256];
 		file->rdwr_str(s, lengthof(s));
-DBG_DEBUG("fabrik_t::rdwr()","loading factory '%s'",s);
 		desc = factory_builder_t::get_desc(s);
 		if(  desc==NULL  ) {
 			//  maybe it was only renamed?
 			desc = factory_builder_t::get_desc(translator::compatibility_name(s));
 		}
 		if(  desc==NULL  ) {
-			dbg->warning( "fabrik_t::rdwr()", "Pak-file for factory '%s' missing!", s );
 			// we continue loading even if desc==NULL
 			pakset_manager_t::add_missing_paks( s, MISSING_FACTORY );
 		}
@@ -1659,11 +1678,7 @@ sint32 fabrik_t::get_power_consumption() const
 	if( transformers.empty() ) {
 		return 0;
 	}
-	pumpe_t *const trans = dynamic_cast<pumpe_t *>(transformers.front());
-	if(  trans == NULL  ) {
-		return 0;
-	}
-	return trans->get_power_consumption();
+	return transformers.front()->get_net()->get_normal_demand();
 }
 
 void fabrik_t::set_power_demand(uint32 demand)
@@ -1695,11 +1710,7 @@ sint32 fabrik_t::get_power_satisfaction() const
 	if( transformers.empty() ) {
 		return 0;
 	}
-	senke_t *const trans = dynamic_cast<senke_t *>(transformers.front());
-	if(  trans == NULL  ) {
-		return 0;
-	}
-	return trans->get_power_satisfaction();
+	return transformers.front()->get_net()->get_normal_demand();
 }
 
 sint64 fabrik_t::get_power() const
@@ -1936,6 +1947,7 @@ void fabrik_t::step(uint32 delta_t)
 				// Classic producer logic.
 				currently_requiring_power = false;
 				currently_producing = false;
+				uint32 power = 0;
 
 				// produces something
 				for(  uint32 product = 0;  product < output.get_count();  product++  ) {
@@ -1962,6 +1974,10 @@ void fabrik_t::step(uint32 delta_t)
 							// if less than 3/4 filled we neary always consume power
 							currently_requiring_power |= (output[product].menge*4 < output[product].max*3);
 							currently_producing = true;
+							if(  desc->is_electricity_producer()  ) {
+								// power station => produce power
+								power += (uint32)( ((sint64)scaled_electric_demand * (sint64)(DEFAULT_PRODUCTION_FACTOR + prodfactor_pax + prodfactor_mail)) >> DEFAULT_PRODUCTION_FACTOR_BITS );
+							}
 						}
 						else {
 							output[product].book_stat((sint64)(output[product].max - 1 - output[product].menge) * (sint64)desc->get_product(product)->get_factor(), FAB_GOODS_PRODUCED);
@@ -1969,6 +1985,7 @@ void fabrik_t::step(uint32 delta_t)
 						}
 					}
 				}
+				set_power_supply(power);
 
 				break;
 			}
@@ -2011,6 +2028,11 @@ void fabrik_t::step(uint32 delta_t)
 
 				// normalize work with respect to output number
 				work /= output.get_count();
+				if(  desc->is_electricity_producer()  ) {
+					// compute power production
+					uint64 pp = ((uint64)scaled_electric_demand * (uint64)boost * (uint64)work) >> (DEFAULT_PRODUCTION_FACTOR_BITS + WORK_BITS);
+					set_power_supply((uint32)pp);
+				}
 
 				break;
 			}
@@ -2063,6 +2085,7 @@ void fabrik_t::step(uint32 delta_t)
 							}
 						}
 					}
+					uint32 power = 0;
 
 					// and finally consume stock
 					for(  uint32 index = 0;  index < input.get_count();  index++  ) {
@@ -2071,6 +2094,10 @@ void fabrik_t::step(uint32 delta_t)
 						if(  (uint32)input[index].menge > v + 1  ) {
 							input[index].menge -= v;
 							input[index].book_stat((sint64)v * (sint64)desc->get_supplier(index)->get_consumption(), FAB_GOODS_CONSUMED);
+							if(  desc->is_electricity_producer()  ) {
+								// power station => produce power
+								power += (uint32)( ((sint64)scaled_electric_demand * (sint64)(DEFAULT_PRODUCTION_FACTOR + prodfactor_pax + prodfactor_mail)) >> DEFAULT_PRODUCTION_FACTOR_BITS );
+							}
 						}
 						else {
 							input[index].book_stat((sint64)input[index].menge * (sint64)desc->get_supplier(index)->get_consumption(), FAB_GOODS_CONSUMED);
@@ -2080,6 +2107,7 @@ void fabrik_t::step(uint32 delta_t)
 
 					// work done is consumption rate
 					work = work_from_production(prod, consumed_menge);
+					set_power_supply(power);
 				}
 
 				break;
@@ -2191,6 +2219,11 @@ void fabrik_t::step(uint32 delta_t)
 							input[index].menge = 0;
 							inactive_inputs ++;
 						}
+					}
+					if(  desc->is_electricity_producer()  ) {
+						// compute power production
+						uint64 pp = ((uint64)scaled_electric_demand * (uint64)boost * (uint64)work) >> (DEFAULT_PRODUCTION_FACTOR_BITS + WORK_BITS);
+						set_power_supply((uint32)pp);
 					}
 				}
 				break;
@@ -2926,7 +2959,6 @@ void fabrik_t::info_prod(cbuffer_t& buf) const
 	buf.append( translator::translate("Durchsatz") );
 	buf.append(get_current_production(), 0);
 	buf.append( translator::translate("units/day") );
-	buf.append("\n");
 	buf.printf(translator::translate("Produces: %.1f units/minute"),
 		get_production_per_second() * 60.0
 	);
@@ -3022,6 +3054,36 @@ void fabrik_t::info_prod(cbuffer_t& buf) const
 				);
 			}
 		}
+	}
+}
+
+
+void fabrik_t::info_power(cbuffer_t& buf) const
+{
+	buf.clear();
+
+	// capacity offered to the net now, already scaled by production level and boost
+	sint64 generation = get_power_supply();
+	buf.printf(translator::translate("Generation: %.0f MW"), (double)convert_power(generation));
+	buf.append("\n");
+
+	if(!transformers.empty()) {
+		// The supply is fed into the net by this factory's own transformer (a pumpe_t);
+		// this part is what the net actually draws from this plant:
+		// supply * normalised demand,
+		// the same figure the "Power (MW)" curve records every month
+		powernet_t* const net = transformers.front()->get_net();
+		buf.printf(translator::translate("Net ID: %p"), net);
+		buf.append("\n");
+		sint64 used_power = get_power();
+		double usage = 100.0 * (double)used_power / (double)generation;
+		buf.printf(translator::translate("Usage: %.0f %%"), usage);
+		buf.printf(" (%.0f MW)", (double)convert_power(used_power));
+	}
+	else {
+		// Without transformer, the plant feeds nothing to a net at all,
+		// and get_power_supply() is 0, so only the net lines have to be left out.
+		buf.append(translator::translate("No transformer connected."));
 	}
 }
 
@@ -3361,18 +3423,26 @@ sint32 fabrik_t::calculate_work_rate_ramp(sint32 const amount, sint32 const mini
 /**
  * Draws some nice colored bars giving some status information
  */
-void fabrik_t::display_status(sint16 xpos, sint16 ypos)
+void fabrik_t::display_status(sint16 xpos, sint16 ypos, bool show_below)
 {
 	const sint16 count = input.get_count()+output.get_count();
 
-	ypos += -D_WAITINGBAR_WIDTH - LINESPACE/6;
-	xpos -= (count * D_WAITINGBAR_WIDTH - get_tile_raster_width()) / 2;
+	ypos += -D_WAITINGBAR_WIDTH - LINESPACE/6 + show_below;
+	xpos -= (count * D_WAITINGBAR_WIDTH - gfx->get_tile_raster_width()) / 2;
 
 	if( input.get_count() ) {
-		if(  currently_producing  ) {
-			display_ddd_box_clip_rgb(xpos-2,  ypos-1, D_WAITINGBAR_WIDTH*input.get_count()+4, 6, color_idx_to_rgb(10), color_idx_to_rgb(12));
+		if (show_below) {
+			if (currently_producing) {
+				gfx->draw_box3d_clipped(xpos - 2, ypos + 6, D_WAITINGBAR_WIDTH * input.get_count() + 4, 6, gfx->palette_lookup(10), gfx->palette_lookup(12));
+			}
+			gfx->draw_rect_clipped(xpos - 1, ypos + 7, D_WAITINGBAR_WIDTH * input.get_count() + 2, 4, gfx->palette_lookup(status_to_color[status]), true CLIP_NUM_DEFAULT);
 		}
-		display_fillbox_wh_clip_rgb(xpos-1, ypos, D_WAITINGBAR_WIDTH*input.get_count()+2, 4, color_idx_to_rgb(150), true);
+		else {
+			if (currently_producing) {
+				gfx->draw_box3d_clipped(xpos - 2, ypos - 1, D_WAITINGBAR_WIDTH * input.get_count() + 4, 6, gfx->palette_lookup(10), gfx->palette_lookup(12));
+			}
+			gfx->draw_rect_clipped(xpos - 1, ypos, D_WAITINGBAR_WIDTH * input.get_count() + 2, 4, gfx->palette_lookup(status_to_color[status]), true CLIP_NUM_DEFAULT);
+		}
 
 		for(uint32 i=0; i < input.get_count(); i++) {
 			ware_production_t const& goods = input[i];
@@ -3386,16 +3456,17 @@ void fabrik_t::display_status(sint16 xpos, sint16 ypos)
 			if (storage_capacity) {
 				const uint32 stock_quantity = (uint32)((FAB_DISPLAY_UNIT_HALF + (sint64)goods.menge * pfactor) >> (precision_bits + DEFAULT_PRODUCTION_FACTOR_BITS));
 				const PIXVAL goods_color = goods.get_typ()->get_color();
-				const uint16 v = min(25, (uint16)(25 * stock_quantity / storage_capacity)) + 2;
+				const scr_coord_val v = min(25, (uint16)(25 * stock_quantity / storage_capacity)) + 2;
+				const scr_coord_val vv = show_below ? -13 : v;
 
 				if (currently_producing) {
-					display_fillbox_wh_clip_rgb(xpos, ypos - v - 1, 1, v, color_idx_to_rgb(COL_GREY4), true);
-					display_fillbox_wh_clip_rgb(xpos + 1, ypos - v - 1, D_WAITINGBAR_WIDTH - 2, v, goods_color, true);
-					display_fillbox_wh_clip_rgb(xpos + D_WAITINGBAR_WIDTH - 1, ypos - v - 1, 1, v, color_idx_to_rgb(COL_GREY1), true);
+					gfx->draw_rect_clipped(xpos, ypos - vv - 1, 1, v, gfx->palette_lookup(COL_GREY4), true CLIP_NUM_DEFAULT);
+					gfx->draw_rect_clipped(xpos + 1, ypos - vv - 1, D_WAITINGBAR_WIDTH - 2, v, goods_color, true CLIP_NUM_DEFAULT);
+					gfx->draw_rect_clipped(xpos + D_WAITINGBAR_WIDTH - 1, ypos - vv - 1, 1, v, gfx->palette_lookup(COL_GREY1), true CLIP_NUM_DEFAULT);
 				}
 				else {
-					display_blend_wh_rgb(xpos + 1, ypos - v - 1, D_WAITINGBAR_WIDTH - 2, v, goods_color, 60);
-					mark_rect_dirty_wc(xpos + 1, ypos - v - 1, xpos + D_WAITINGBAR_WIDTH - 1, ypos - 1);
+					gfx->tint_rect(xpos + 1, ypos - v - 1, D_WAITINGBAR_WIDTH - 2, vv, goods_color, 60);
+					gfx->mark_rect_dirty_wc(xpos + 1, ypos - vv - 1, xpos + D_WAITINGBAR_WIDTH - 1, ypos - 1);
 				}
 			}
 
@@ -3405,10 +3476,18 @@ void fabrik_t::display_status(sint16 xpos, sint16 ypos)
 	}
 
 	if( output.get_count() ) {
-		if(  currently_producing  ) {
-			display_ddd_box_clip_rgb(xpos-2,  ypos-1, D_WAITINGBAR_WIDTH*output.get_count()+4, 6, color_idx_to_rgb(10), color_idx_to_rgb(12));
+		if (show_below) {
+			if (currently_producing) {
+				gfx->draw_box3d_clipped(xpos - 2, ypos + 6, D_WAITINGBAR_WIDTH * output.get_count() + 4, 6, gfx->palette_lookup(10), gfx->palette_lookup(12));
+			}
+			gfx->draw_rect_clipped(xpos - 1, ypos + 7, D_WAITINGBAR_WIDTH * output.get_count() + 2, 4, gfx->palette_lookup(status_to_color[status]), true CLIP_NUM_DEFAULT);
 		}
-		display_fillbox_wh_clip_rgb(xpos-1, ypos, D_WAITINGBAR_WIDTH*output.get_count()+2, 4, color_idx_to_rgb(COL_ORANGE), true);
+		else {
+			if (currently_producing) {
+				gfx->draw_box3d_clipped(xpos - 2, ypos - 1, D_WAITINGBAR_WIDTH * output.get_count() + 4, 6, gfx->palette_lookup(10), gfx->palette_lookup(12));
+			}
+			gfx->draw_rect_clipped(xpos - 1, ypos, D_WAITINGBAR_WIDTH * output.get_count() + 2, 4, gfx->palette_lookup(status_to_color[status]), true CLIP_NUM_DEFAULT);
+		}
 
 		for(uint32 i=0; i < output.get_count(); i++) {
 			ware_production_t const& goods = output[i];
@@ -3420,17 +3499,19 @@ void fabrik_t::display_status(sint16 xpos, sint16 ypos)
 				const uint32 stock_quantity = (uint32)((FAB_DISPLAY_UNIT_HALF + (sint64)goods.menge * pfactor) >> (precision_bits + DEFAULT_PRODUCTION_FACTOR_BITS));
 				const PIXVAL goods_color = goods.get_typ()->get_color();
 
-				const uint16 v = min(25, (uint16)(25 * stock_quantity / storage_capacity)) + 2;
+				const scr_coord_val v = min(25, (uint16)(25 * stock_quantity / storage_capacity)) + 2;
+				const scr_coord_val vv = show_below ? -13 : v;
+
 
 				// the blended bars are too faint for me
 				if (currently_producing) {
-					display_fillbox_wh_clip_rgb(xpos, ypos - v - 1, 1, v, color_idx_to_rgb(COL_GREY4), true);
-					display_fillbox_wh_clip_rgb(xpos + 1, ypos - v - 1, D_WAITINGBAR_WIDTH - 2, v, goods_color, true);
-					display_fillbox_wh_clip_rgb(xpos + D_WAITINGBAR_WIDTH - 1, ypos - v - 1, 1, v, color_idx_to_rgb(COL_GREY1), true);
+					gfx->draw_rect_clipped(xpos, ypos - vv - 1, 1, v, gfx->palette_lookup(COL_GREY4), true CLIP_NUM_DEFAULT);
+					gfx->draw_rect_clipped(xpos + 1, ypos - vv - 1, D_WAITINGBAR_WIDTH - 2, v, goods_color, true CLIP_NUM_DEFAULT);
+					gfx->draw_rect_clipped(xpos + D_WAITINGBAR_WIDTH - 1, ypos - vv - 1, 1, v, gfx->palette_lookup(COL_GREY1), true CLIP_NUM_DEFAULT);
 				}
 				else {
-					display_blend_wh_rgb(xpos + 1, ypos - v - 1, D_WAITINGBAR_WIDTH - 2, v, goods_color, 60);
-					mark_rect_dirty_wc(xpos + 1, ypos - v - 1, xpos + D_WAITINGBAR_WIDTH - 1, ypos - 1);
+					gfx->tint_rect(xpos + 1, ypos - vv - 1, D_WAITINGBAR_WIDTH - 2, v, goods_color, 60);
+					gfx->mark_rect_dirty_wc(xpos + 1, ypos - vv - 1, xpos + D_WAITINGBAR_WIDTH - 1, ypos - 1);
 				}
 			}
 

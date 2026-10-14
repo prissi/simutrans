@@ -19,6 +19,8 @@
 #include "../utils/log.h"
 
 
+#define MAX_MOTD_LEN 0x7FFF
+
 #define TILE_HEIGHT_STEP (env_t::pak_tile_height_step)
 
 enum { MENU_LEFT, MENU_TOP, MENU_RIGHT, MENU_BOTTOM };
@@ -52,6 +54,8 @@ public:
 
 	static sint16 menupos;
 	static bool single_toolbar_mode;
+	static bool stack_toolbars;
+	static bool use_tool_context_bar;
 
 	static sint16 fullscreen;
 	static sint16 dpi_scale;
@@ -66,6 +70,9 @@ public:
 
 	/// this the the preferred GUI theme at startup
 	static plainstring default_theme;
+
+	static char currency_symbol[16];
+	static bool currency_left;
 
 	/**
 	 * @name Network-related settings
@@ -169,8 +176,12 @@ public:
 	 */
 	/// @{
 
-	/// current language
-	static const char *language_iso;
+	/// default GUI language
+	static const char* language_iso;
+
+	/// current name language (for towns, stops, ...)
+	/// if empty, the same as for the main language
+	static const char* language_names_iso;
 
 	/// controls scrolling speed and scrolling direction
 	static sint16 scroll_multi;
@@ -248,6 +259,9 @@ public:
 	static sint16 iconscaling;
 	static scr_size iconsize;
 
+	/// show the contextual construction band beside the status bar
+	static bool show_construction_info;
+
 	/// customize your tooltips
 	static bool show_tooltips;
 	static rgb888_t tooltip_color_rgb;
@@ -301,6 +315,10 @@ public:
 	/// show error/info tooltips over the vehicles
 	static uint8 show_vehicle_states;
 
+	/// display station coverage by transparent overlay
+	/// (otherwise by colored squares)
+	static bool show_single_ways;
+
 	/// show station coverage indicators
 	static uint8 station_coverage_show;
 
@@ -317,7 +335,7 @@ public:
 	/// Three states to control hiding of building
 	enum hide_buildings_states {
 		NOT_HIDE = 0,         ///< show all buildings
-		SOME_HIDDEN_BUILDING, ///< hide buildings near cursor
+		SOME_HIDDEN_BUILDING, ///< hide city buildings
 		ALL_HIDDEN_BUILDING   ///< hide all buildings
 	};
 
@@ -359,6 +377,9 @@ public:
 	 * @see grund_t::display_overlay
 	 */
 	static sint32 show_names;
+
+	/// In case of multiple owners, decide the orientation of the player colours
+	static bool horizontal_stripe_owner;
 
 	/// Show factory storage bar
 	static uint8 show_factory_storage_bar;
@@ -494,6 +515,9 @@ public:
 
 	// FluidSynth MIDI parameters
 	static std::string soundfont_filename;
+
+	/// folder the music is taken from instead of the default music.tab; empty for the default
+	static std::string music_folder;
 
 	/// @}
 

@@ -31,7 +31,7 @@ scr_size gui_scrolled_list_t::const_text_scrollitem_t::get_min_size() const
 {
 	if (!is_editable()) {
 		const char* text = get_text();
-		return scr_size(2*D_H_SPACE + (text ? display_calc_proportional_string_len_width(text,strlen(text)) : D_BUTTON_WIDTH), LINESPACE);
+		return scr_size(2*D_H_SPACE + (text ? gfx->calc_text_width(text) : D_BUTTON_WIDTH), LINESPACE);
 	}
 	else {
 		return scr_size(D_BUTTON_WIDTH, LINESPACE);
@@ -49,12 +49,12 @@ void gui_scrolled_list_t::const_text_scrollitem_t::draw(scr_coord pos)
 	pos += get_pos();
 	if(selected) {
 		// selected element
-		display_fillbox_wh_clip_rgb( pos.x+D_H_SPACE/2, pos.y-1, get_size().w-D_H_SPACE, get_size().h + 1, (focused ? SYSCOL_LIST_BACKGROUND_SELECTED_F : SYSCOL_LIST_BACKGROUND_SELECTED_NF), true);
-		display_proportional_clip_rgb( pos.x+D_H_SPACE, pos.y, get_text(), ALIGN_LEFT, (focused ? SYSCOL_LIST_TEXT_SELECTED_FOCUS : SYSCOL_LIST_TEXT_SELECTED_NOFOCUS), true);
+		gfx->draw_rect_clipped( pos.x+D_H_SPACE/2, pos.y-1, get_size().w-D_H_SPACE, get_size().h + 1, (focused ? SYSCOL_LIST_BACKGROUND_SELECTED_F : SYSCOL_LIST_BACKGROUND_SELECTED_NF), true CLIP_NUM_DEFAULT);
+		gfx->draw_text_clipped( pos.x+D_H_SPACE, pos.y, get_text(), ALIGN_LEFT, (focused ? SYSCOL_LIST_TEXT_SELECTED_FOCUS : SYSCOL_LIST_TEXT_SELECTED_NOFOCUS), true);
 	}
 	else {
 		// normal text
-		display_proportional_clip_rgb( pos.x+D_H_SPACE, pos.y, get_text(), ALIGN_LEFT, get_color(), true);
+		gfx->draw_text_clipped( pos.x+D_H_SPACE, pos.y, get_text(), ALIGN_LEFT, get_color(), true);
 	}
 }
 
@@ -187,13 +187,13 @@ bool gui_scrolled_list_t::infowin_event(const event_t *ev)
 
 	event_t ev2 = *ev;
 	// translate key up/down to tab/shift-tab
-	if(  ev->ev_class==EVENT_KEYBOARD  && ev->ev_code == SIM_KEY_UP  &&  get_selection()>0) {
-		ev2.ev_code = SIM_KEY_TAB;
-		ev2.ev_key_mod |= SIM_MOD_SHIFT;
+	if(  IS_KEYDOWN(ev)  && ev->ev_code == SIM_KEYCODE_UP  &&  get_selection()>0) {
+		ev2.ev_code    =  SIM_KEYCODE_TAB;
+		ev2.ev_key_mod |= SIM_KEYMOD_SHIFT;
 	}
-	if(  ev->ev_class==EVENT_KEYBOARD  && ev->ev_code == SIM_KEY_DOWN  &&  (uint32)(get_selection()+1) < item_list.get_count()) {
-		ev2.ev_code = SIM_KEY_TAB;
-		ev2.ev_key_mod &= ~SIM_MOD_SHIFT;
+	if(  IS_KEYDOWN(ev)  && ev->ev_code == SIM_KEYCODE_DOWN  &&  (uint32)(get_selection()+1) < item_list.get_count()) {
+		ev2.ev_code    =  SIM_KEYCODE_TAB;
+		ev2.ev_key_mod &= ~SIM_KEYMOD_SHIFT;
 	}
 
 	bool swallowed = gui_scrollpane_t::infowin_event(&ev2);
@@ -294,10 +294,10 @@ void gui_scrolled_list_t::draw(scr_coord offset)
 		scr_rect rect(pos + offset, get_size());
 		switch(type) {
 			case windowskin:
-				display_img_stretch( gui_theme_t::windowback, rect);
+				gfx->draw_stretch_map( gui_theme_t::windowback, rect);
 				break;
 			case listskin:
-				display_img_stretch( gui_theme_t::listbox, rect);
+				gfx->draw_stretch_map( gui_theme_t::listbox, rect);
 				break;
 			case transparent:
 				break;

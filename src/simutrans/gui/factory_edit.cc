@@ -39,7 +39,7 @@ static bool compare_factory_desc(const factory_desc_t* a, const factory_desc_t* 
 }
 static bool compare_factory_desc_name(const factory_desc_t* a, const factory_desc_t* b)
 {
-	int diff = strcmp( translator::translate(a->get_name()), translator::translate(b->get_name()) );
+	int diff = translator::translate_compare( a->get_name(), b->get_name() );
 	if(  diff==0  ) {
 		diff = strcmp(a->get_name(), b->get_name());
 	}
@@ -170,11 +170,11 @@ void factory_edit_frame_t::fill_list()
 	// timeline will be obeyed; however, we may show obsolete ones ...
 	for(auto const& i : factory_builder_t::get_factory_table()) {
 		factory_desc_t const* const desc = i.value;
-		if(desc->get_distribution_weight()>0) {
+		if(desc->get_distribution_weight() > 0  ||  allow_obsolete) {
 			// DistributionWeight=0 is obsoleted item, only for backward compatibility
 
 			if( (!use_timeline  ||  (!desc->get_building()->is_future(month_now)  &&  (!desc->get_building()->is_retired(month_now)  ||  allow_obsolete)))
-				&&  ( desc->get_building()->get_allowed_climate_bits() & get_climate()) ) {
+				&&  ( desc->get_building()->get_allowed_climate_bits() & get_climate()  ||  (get_climate()==1 && desc->get_placement()==factory_desc_t::Water) )) {
 				// timeline allows for this, and so does climates setting
 
 				if( ( city_chain  &&  (desc->get_placement() == factory_desc_t::City && desc->is_consumer_only() ) )
@@ -200,8 +200,8 @@ void factory_edit_frame_t::fill_list()
 	scl.set_selection(-1);
 	for(factory_desc_t const* const i : factory_list) {
 		PIXVAL const color =
-			i->is_consumer_only() ? color_idx_to_rgb(COL_DARK_BLUE + env_t::gui_player_color_dark) :
-			i->is_producer_only() ? color_idx_to_rgb(40 + env_t::gui_player_color_dark)            :
+			i->is_consumer_only() ? gfx->palette_lookup(COL_DARK_BLUE + env_t::gui_player_color_dark) :
+			i->is_producer_only() ? gfx->palette_lookup(40            + env_t::gui_player_color_dark)            :
 			SYSCOL_TEXT;
 		char const* const name = get_sortedby()==gui_sorting_item_t::BY_NAME_OBJECT ?  i->get_name() : translator::translate(i->get_name());
 		scl.new_component<gui_scrolled_list_t::const_text_scrollitem_t>(name, color);

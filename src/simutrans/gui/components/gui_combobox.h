@@ -24,8 +24,8 @@ class gui_combobox_t :
 	public gui_component_t,
 	public action_listener_t
 {
-private:
-	char editstr[128],old_editstr[128];
+protected:
+	char editstr[256],old_editstr[256],old_searchstr[256],search_str[256];
 
 	// buttons for setting selection manually
 	gui_textinput_t textinp;
@@ -33,24 +33,31 @@ private:
 	button_t bt_next;
 
 	scr_size closed_size;
+	sint32   selection_when_open;
 
 	/**
 	 * the drop box list
 	 */
 	gui_scrolled_list_t droplist;
-	bool opened_above:1;
+	bool opened_above : 1;
 
 	// flag for first call
-	bool first_call:1;
-
-	// flag for finish selection
-	bool finish:1;
+	bool first_call : 1;
 
 	// true to allow buttons to wrap around selection
-	bool wrapping:1;
+	bool wrapping : 1;
 
 	// try to shrink to minimum size even if there is more space
-	bool minimize:1;
+	bool minimize : 1;
+
+	// force always a valid selection; if nothing is selected, select element 0
+	bool force_selection : 1;
+
+	// whether to hide contents and allow searching when opened
+	bool allow_search : 1;
+
+	// hide contents and allow searching when opened
+	bool forbid_search : 1;
 
 	// offset of last draw call, needed to decide, where to open droplist
 	scr_coord last_draw_offset;
@@ -143,6 +150,8 @@ public:
 	void close_box();
 
 	void set_wrapping(const bool wrap) { wrapping = wrap; }
+	void set_force_selection(const bool force) { force_selection = force; }
+	void set_forbid_search(const bool forbid) { forbid_search = forbid; }
 
 	bool is_dropped() const { return droplist.is_visible(); }
 

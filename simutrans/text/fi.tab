@@ -1,4 +1,4 @@
-Suomi
+¬ßSuomi
 PROP_FONT_FILE
 Prop-Latin1.bdf
 ################################################################################
@@ -10,25 +10,33 @@ Prop-Latin1.bdf
 #                        Simutrans Base Translation File                       #
 #                             Scenario: Base texts                             #
 #                              Language: fi Suomi                              #
-#                             Encoding: ISO-8859-1                             #
+#                                Encoding: UTF-8                               #
 #                             Font: Prop-Latin1.bdf                            #
-#                            Date Created: 2.06 2024                           #
+#                           Date Created: 10.09 2026                           #
 #                                                                              #
 ################################################################################
 #__________________________________button_text__________________________________
 #__________________________________button_text__________________________________
+Absolute times
+Esit√§ ajat p√§iv√§:tunti:kk kuukaudessa
+allow reverse passage
+salli kulku vastasuuntaan
+AMBIENT_SOUND
+ymp√§rist√∂√§√§net
+CASH_SOUND
+rahantulo√§√§ni
 cl_btn_filter_disable
-pois p‰‰lt‰
+pois p√§√§lt√§
 cl_btn_filter_enable
-p‰‰ll‰
+p√§√§ll√§
 cl_btn_filter_settings
 Asetukset
 cl_btn_sort_asc
-nouseva
+Nouseva
 cl_btn_sort_desc
-laskeva
+Laskeva
 cl_btn_sort_id
-sis‰inen tunniste
+sis√§inen tunniste
 cl_btn_sort_income
 Tulot
 cl_btn_sort_name
@@ -38,9 +46,19 @@ Tyyppi
 clf_btn_alle
 kaikki
 clf_btn_invers
-p‰inv.
+p√§inv.
 clf_btn_keine
-ei mit‰‰n
+ei mit√§√§n
+climate area percentage
+Yksitt√§isen ilmaston koko
+Continue Game
+Jatka peli√§
+CROSSING_SOUND
+tasoristeysvaroitukset
+FACTORY_SOUND
+tehtaiden √§√§net
+Find matching convois
+Etsi yhteensopivia ajoneuvoja
 gl_btn_sort_bonus
 bonus
 gl_btn_sort_name
@@ -48,11 +66,13 @@ nimi
 gl_btn_sort_revenue
 tuotto
 gl_btn_unsort
-ei mik‰‰n
+Lajittelematon
+height based
+Ilmasto korkeuden perusteella
 hl_btn_filter_disable
-pois p‰‰lt‰
+pois p√§√§lt√§
 hl_btn_filter_enable
-p‰‰ll‰
+p√§√§ll√§
 hl_btn_filter_settings
 Asetukset
 hl_btn_sort_asc
@@ -68,9 +88,65 @@ Odottaa
 hlf_btn_alle
 kaikki
 hlf_btn_invers
-p‰inv.
+p√§inv.
 hlf_btn_keine
-ei mit‰‰n
+ei mit√§√§n
+humidities
+kosteuksien rajat
+Install
+Asenna
+Lake
+J√§rvi
+Lake height
+maksimi j√§rvenkorkeus
+Maximize height levels
+Lis√§√§ korkeustasoja
+moisture land
+lis√§ys maan p√§√§ll√§
+moisture water
+lis√§ys veden p√§√§ll√§
+Networks
+Verkkokaavio
+Num pad keys always move map
+Numeron√§pp√§imist√∂ siirt√§√§ aina karttaa
+Open Sea
+Avomeri
+Owner only
+Vain omistajalle
+Queueing
+Jonotus
+rainfall
+kosteus
+Reselect closes tools
+Uudelleenvalinta sulkee ty√∂kalut
+Return to menu
+takaisin valikkoon
+Road toll
+Tiemaksu
+Scenario
+Skenaario
+sea
+meri
+Shared only
+Vain jaetut
+Single GUI
+Yksi k√§ytt√∂liittym√§
+Sound range:
+√Ñ√§nen kantama:
+Start this as a server
+Aloita serveri t√§ll√§ pelill√§
+temperature borders
+l√§mp√∂tilarajat
+temperature-humidity based
+Ilmastot s√§√§n mukaan
+TOOL_SOUND
+Ty√∂kalu√§√§net
+TRAFFIC_SOUND
+Liikenne√§√§net
+Transfers
+Vaihdot
+Tutorial
+Alkuopas
 #_________________________________climates_text_________________________________
 #_________________________________climates_text_________________________________
 arctic
@@ -78,89 +154,259 @@ arktinen ilmasto
 desert
 aavikkoilmasto
 mediterran
-v‰limerenilmasto
+v√§limerenilmasto
 rocky
 alppi-ilmasto
 temperate
-l‰mmin ilmasto
+l√§mmin ilmasto
 tropic
 troopp. ilmasto
 tundra
 tundrailmasto
 #__________________________________error_text___________________________________
 #__________________________________error_text___________________________________
+ Loading scenario script failed
+ Skenaarioskriptin lataaminen ep√§onnistui
+A building blocks the construction
+Rakennus est√§√§ rakentamisen
+A powerline blocks the construction
+Voimalinja est√§√§ rakentamisen
+Another way blocks the construction
+Toinen tie est√§√§ rakentamisen
+Bridge blocked by way below or above.
+Silta estynyt alhaalta tai ylh√§√§lt√§
+Can't buy obsolete vehicles!
+Et pysty ostamaan vanhentunutta kulkuneuvoa!
+Cannot alter water
+T√§t√§ allasta ei voi enemp√§√§ tyhjent√§√§ tai t√§ytt√§√§.
+Cannot build on a double slope!
+Et pysty rakentamaan tuplarinteeseen!
 Cannot built depot here!
-Et voi rakentaa tallia t‰h‰n.
+Et voi rakentaa tallia t√§h√§n.
 Cannot built this station/building\nin underground mode here.
 Rakennusta ei voi rakentaa maan alle.
+Cannot connect to the\ncenter of a double slope!
+Siltaa ei voi yhdist√§√§ tuplarinteen keskelle!\nK√§yt√§ maastonmuokkausty√∂kalua korjataksesi t√§m√§n.
 Cannot create generic line!\nSelect line type by\nusing filter tabs.
-Et voi luoda yleisreitti‰!\nValitse ensin reitin tyyppi\n
+Et voi luoda yleisreitti√§!\nValitse ensin reitin tyyppi\n
 Cannot create socket
 Yhteyden muodostaminen ei onnistu!
+Cannot cross the end of a runway
+Kiitotien p√§√§t√§ ei voi ylitt√§√§
+Cannot rotate this building!
+Ei pysty k√§√§nt√§m√§√§n t√§t√§ rakennusta!
+Client closed connection during transfer
+Asiakas sulki yhteyden siirron aikana
 Convoi handles exhausted!
-Saavutettiin kuljetusv‰lineiden\nenimm‰ism‰‰r‰.
+Saavutettiin kuljetusv√§lineiden\nenimm√§ism√§√§r√§.
+Convoy already deleted!
+Saattue jo poistettu!
+Corrupt file
+Tiedosto korruptoitunut tai liian lyhyt.
+Could not open file
+Ei pysty k√§sittelem√§√§n tiedostoa. Tarkista oikeudet?
 Das Feld gehoert\neinem anderen Spieler\n
 Maa on toisen\npelaajan omistuksessa.\n 
+Depots cannot be built on runways!
+Varikkoa ei pysty rakentamaan kiitoteille!
+Depots must be built on flat dead-end way tiles!
+Varikot on rakennettava tasaisille p√§√§ttyville v√§yl√§ruuduille!
 Der Besitzer erlaubt das Entfernen nicht
-Omistaja ei salli\ntehd‰ t‰t‰.\n
+Omistaja ei salli\ntehd√§ t√§t√§.\n
 Diese Zusammenstellung kann nicht fahren!\n
-T‰m‰ yhdistelm‰\nei toimi.\n
+T√§m√§ yhdistelm√§\nei toimi.\n
+Elevated way can only be joined in line
+Korotetun tien voi liitt√§√§ vain suoraan linjaan
+Failed to write file
+Ei pysty kirjoittamaan tiedostoa. (Oikeudet?)
 Flugzeughalt muss auf\nRunway liegen!\n
-Pys‰kin pit‰‰ olla rullausalueella!
+Pys√§kin pit√§√§ olla rullausalueella!
+Forbidden by scenario
+Kielletty t√§ss√§ tilanteessa
 Hier kann dieses\nFlughafengebaeude nicht\ngebaut werden!\n
-T‰t‰ lentokentt‰rakennusta\n\nei voi rakentaa t‰h‰n!
+T√§t√§ lentokentt√§rakennusta\n\nei voi rakentaa t√§h√§n!
 Hier kann kein\nSignal aufge-\nstellt werden!\n
-Rautatieopastinta\nei voi rakentaa\nt‰h‰n.\n
+Rautatieopastinta\nei voi rakentaa\nt√§h√§n.\n
+In order to lock the game, you have to protect the public player by password!
+Pelin lukitsemiseksi sinun t√§ytyy suojata julkinen pelaaja salasanalla!
+Loading a new game will end the current server session!
+Uuden pelin lataaminen lopettaa nykyisen serveri-istunnon!
 Lost connection\nto server!
 Palvelin ei vastaa!
 Lost synchronisation\nwith server.
-Synkronisaatio palvelimen\nkanssa ep‰onnistui.
+Synkronisaatio palvelimen\nkanssa ep√§onnistui.
 Maglevhalt muss auf\nMaglevschiene liegen!\n
-Maglev-pys‰kin voi rakentaa vain maglev-radalle!
+Maglev-pys√§kin voi rakentaa vain maglev-radalle!
 Monorailhalt muss auf\nMonorail liegen!\n
-Monorail-asema t‰ytyy\nasettaa Monorail-radalle!
+Monorail-asema t√§ytyy\nasettaa Monorail-radalle!
 Monorails are not available yet!
-Monorailit eiv‰t ole viel‰ k‰ytˆss‰!
+Monorailit eiv√§t ole viel√§ k√§yt√∂ss√§!
+More than one possibility to build this dock found.
+Useampi mahdollisuus rakentaa t√§m√§ telakka l√∂ytyy.
 Narrowgaugehalt muss auf\nNarrowgauge liegen!\n
-Kapearaidepys‰kin oltava kapeariteisella raiteella.
+Kapearaidepys√§kin oltava kapeariteisella raiteella.
+No bridges over runways!
+Ei siltoja yli kiitoteiden!
+No curves on runways
+Ei mutkia kiitoteill√§
+No suitable crossing
+Ei sopivaa ylityst√§! (liian nopea maksiminopeus?)
+No suitable way on the ground!
+Pys√§kkej√§ voi rakentaa vain\nsuorille ja tasaisille sopiville v√§ylille!
 No through station here!
-Et voi rakentaa asemaa t‰h‰n!
+Et voi rakentaa asemaa t√§h√§n!
+Not allowed to copy object.
+Et pysty rakentamaan esinett√§!\n(Syy: V√§√§r√§ pelaaja tai vanhentunut)
+Not enough bytes transferred
+Ei tarpeeksi tavuja siirretty
+Not enough clearance.
+Polkujen v√§lill√§ t√§ytyy olla v√§hint√§√§n kahden tason korkeusero.
+Not enough empty space
+Riitt√§m√§t√∂n m√§√§r√§ vapaata tilaa j√§ljell√§.
 Not enough money!
-Sinulla ei ole tarpeeksi varoja t‰m‰n rakentamiseen!
+Sinulla ei ole tarpeeksi varoja t√§m√§n rakentamiseen!
+Not initialized
+Kirjastoa ei voinut alustaa. 
 On narrowgauge track only!\n
-T‰m‰ onnistuu vain kapearaideradalla!\n
+T√§m√§ onnistuu vain kapearaideradalla!\n
+Only public player can lock games!
+Vain julkinen pelaaja voi lukita pelej√§!
+Only up and down movement in the underground!
+Maanalaista laattaa voi nostaa ja laskea vain k√§ytt√§m√§ll√§ kaikkia yl√∂s/alas -ty√∂kaluja!
+Out of funds
+Sinulla ei ole tarpeeksi rahaa t√§t√§ varten!
 Post muss neben\nHaltestelle\nliegen!\n
-Postitoimisto pit‰‰\nrakentaa aseman tai\npys‰kin l‰helle.\n
+Postitoimisto pit√§√§\nrakentaa aseman tai\npys√§kin l√§helle.\n
 Protocoll error (expecting game)
-Protokollavirhe (odotetaan peli‰)
+Protokollavirhe (odotetaan peli√§)
 Schiffhalt muss im\nWasser liegen!\n
-Laivan pys‰hdyspaikan\nvoi asettaa vain\nveteen l‰helle\nlaituria.\n
+Laivan pys√§hdyspaikan\nvoi asettaa vain\nveteen l√§helle\nlaituria.\n
+Server busy
+Palvelin kiireinen
+Server version too new
+Palvelin k√§ytt√§√§ uudempaa ohjelmaversiota.
+Ship depots must be built on water!
+Laivatelakat t√§ytyy rakentaa veden p√§√§lle!
+Show all revenue messages
+N√§yt√§ kaikki tuloviestit
+Show no revenue messages
+√Ñl√§ n√§yt√§ tuloviestej√§
+Show only player's revenue
+N√§yt√§ vain pelaajan tulot
+Slope is too steep
+Rinne on liian jyrkk√§
 Terraforming not possible\nhere in underground view
-Maata ei voi muokata\nmaanalaisessa n‰kym‰ss‰.
+Maata ei voi muokata\nmaanalaisessa n√§kym√§ss√§.
+This tunnel branches. You can try Control+Click to remove.
+T√§m√§ tunneli haarautuu. Voit kokeilla Control+Click poistaaksesi sen.
+Too far away to merge stations!
+Liian kaukana yhdist√§√§ksesi asemat!
+Tunnel can only be entered at its portal
+Tunneliin p√§√§see vain sen suuaukosta
+Unknown error
+Tuntematon virhe
 Upgrade must have\na higher level
-P‰ivityksen t‰ytyy olla korkeampaa tasoa
+P√§ivityksen t√§ytyy olla korkeampaa tasoa
+Vehicle %s cannot choose because stop too short!
+Ajoneuvo %s ei voi valita, koska pys√§kki liian lyhyt!
+Watertable reached
+Pohjavesialue saavutettu
+Way does not match the slope here
+Tie ei sovi t√§h√§n rinteeseen
+Wrong direction to enter the bridge
+V√§√§r√§ suunta sillalle ajamiseen
 Zughalt muss auf\nSchiene liegen!\n
 Rautatieaseman\nvoi rakentaa\nvain rautatielle.\n
 #___________________________________help_text___________________________________
 #___________________________________help_text___________________________________
+<h1>Index</h1><p>*: only english</p><p>General</p>%s<p>Usage</p>%s<p>Tools</p>%s<p>Start</p>%s<p>How to play</p>%s<p>Others:</p>%s
+<title>Ohje</title><h1>Ohjeen sis√§llysluettelo</h1><p><it>Tietoja Simutransista</it></p>%1$s<p><it>K√§ytt√∂ohje</it></p>%2$s<p><it>Pelin aloittaminen</it></p>%4$s<p><it>Kuinka pelataan</it></p>%5$s<p><it>Ty√∂kalut</it></p>%3$s<p><it>Muut ikkunat</it></p>%6$s
 <title>Keyboard Help</title>\n<h1><strong>Keyboard Help</strong></h1><p>\n
-<title>Pikan‰pp‰inohje</title>\n<h1><strong>Pikan‰pp‰inohje</strong></h1>\n<p>\n<strong>Pikan‰pp‰inohje</strong> n‰ytt‰‰ eri n‰pp‰imi‰ painamalla tapahtuvat toiminnot.\n</p>\n<p>\n<strong>Pikan‰pp‰inohje</strong> avautuu painamalla n‰pp‰int‰, joka ei ole muussa k‰ytˆss‰, tai <a href="general.txt">Yleisohjeen</a> kautta.\n</p>\n<p>\nN‰pp‰inkomennot huomioivat kirjainkoon (k‰yt‰ [<em>Shift</em>]-n‰pp‰int‰ saadaksesi isot kirjaimet).\n</p>\n<p>\nSeuraavilla n‰pp‰imill‰ on omat toimintonsa:\n</p>\n<p>\n[<em>Nuolin‰pp‰imet</em>]: vierit‰ pelin‰kym‰‰ nuolen suunnassa.<br>\n[<em>Backspace</em>]: sulje kaikki ikkunat, tyˆkalupalkit ja ohjetekstit.<br>\n[<em>Delete</em>], tai [<em>Escape</em>]: sulje ylin ikkuna, tyˆkalupalkki tai ohjeteksti.<br>\n[<em>Enter</em>], tai [<em>Return</em>]: k‰yt‰ vahvistaaksesi eri toimintoja.<br>\n[<em>Page-Up</em>], tai [<em>></em>]: l‰henn‰ pelin‰kym‰‰.<br>\n[<em>Page-Down</em>], tai [<em> v‰hemm‰n kuin -merkki</em>]: loitonna pelin‰kym‰‰.\n[<em>F1</em>]: avaa <a href="general.txt">Simutrans-ohje</a>.<br></p>\n<p>\n[<em>1</em>]: vierit‰ pelin‰kym‰‰ etel‰‰n.<br>\n[<em>2</em>]: vierit‰ pelin‰kym‰‰ kaakkoon.<br>\n[<em>3</em>]: vierit‰ pelin‰kym‰‰ it‰‰n.<br>\n[<em>4</em>]: vierit‰ pelin‰kym‰‰ lounaaseen.<br>\n[<em>6</em>]: vierit‰ pelin‰kym‰‰ koilliseen.<br>\n[<em>7</em>]: vierit‰ pelin‰kym‰‰ l‰nteen.<br>\n[<em>8</em>]: vierit‰ pelin‰kym‰‰ luoteeseen.<br>\n[<em>9</em>]: vierit‰ pelin‰kym‰‰ pohjoiseen.\n</p>\n<p>\n[<em>Shift</em>] + <a href="mouse.txt">hiiri</a>: k‰yt‰ <a href="map.txt">Kartalla</a> n‰hd‰ksesi <a href="industry_info.txt">Teollisuusketjujen</a> yhteydet.<br>\n[<em>CTRL</em>] + tyˆkalu: rakenna (osoittimia ja <a href="station.txt">Pys‰kkej‰</a>) ylemm‰lle tasolle; tai rakenna hitaita teit‰ tai ratoja nopeampien p‰‰lle; tai rakenna suorempia teit‰ tai ratoja.<br>\n[<em>CTRL</em>] + ([<em>F2</em>] - [<em>F12</em>]): asettaa valitun tyˆkalun tietyll‰ n‰pp‰inkomennolla [<em>F2</em>] - [<em>F12</em>] k‰ytett‰v‰ksi.\n</p>\n<p>
+<title>Pikan√§pp√§inohje</title>\n<h1><strong>Pikan√§pp√§inohje</strong></h1>\n<p>\n<strong>Pikan√§pp√§inohje</strong> n√§ytt√§√§ eri n√§pp√§imi√§ painamalla tapahtuvat toiminnot.\n</p>\n<p>\n<strong>Pikan√§pp√§inohje</strong> avautuu painamalla n√§pp√§int√§, joka ei ole muussa k√§yt√∂ss√§, tai <a href="general.txt">Yleisohjeen</a> kautta.\n</p>\n<p>\nN√§pp√§inkomennot huomioivat kirjainkoon (k√§yt√§ [<em>Shift</em>]-n√§pp√§int√§ saadaksesi isot kirjaimet).\n</p>\n<p>\nSeuraavilla n√§pp√§imill√§ on omat toimintonsa:\n</p>\n<p>\n[<em>Nuolin√§pp√§imet</em>]: vierit√§ pelin√§kym√§√§ nuolen suunnassa.<br>\n[<em>Backspace</em>]: sulje kaikki ikkunat, ty√∂kalupalkit ja ohjetekstit.<br>\n[<em>Delete</em>], tai [<em>Escape</em>]: sulje ylin ikkuna, ty√∂kalupalkki tai ohjeteksti.<br>\n[<em>Enter</em>], tai [<em>Return</em>]: k√§yt√§ vahvistaaksesi eri toimintoja.<br>\n[<em>Page-Up</em>], tai [<em>></em>]: l√§henn√§ pelin√§kym√§√§.<br>\n[<em>Page-Down</em>], tai [<em> v√§hemm√§n kuin -merkki</em>]: loitonna pelin√§kym√§√§.\n[<em>F1</em>]: avaa <a href="general.txt">Simutrans-ohje</a>.<br></p>\n<p>\n[<em>1</em>]: vierit√§ pelin√§kym√§√§ etel√§√§n.<br>\n[<em>2</em>]: vierit√§ pelin√§kym√§√§ kaakkoon.<br>\n[<em>3</em>]: vierit√§ pelin√§kym√§√§ it√§√§n.<br>\n[<em>4</em>]: vierit√§ pelin√§kym√§√§ lounaaseen.<br>\n[<em>6</em>]: vierit√§ pelin√§kym√§√§ koilliseen.<br>\n[<em>7</em>]: vierit√§ pelin√§kym√§√§ l√§nteen.<br>\n[<em>8</em>]: vierit√§ pelin√§kym√§√§ luoteeseen.<br>\n[<em>9</em>]: vierit√§ pelin√§kym√§√§ pohjoiseen.\n</p>\n<p>\n[<em>Shift</em>] + <a href="mouse.txt">hiiri</a>: k√§yt√§ <a href="map.txt">Kartalla</a> n√§hd√§ksesi <a href="industry_info.txt">Teollisuusketjujen</a> yhteydet.<br>\n[<em>CTRL</em>] + ty√∂kalu: rakenna (osoittimia ja <a href="station.txt">Pys√§kkej√§</a>) ylemm√§lle tasolle; tai rakenna hitaita teit√§ tai ratoja nopeampien p√§√§lle; tai rakenna suorempia teit√§ tai ratoja.<br>\n[<em>CTRL</em>] + ([<em>F2</em>] - [<em>F12</em>]): asettaa valitun ty√∂kalun tietyll√§ n√§pp√§inkomennolla [<em>F2</em>] - [<em>F12</em>] k√§ytett√§v√§ksi.\n</p>\n<p>
+At least one stop is connected to the town.
+V√§hint√§√§n yksi pys√§kki on yhteydess√§ kaupunkiin.
+At least one tile is connected to one stop.
+V√§hint√§√§n yksi ruutu on yhteydess√§ yhteen pys√§kkiin.
+Color according to transport capacity left
+V√§rit√§ j√§ljell√§ olevan kuljetuskapasiteetin mukaan
+Color-coded terrain according to altitude.
+N√§yt√§/piilota maaston korkeusvarjostus.
+Decrease water height
+Laske veden pintaa yhdell√§ tasolla
+Highlight railroad tracks
+Korosta rautatiet
+Highlite depots
+Korosta varikot
+Highlite electrical transmission lines
+Korosta s√§hk√∂linjat
+Highlite factories
+Korosta tehtaat
+Highlite forests
+Korosta mets√§t
+Highlite tourist attraction
+Korosta n√§ht√§vyydet
+Increase water height
+Nosta vedenpintaa yhdell√§ tasolla
+Open station/stop details
+N√§yt√§ aseman tiedot
+Overlay city limits
+N√§yt√§ kaupunkien rajat
+Overlay passenger destinations when a town window is open
+N√§yt√§ matkustajien m√§√§r√§np√§√§t kaupunki-ikkunan ollessa auki
+Overlay schedules/network
+N√§yt√§ reitit/verkosto
+Overlay town names
+N√§yt√§ kaupunkien nimet
+Please click on the map to add\nwaypoints or stops to this\nschedule.
+Napsauta karttaa lis√§t√§ksesi\nreittipisteit√§ tai pys√§kkej√§ t√§h√§n\naikatauluun.
+Remove double stops from schedule
+Poista kaksoispys√§hdykset aikataulusta
+Set tile climate %s
+Aseta ruudun ilmastoksi %s
+Show capacity and if halt is overcrowded
+N√§yt√§ kapasiteetti ja jos pys√§kki on ylikuormitettu
+Show how many convoi reach a station
+N√§yt√§ kuinka monta ajoneuvoa saapuu asemalle
+Show how many people/much is waiting at halts
+N√§yt√§ pys√§keill√§ odottavien m√§√§r√§
+Show initial passenger departure
+N√§yt√§ matkustajien ja postin l√§ht√∂paikka
+Show level of city buildings
+N√§yt√§ kaupunkirakennusten taso
+Show mail service coverage/mail network
+N√§yt√§ postipalvelun kattavuus / postiverkko
+Show passenger coverage/passenger network
+N√§yt√§ matkustajapalvelun kattavuus / matkustajaverkko
+Show speedlimit of ways
+N√§yt√§ v√§ylien nopeusrajoitus
+Show the change of waiting at halts
+N√§yt√§ pys√§keill√§ odottavien m√§√§r√§n muutos
+Show the owenership of infrastructure
+N√§yt√§ infrastruktuurin omistus
+Show transported freight/freight network
+N√§yt√§ kuljetettu rahti / rahtiverkko
+Show usage of network
+N√§yt√§ verkon k√§ytt√∂aste
+Shows a listing with all industries on the map.
+N√§ytt√§√§ luettelon kaikista kartan teollisuuslaitoksista.
+Sum of departure/arrivals at halts
+L√§ht√∂jen ja saapumisten summa pys√§keill√§
 #____________________________________ki_text____________________________________
 #____________________________________ki_text____________________________________
 %s now\noffers bus services\nbetween %s\nand attraction\n%s\nat (%i,%i).\n
-%s liikennˆi\nnyt bussilinjaa\nv‰lill‰ %s\n - %s (%i,%i).\n\n
+%s liikenn√∂i\nnyt bussilinjaa\nv√§lill√§ %s\n - %s (%i,%i).\n\n
 %s now\noffers bus services\nbetween %s\nand factory\n%s\nat (%i,%i).\n
-%s liikennˆi\nnyt bussilinjaa\nv‰lill‰ %s\n - %s (%i,%i).\n
+%s liikenn√∂i\nnyt bussilinjaa\nv√§lill√§ %s\n - %s (%i,%i).\n
 %s\nnow operates\n%i trucks between\n%s at (%i,%i)\nand %s at (%i,%i).
-Yhtiˆn %s %i\nrekkaa huolehtivat\nnyt kuljetuksista v‰lill‰\n%s (%i,%i)\n - %s\n (%i,%i).
+Yhti√∂n %s %i\nrekkaa huolehtivat\nnyt kuljetuksista v√§lill√§\n%s (%i,%i)\n - %s\n (%i,%i).
 %s\nopened a new railway\nbetween %s\nat (%i,%i) and\n%s at (%i,%i).
-%s\navasi uuden rautatien\nv‰lille %s\n (%i,%i) - \n%s\n (%i,%i).
+%s\navasi uuden rautatien\nv√§lille %s\n (%i,%i) - \n%s\n (%i,%i).
 Airline service by\n%s\nnow between\n%s \nand %s.\n
-%s\navasi uuden lentoreitin v‰lille\n%s -\n%s.\n
+%s\navasi uuden lentoreitin v√§lille\n%s -\n%s.\n
 Ferry service by\n%s\nnow between\n%s \nand %s.\n
-%s\ntarjoaa nyt\nlauttayhteyden v‰lill‰\n%s -\n%s.\n
+%s\ntarjoaa nyt\nlauttayhteyden v√§lill√§\n%s -\n%s.\n
 Travellers now\nuse %s's\nbusses between\n%s \nand %s.\n
-Matkustajat k‰ytt‰v‰t nyt\nyhtiˆn %s\nbusseja v‰lill‰\n%s - %s.\n
+Matkustajat k√§ytt√§v√§t nyt\nyhti√∂n %s\nbusseja v√§lill√§\n%s - %s.\n
 #___________________________________menu_text___________________________________
 #___________________________________menu_text___________________________________
 EDITTOOLS
@@ -168,11 +414,11 @@ Maastonmuokkaus
 LISTTOOLS
 Listat
 MAGLEVTOOLS
-Maglev-tyˆkalut
+Maglev-ty√∂kalut
 MONORAILTOOLS
 Monorail
 NARROWGAUGETOOLS
-Kapearaidetyˆkalut
+Kapearaidety√∂kalut
 RAILTOOLS
 Rautatie
 ROADTOOLS
@@ -180,37 +426,71 @@ Tie
 SHIPTOOLS
 Laiva
 SLOPETOOLS
-Rinnetyˆkalut
+Rinnety√∂kalut
 SPECIALTOOLS
-Erikoistyˆkalut
+Erikoisty√∂kalut
 TRAMTOOLS
 Raitiovaunu
 #_________________________________message_text__________________________________
 #_________________________________message_text__________________________________
 %s s\nheadquarter now\nat (%i,%i).
-%s on rakentanut uuden p‰‰konttorin.
+%s on rakentanut uuden p√§√§konttorin.
 Factory chain extended\nfor %s near\n%s built with\n%i factories.
 Talouskasvu kiihtyy:\n%s laajentaa tuotantoa\nkaupungin %s alueella.\n%i uutta tehdasta perustettiin.
+Net wealth less than 10%% of starting capital!
+Nettovarallisuus alle 10%% aloitusp√§√§omasta!
 New %s now available:\n%s\n
 Uusi %s saatavilla:\n%s\n
 New factory chain\nfor %s near\n%s built with\n%i factories.
-Uusi %s on\n alihankkijoineen avattu\nkaupungin %s\nl‰hell‰, %i uutta tehdasta\n rakennettiin.
+Uusi %s on\n alihankkijoineen avattu\nkaupungin %s\nl√§hell√§, %i uutta tehdasta\n rakennettiin.
 New vehicle now available:\n%s\n
-\n Uusi kulkuneuvo on k‰ytett‰viss‰:\n\n\n ¬ª %s ¬´\n\n
+\n Uusi kulkuneuvo on k√§ytett√§viss√§:\n\n\n √Ç¬ª %s √Ç¬´\n\n
+Now %u clients connected.
+Juuri nyt %u asiakasohjelma(a) on yhdistettyn√§.
+overtaking
+ohitus
 Remove vehicle from map. Use with care!
-Poista kulj.v‰line. (K‰yt‰ varoen!)
+Poista kulj.v√§line. (K√§yt√§ varoen!)
 Screenshot\ngespeichert.\n
 Kuvankaappaus\ntallennettu.\n
 Sends the convoi to the last depot it departed from!
-L‰hett‰‰ kulkuneuvon l‰himp‰‰n talliin.
+L√§hett√§√§ kulkuneuvon l√§himp√§√§n talliin.
+Server preparing game ...
+Palvelin valmistelee peli√§ ...
+Trees
+Puut
 With a big festival\n%s built\na new monument.\n%i citicens rejoiced.
-%s rakensi uuden\nmuistomerkin. %i asukasta\nvietti kotiseudustaan ylpe‰n‰\nansaittua vapaap‰iv‰‰.
+%s rakensi uuden\nmuistomerkin. %i asukasta\nvietti kotiseudustaan ylpe√§n√§\nansaittua vapaap√§iv√§√§.
+#___________________________________obsolete____________________________________
+#___________________________________obsolete____________________________________
+Line Filter
+Linjasuodatin
 #_________________________________program_text__________________________________
 #_________________________________program_text__________________________________
+(%.2f$/km %.2f$/m)
+(%.2f$/km %.2f$/kk)
 (%i)-
 (%i) 
 (in depot)
 (tallissa)
+[0] south-facing
+[0] etel√§√§n p√§in
+[1] east-facing
+[1] it√§√§n p√§in
+[2] north-facing
+[2] pohjoiseen p√§in
+[3] west-facing
+[3] l√§nteen p√§in
+[4] southeast corner
+[4] kaakkoiskulma
+[5] northeast corner
+[5] koilliskulma
+[6] northwest corner
+[6] luoteiskulma
+[7] southwest corner
+[7] lounaiskulma
+/month
+/kk
 \nBauzeit bis
 \nvuoteen 
 \nBauzeit von
@@ -220,47 +500,57 @@ With a big festival\n%s built\na new monument.\n%i citicens rejoiced.
 \ndirection:
 \nSuunnat:
 \nelektrified
-\nS‰hkˆistetty\n
+\nS√§hk√∂istetty\n
 \nHeightfield has wrong image type.\n
-\nKorkokuva on\nv‰‰r‰ntyyppinen.\n
+\nKorkokuva on\nv√§√§r√§ntyyppinen.\n
 \nis reserved by:
-\ntiell‰ on juna 
+\ntiell√§ on juna 
 \nminimum speed:
 \nAlin sallittu nopeus:
 \nnot elektrified
-\nEi s‰hkˆistetty\n
+\nEi s√§hk√∂istetty\n
 \nRibi (masked)
 \nSuunnat\m (maski):
 \nRibi (unmasked)
 \Suunnat\n (ei maskia):
 \nSet phases:
-\n s‰‰d‰ pituutta P-E/I-L:
+\n s√§√§d√§ pituutta P-E/I-L:
 \nsingle way
 \nYksisuuntainen
 \nway1 reserved by
-Tien 1 varannut\nTien 1 varannut 
+Tien 1 varannut\n
 \nway2 reserved by
-Tien 2 varannut\nTien 2 varannut 
+Tien 2 varannut\n
 \nwith sign/signal\n
-\nmerkill‰/opastimella\n
+\nmerkill√§/opastimella\n
 %d buildings\n
 %d rakennusta
 %d convois
-%d kuljetusv‰linett‰
+%d kuljetusv√§linett√§
 %d Einzelfahrzeuge im Depot
-%d kulj.v‰linett‰ tallissa
-%i km/h (max. %ikm/h)
-%i km/h (max. %i km/h)
+%d kulj.v√§linett√§ tallissa
+%d more convois
+%d ajoneuvoa lis√§√§
+%i car(s),
+%i vaunu(a),
 %i years %i months old.
 %i vuotta %i kuukautta vanha.
+%s at (%i,%i) now public stop.
+%s kohdassa (%i,%i) on nyt julkinen pys√§kki.
 %s building %s %s
 %s %s %s
 %s city %d %s
 %s %d %s
+%s factory %s %s
+%s tehdas %s %s
 %s has entered a depot.
 %s on tallissa.
+%s has left.
+%s on poistunut.
 %s land %d %s
 %s maa %d %s
+%s now known as %s.
+%s tunnetaan nyt nimell√§ %s.
 %s wasted\nyour money with a\nnew townhall\nwhen it reached\n%i inhabitants.
 %s rakensi\nuuden kaupungintalon\nsaavuttaessaan %i\nasukkaan rajan.
 %s\nis crowded.
@@ -269,68 +559,126 @@ Tien 2 varannut\nTien 2 varannut
 %s\nnopeus %i\nmax. nopeus %i\ndx:%i dy:%i
 %s\nwas liquidated.
 %s\non lakkautettu.
+%u Client(s)\n
+%u asiakas(ta)\n
+%u days ago
+%u p√§iv√§√§ sitten
+%u hours ago
+%u tuntia sitten
+%u minutes ago
+%u minuuttia sitten
+%u Player (%u locked)\n
+%u pelaaja (%u lukittu)\n
+%u years ago
+%u vuotta sitten
+<clear schedule>
+<tyhjenn√§ aikataulu>
+<create new line>
+<luo uusi linja>
+<h1>Error</h1><p><strong>
+<h1>Virhe: P√§√§llekk√§isi√§ objekteja pak-p√§√§kansiossa</h1><p><strong>Kohteessa 
+<h1>Warning</h1><p><strong>addons for
+<h1>Varoitus: P√§√§llekk√§isi√§ objekteja lis√§osahakemistossa</h1><p><strong>Lis√§osat kohteelle 
+<individual schedule>
+<yksil√∂llinen aikataulu>
 <no line>
 <ei linjaa>
+<no schedule set>
+<ei asetettua aikataulua>
+<promote to line>
+<muuta linjaksi>
 1 convoi
-1 kuljetusv‰line
+1 kuljetusv√§line
 1 Einzelfahrzeug im Depot
-1 kulj.v‰line tallissa.
+1 kulj.v√§line tallissa.
+1 minute ago
+1 minuutti sitten
+1 year ago
+1 vuosi sitten
+100 km/h = %i tiles/month
+100 km/h = %i ruutua/kk
 1LIGHT_CHOOSE
 Kirkkaus:
+1th
+1.
 1WORLD_CHOOSE
 Uuden kartan asetukset:
+21th
+21.
+22th
+22.
+23th
+23.
 2LIGHT_CHOOSE
-V‰rit:
+V√§rit:
+2th
+2.
 2WORLD_CHOOSE
 Kartan numero:
+31th
+31.
 3LIGHT_CHOOSE
 Vieritysnopeus:
+3th
+3.
 4LIGHT_CHOOSE
-K‰‰nteinen vieritys
+K√§√§nteinen vieritys
 5LIGHT_CHOOSE
-N‰yt‰ jalankulkijat
+N√§yt√§ jalankulkijat
 5WORLD_CHOOSE
-Kaupunkien m‰‰r‰:
+Kaupunkien m√§√§r√§:
 6LIGHT_CHOOSE
 Jalankulkijat kaupungeissa
 6WORLD_CHOOSE
 Liikennetiheys:
 8WORLD_CHOOSE
-K‰yt‰ p‰iv‰/yˆ-tilaa
+K√§yt√§ p√§iv√§/y√∂-tilaa
+A bridge must end on a way!
+Sillan t√§ytyy p√§√§tty√§ v√§yl√§lle!
 A bridge must start on a way!
-Sillan t‰ytyy alkaa tiest‰.
+Sillan t√§ytyy alkaa tiest√§.
 Abfrage
-Tutkimistyˆkalu
+Tutkimisty√∂kalu
 Abnehmer
 Kuluttajat
 About
 Tietoja
+About scenario
+Tietoja skenaariosta
 Abriss
 Tuhoa
 Absenken
 Laske maata
+Abspanntransformator
+Muuntaja
 Accelerate time
 Nopeuta aikaa
+Act. load: %u MW\n
+Nykyinen kuorma: %u MW\n
 Active player only
 Vain aktiivinen pelaaja
 Add forest
-Lis‰‰ mets‰‰
+Lis√§√§ mets√§√§
 Add random citycar
-Lis‰‰ yksityisauto
+Lis√§√§ yksityisauto
+add server
+Lis√§√§ palvelin
 Add Stop
-Lis‰‰ pys‰kki
+Lis√§√§ pys√§kki
 Add stops for backward travel
-Lis‰‰ pys‰kkej‰ paluumatkalle
+Lis√§√§ pys√§kkej√§ paluumatkalle
 air
 kiitorata/rullausalue
+Aircraft
+Lentokone
 aircraft_tab
 Rahtikoneet
 airplane
 Lentokone
 Airport
-Lentokentt‰
+Lentokentt√§
 AIRTOOLS
-Lentokent‰t
+Lentokent√§t
 All
 Kaikki
 all convoi tooltips
@@ -342,39 +690,55 @@ Salli pelaajan vaihtaminen
 allowed climates:\n
 Sallitut ilmastot:\n
 Alters a schedule.
-Lis‰‰/poista pys‰kkej‰ reitille/lt‰
+Lis√§√§/poista pys√§kkej√§ reitille/lt√§
+and arranged by
+ja j√§rjestetty:
 Angenommene Waren
-L‰hiyritysten tarvitsemat tavarat
+L√§hiyritysten tarvitsemat tavarat
 anhaengen
-Liit‰
+Liit√§
 Anhaenger_tab
-Per‰vaunut
+Per√§vaunut
 Anheben
 Nosta maata
 Appends stops at the end of the schedule
-Lis‰‰ pys‰kkej‰ reitin loppuun
+Lis√§√§ pys√§kkej√§ reitin loppuun
 Apply Line
 Laita reitille
+Apr.
+huhti.
 April
 huhtikuu
 Arbeiter aus:
-Tyˆntekijˆiden asuinpaikat:
+Ty√∂ntekij√∂iden asuinpaikat:
+Arrivals from\n
+Saapuvat kohteesta\n
 Arrived
 Saapunut
 Assets
-P‰‰oma
+P√§√§oma
 Aufloesen
 Pura
+Aufspanntransformator
+Muuntaja
+Aug.
+elo.
 August
 elokuu
+auto
+automaattinen
 Autohalt muss auf\nStrasse liegen!\n
-Pys‰kki t‰ytyy asettaa tielle!
+Pys√§kki t√§ytyy asettaa tielle!
 Available
 Saatavilla
+Available at custom date
+Saatavilla valittuna ajankohtana
 Bahndepot
 Veturitalli
 Bankrott:\n\nDu bist bankrott.\n
-\n\nYhtiˆsi on tehnyt konkurssin.\n
+\n\nYhti√∂si on tehnyt konkurssin.\n
+based on Simutrans 84.22.1
+perustuu Simutrans 84.22.1 -versioon
 battery
 akku
 Baum
@@ -382,7 +746,7 @@ Puu
 baum builder
 Kasvata puita
 Baustelle
-Rakennustyˆmaa
+Rakennusty√∂maa
 Bauzeit
 Rakennusaika
 Beenden
@@ -394,17 +758,27 @@ Turistikohteet
 BF
 asema
 Blockstrecke ist\nbelegt\n
-Rataosuus on toisen\njunan k‰ytˆss‰.\n
+Rataosuus on toisen\njunan k√§yt√∂ss√§.\n
 Boden
 Maa
+Bonus Multiplier: %i%%
+Bonuskerroin: %i%%
+Bonus Speed: %i km/h
+Bonusnopeus: %i km/h
+Bonusspeed: %i km/h
+Suurin mahdollinen nopeus: %i km/h
+Boost (%%)
+Tehostus (%%)
+Borderless (disabled on fullscreen)
+Reunaton (ei k√§yt√∂ss√§ koko n√§yt√∂n tilassa)
 bridge is too high for its type!
 Silta on liian korkea.
 Bridge is too long for this type!\n
-Silta on liian\npitk‰! 
+Silta on liian\npitk√§! 
 Bruecke
 Silta
 Bruecke muss an\neinfachem\nHang beginnen!\n
-Sillan t‰ytyy\nalkaa m‰est‰.\n
+Sillan t√§ytyy\nalkaa m√§est√§.\n
 Brueckenboden
 silta
 Build air depot
@@ -412,11 +786,11 @@ Rakenna hangaari
 build choosesignals
 Rakenne valintaosoittimia
 Build city market
-Rakenna uusi kauppa l‰himp‰‰n kaupunkiin
+Rakenna uusi kauppa l√§himp√§√§n kaupunkiin
 Build drain
 Rakenna muuntaja
 build HQ
-Rakenna p‰‰konttori
+Rakenna p√§√§konttori
 Build land consumer
 Rakenna uusi voimala
 Build maglev depot
@@ -425,6 +799,8 @@ Build monorail depot
 Rakenna Monorail-talli
 Build narrowgauge depot
 Rakenna kapearaidetalli
+build portal only
+rakenna vain suuaukko
 Build powerline
 Rakenna voimalinjoja
 Build presignals
@@ -446,15 +822,21 @@ Kustannusarvio
 Buildings
 Rakennuksia
 Built artifical slopes
-Rakenna keinotekoisia rinteit‰
+Rakenna keinotekoisia rinteit√§
 Built random attraction
 Rakenna turistikohde
 Bus_tab
 Bussit
+Can be overgrown
+Voi kasvaa umpeen
 Can only move from halt to halt or waypoint to waypoint.
-Voidaan siirt‰ vain\npys‰kilt‰ toiselle\ntai reittipisteelt‰ toiselle.
+Voidaan siirt√§ vain\npys√§kilt√§ toiselle\ntai reittipisteelt√§ toiselle.
 Cancel
 Peruuta
+Cannot build here
+T√§h√§n ei voi rakentaa
+Cannot connect to offline server!
+Ei voida yhdist√§√§ offline-palvelimeen!
 Capacity
 Kapasiteetti
 Capacity:
@@ -466,25 +848,33 @@ Kapasiteetti: %3d%s %s\n
 Capacity: %s\nLoad: %d (%d%%)
 Kapasiteetti: %s\nLasti: %d (%d%%)
 Cars are not available yet!
-Autot eiv‰t ole viel‰ k‰ytett‰viss‰.
+Autot eiv√§t ole viel√§ k√§ytett√§viss√§.
 cars.\nstate
 autoa\n
 Cash
 Kate
+Category
+Kategoria
+Change label style
+Muuta nimilappujen tyyli√§
 Change player
 Vaihda pelaajaa
 Chart
 Tiedot
+Chat_msg
+Keskustelu
 Choose direction
 Vaihda suunta
 Choose operation executed on clicking stored/new vehicles
-Valitse varastoitua/uutta kulkuv‰linett‰ klikattaessa suoritettava toiminto
+Valitse varastoitua/uutta kulkuv√§linett√§ klikattaessa suoritettava toiminto
 chooses a random map
 Luo sattumanvarainen kartta
 citicens
 Asukkaita
+Cities can only be built on flat empty ground!
+Kaupunkeja voi rakentaa vain tasaiselle tyhj√§lle maalle!
 City attraction
-Kaupunkin‰ht‰vyys
+Kaupunkin√§ht√§vyys
 City industries
 Kaupat kaupungeissa
 City list
@@ -498,11 +888,15 @@ Talonrakentaja
 CityLimit
 Rajat
 cl_title
-Kuljetusv‰linelista
+Kuljetusv√§linelista
 cl_txt_sort
-J‰rjestys:
+J√§rjestys:
+clamp
+rajoita
+Cleanup schedule
+Poista kaksoismerkinn√§t
 Clear block reservation
-N‰yt‰/nollaa reittivaraukset
+N√§yt√§/nollaa reittivaraukset
 clf_chk_aircrafts
 Lentokoneet
 clf_chk_cars
@@ -520,11 +914,13 @@ Kapearaidejunat
 clf_chk_noincome
 ei tuloja
 clf_chk_noline
-ei reitti‰
+ei reitti√§
 clf_chk_noroute
-ei reitti‰
+ei reitti√§
 clf_chk_noschedule
-ei reitti‰
+ei reitti√§
+clf_chk_obsolete
+Vanhentuneet
 clf_chk_ships
 Laivat
 clf_chk_spezial_filter
@@ -540,35 +936,71 @@ Suod. tyyppi:
 clf_chk_waren
 Suod. tavarat:
 clf_title
-Kuljetusv‰linelistan suodatus
+Kuljetusv√§linelistan suodatus
+Click to open the finance dialog.
+Napsauta avataksesi talousikkunan.
+Climate
+Ilmasto
 Climate Control
 Ilmaston asetukset
+Climates
+Ilmastot
 closed
 suljettu
+Closes topmost line window when new line selected.
+Sulkee p√§√§llimm√§isen linjaikkunan, kun uusi linja valitaan.
 COLOR_CHOOSE\n
-Valitse yhtiˆllesi\nv‰riteema:\n
+Valitse yhti√∂llesi\nv√§riteema:\n
 Company bankrupt
-Yhtiˆ vararikossa
+Yhti√∂ vararikossa
+company_chat
+Yhti√∂keskustelu
+Company_msg
+Kilpailijat
+Comparing pak files ...
+Verrataan pak-tiedostoja ...
+Composed by
+S√§velt√§nyt
+Configure AI
+M√§√§rit√§ teko√§ly
+Configure AI setttings
+M√§√§rit√§ teko√§lyasetukset
 Congratulation\nScenario was complete in\n%i months %i years.
 Onnittelut!\nSkenaario selvitetty\n%i kuukaudessa ja %i vuodessa.
+Connect factory
+Yhdist√§ tehdas
 Connected stops
-Yhdist. pys‰kit
+Yhdist. pys√§kit
+Connected with server
+Yhdistetty palvelimeen
+connection
+yhteys
+Connections
+Yhteydet
 Constructed by
 Maalannut:
 Constructed by %s
 Maalannut: %s
+construction speed
+rakennusnopeus
 Construction_Btn
 Rakennuskulut
+Consumed
+Kulutettu
+contains the following doubled objects:</strong><p>
+ sis√§lt√§√§ seuraavat kohteet useammin kuin kerran:</strong><p/>
 convoi %d of %d
-Kuljetusv‰line %d / %d
+Kuljetusv√§line %d / %d
 convoi error tooltips
 ajoneuvojen virhetiedot
+Convoi following mode
+Ajoneuvon seuraamistila
 Convoi has been sent\nto the nearest depot\nof appropriate type.\n
-Ajoneuvo on l‰hetetty l‰himp‰‰n sopivaan talliin.
+Ajoneuvo on l√§hetetty l√§himp√§√§n sopivaan talliin.
 Convoi is sold when all wagons are empty.
-Kulkuneuvo myyd‰‰n, kun kaikki vaunut ovat tyhji‰.
+Kulkuneuvo myyd√§√§n, kun kaikki vaunut ovat tyhji√§.
 convoi mouseover tooltips
-ajoneuvojen tiedot hiirell‰
+ajoneuvojen tiedot hiirell√§
 convoi passed last\nmonth %i\n
 Ajoneuvoja viime\nkuussa %i\n
 Convois
@@ -581,60 +1013,120 @@ Copy Convoi
 Kopioi ajoneuvo
 Copy the selected convoi and its schedule or line
 Kopioi valittu ajoneuvo ja sen reitti.
+Copy to clipboard
+Kopioi leikep√∂yd√§lle
+Cost
+Hinta
 cost for removal
 poistaminen maksaa 
+Cost per unit
+Yksikk√∂hinta
+Cost: %8s (%.2f$/km %.2f$/m)\n
+Hinta: %8s (%.2f$/km %.2f$/m)\n
+Cost: %8s (%.2f$/km)\n
+Hinta: %8s (%.2f$/km)\n
 Costs
 Kulut
 Create a new line based on this schedule
-Luo uusi linja, joka perustuu t‰h‰n reittiin
+Luo uusi linja, joka perustuu t√§h√§n reittiin
 curiosity builder
-N‰ht‰vyysrakentaja
+N√§ht√§vyysrakentaja
 curlist_title
 Turistikohdelista
+CURRENCY
+‚Ç¨
+Current game
+Nykyinen peli
 Currently playing:
-T‰ll‰ hetkell‰ soi:
+T√§ll√§ hetkell√§ soi:
+Customers live in:
+Asiakkaat asuvat kohteessa:
+Date format
+P√§iv√§m√§√§r√§n muoto
+deactivated in online mode
+Ei k√§yt√∂ss√§ verkkopeliss√§
+Dec.
+joulu.
 Deccelerate time
 Hidasta aikaa
 December
 joulukuu
 decrease underground view level
-v‰henn‰ maanalaisen n‰kym‰n tasoa
+v√§henn√§ maanalaisen n√§kym√§n tasoa
 Del Stop
 Poista
 Delete Line
 Poista linja
 Delete the current stop
-Poista nykyinen pys‰kki
+Poista nykyinen pys√§kki
+Delete the selected line (if without associated convois).
+Poista valittu linja (jos siihen ei liity ajoneuvoja).
 Delete this file.
-Poista t‰m‰ tiedosto.
+Poista t√§m√§ tiedosto.
+Delivered
+Toimitettu
+Demand
+Kysynt√§
 Demand: %.0f MW
 Tarve: %.0f MW\n
 Denkmal
 Muistomerkki
 Departed
-L‰htenyt
+L√§htenyt
+Departs at
+L√§ht√∂aika (pp:tt:mm)
+Departure after
+%% lasti tai odotusaika (pp-tt-mm)
+Departure board
+L√§ht√∂aika
+Departures per month
+L√§ht√∂j√§ kuukaudessa
+Departures to\n
+L√§hd√∂t kohteeseen\n
+Depot
+Varikko
 Depots
 Tallit
 Der Tunnel ist nicht frei!\n
-Tunneli ei ole tyhj‰.\n
+Tunneli ei ole tyhj√§.\n
 Destination
-M‰‰r‰np‰‰
+M√§√§r√§np√§√§
+Destroying map ...
+Tuhotaan vanhaa karttaa ...
 Details
-Lis‰tiedot
+Lis√§tiedot
+Developed by the Simutrans Team
+Kehitt√§nyt Simutrans Team
 Die Bruecke ist nicht frei!\n
 Silta ei ole vapaa.
+direct_chat_to:
+Yksityisviesti pelaajalle
+directmail
+Mainoslehtiset
 Direkt erreichbare Haltestellen
 Suorat yhteydet asemille
 disable midi
-Mykist‰ midi-musiikki
+Mykist√§ midi-musiikki
+Display bars above factory to show the status
+N√§yt√§ tilapalkit tehtaan yl√§puolella
 Display settings
-N‰ytˆn asetukset
+N√§yt√∂n asetukset
 Distance
 Matka
+distributing cities
+sijoitetaan kaupunkeja
+distributing factories
+sijoitetaan tehtaita
+Do not show
+√Ñl√§ n√§yt√§
 Dock
 laituri
 Dock must be built on single slope!
-Laituri pit‰‰ rakentaa suoraan rinteeseen!
+Laituri pit√§√§ rakentaa suoraan rinteeseen!
+Downloading
+Ladataan
+dp_title
+Varikkolista
 Du hast %d Monate Zeit, deine Schulden zurueckzuzahlen
 Sinulla on %d kuukautta maksaa velkasi.
 Durchsatz
@@ -644,29 +1136,37 @@ Talous ja kaupungit
 Eigenbesitz\n
 Julkista omaisuutta\n
 Ein %s\npasst hier nicht.\n
-'%s'\nei sovi t‰h‰n.\n
+'%s'\nei sovi t√§h√§n.\n
+Einstellungen
+Asetukset
 Einstellungen aendern
 Muuta asetuksia
 electric
-s‰hkˆ
+s√§hk√∂
 Electricity
-s‰hkˆ
+s√§hk√∂
 Electricity producer\n\n
-S‰hkˆntuottaja\n\n
+S√§hk√∂ntuottaja\n\n
 Electrics_tab
-S‰hkˆ
+S√§hk√∂
 Electrify track
-S‰hkˆist‰ rata
+S√§hk√∂ist√§ rata
 enlarge map
 Suurenna karttaa
 enter a value between %i and %i
-Syˆt‰ arvo %i:n ja %i:n v‰lilt‰
+Sy√∂t√§ arvo %i:n ja %i:n v√§lilt√§
+Enter address
+Anna osoite
+Enter Password
+Vaihda pelaajan nimi ja salasana
 Error
 Virhe
 Erzeuge neue Karte.\n
-Odota, uutta karttaa\nluodaan.\n\nT‰m‰ saattaa kest‰‰\nmuutaman minuutin\nisoilla kartoilla.\n
+Odota, uutta karttaa\nluodaan.\n\nT√§m√§ saattaa kest√§√§\nmuutaman minuutin\nisoilla kartoilla.\n
 Es wird bereits\nein Fahrplan\neingegeben\n
-Aikataulua\ntehd‰‰n parhaillaan.\nSaata se p‰‰tˆkseen\nennen kuin uusit sen!\n
+Aikataulua\ntehd√§√§n parhaillaan.\nSaata se p√§√§t√∂kseen\nennen kuin uusit sen!\n
+Extract files
+Pura pak-tiedostot zip-paketista.
 Fabrikanschluss
 Yhdist. yritykset
 Fabrikname
@@ -680,15 +1180,17 @@ Tehdasrakentaja
 Fahrplan
 Reitti
 Fahrtziel
-M‰‰r‰np‰‰: 
+M√§√§r√§np√§√§: 
 Fahrzeuge koennen so nicht entfernt werden
-Kuljetusv‰linett‰ ei\nvoi poistaa t‰ll‰\ntavalla.\n
+Kuljetusv√§linett√§ ei\nvoi poistaa t√§ll√§\ntavalla.\n
 Fahrzeuge:
-Kulj.v‰lineet:
+Kulj.v√§lineet:
 Farbe
-V‰ritys
+V√§ritys
 Fast forward
 Nopeuta aikaa
+Feb.
+Helmi.
 February
 helmikuu
 Ferry_tab
@@ -697,12 +1199,16 @@ Fertig
 Valmis
 Filename
 Tiedosto:
+Files from:
+Tiedostot kohteesta:
 Filter:
 Suodatus:
 Finances of %s
 %s:n talous
 Finanzen
 Talous
+find mismatch
+Vertaa pak-pakettiasi
 fl_title
 Tehdaslista
 Flug_tab
@@ -711,34 +1217,52 @@ follow me
 Seuraa
 Follow the convoi on the map.
 Seuraa ajoneuvoa kartalla.
+font size
+Fonttikoko (vain .ttf- ja .otf-fontit)
+For questions and support please visit:
+Kysymyksi√§ ja tukea varten vieraile osoitteessa:
 Forest
-Mets‰t
+Mets√§t
 Found new city
 Perusta uusi kaupunki
 Fracht
 Rahti
 Frame time:
-Ruudunp‰ivitysaika:
+Ruudunp√§ivitysaika:
 Free Capacity
-Tyhj‰‰
+Tyhj√§√§
 freeplay mode
 vapaapeli
+Freight
+Rahti
 Friction:
 Kitkakerroin:
 fuel_cell
 polttokenno
 Full load
 Lasti:
+Fullscreen (changed after restart)
+Kokoruututila (muuttuu uudelleenk√§ynnistyksen j√§lkeen)
+Fundament
+Perustus
 Fussgaenger
 Jalankulkija
+Game info
+Pelin tiedot
 GAME PAUSED
 TAUOLLA
+Game_msg
+Yleiset
 Gear:
-V‰litys:
+V√§litys:
 Gebaeude
 Rakennus
 General
 Yleinen
+generate script
+Luo infrastruktuurimakroskripti
+Generated
+Tuotettu
 Generation: %.0f MW
 Tuotanto: %.0f MW\n
 Gewicht
@@ -746,13 +1270,13 @@ Paino
 Gewinn
 Tulot: 
 Give the selected vehicle(s) an individual schedule
-Anna valituille ajoneuvoille yksilˆllinen reitti.
+Anna valituille ajoneuvoille yksil√∂llinen reitti.
 gl_btn_sort_catg
 kategoria
 gl_title
 Lista kaikista tavaroista
 go home
-L‰het‰ talliin
+L√§het√§ talliin
 Goods
 Tavaraa
 Goods AI
@@ -763,58 +1287,76 @@ Gross Profit
 Kokonaistuotto
 Groundobj
 Objekti
+groundobj builder
+Sijoita maisemakohteita
 Grow city
 Kasvata kaupunkia
 Growth
 Kasvu
+GUI settings
+K√§ytt√∂liittym√§
 H
-pys‰kki
+pys√§kki
 Hangar
 Hangaari
 Happy
-Tyytyv‰isi‰
+Tyytyv√§isi√§
+Has slope graphics
+Sis√§lt√§√§ rinnegrafiikan
+Has Snow
+Lunta
 Haus kaufen
 Osta talo
 Helligk.
-N‰yttˆ
+N√§ytt√∂
 Help
 Ohje
 Help text not found
-Ohjeteksti‰ ei lˆydy!
+Ohjeteksti√§ ei l√∂ydy!
 hide all building
 Piilota kaikki rakennukset
 hide city building
 Piilota kaupunkien rakennukset
+Hide labels
+Piilota nimilaput
+hide objects under cursor
+piilota kohteet osoittimen alta
 hide station names
-Piilota pys‰kkien nimet
+Piilota pys√§kkien nimet
 hide transparent
-Piilotetut l‰pin‰kyvi‰
+Piilotetut l√§pin√§kyvi√§
 hide trees
 Piilota puut
 Hier warten/lagern:
 Matkustajia/tavaroita asemalla:
+Higher transport fees, crossconnect all factories
+Korkeammat kuljetusmaksut, poista Just-in-time k√§yt√∂st√§.
+highlight single ways
+Osoittaa kulkuv√§ylien p√§√§ttymisen/katkeamisen.
+Highlite schedule
+Korosta reitin pys√§kit
 hl_title
-Pys‰kkilista
+Pys√§kkilista
 hl_txt_filter
 Suodatus:
 hl_txt_sort
-J‰rjestys:
+J√§rjestys:
 hlf_chk_airport
-lentokentt‰
+lentokentt√§
 hlf_chk_anleger
 laituri
 hlf_chk_bahnhof
 rautatieasema
 hlf_chk_bushalt
-bussipys‰kki
+bussipys√§kki
 hlf_chk_frachthof
 lastausalue
 hlf_chk_keine_verb
-ei yhteytt‰
+ei yhteytt√§
 hlf_chk_maglevstop
-Maglev-pys‰kki
+Maglev-pys√§kki
 hlf_chk_monorailstop
-Yksiraidepys‰kki
+Yksiraidepys√§kki
 hlf_chk_name_filter
 Suodata nimet:
 hlf_chk_narrowgaugestop
@@ -824,7 +1366,7 @@ Ylikapasiteetti
 hlf_chk_spezial_filter
 Erik. suod.:
 hlf_chk_tramstop
-Raitiovaunupys‰kki
+Raitiovaunupys√§kki
 hlf_chk_type_filter
 Suodata tyypit:
 hlf_chk_waren_abgabe
@@ -832,61 +1374,93 @@ Tuotanto:
 hlf_chk_waren_annahme
 Tavaran tarve:
 hlf_title
-Pys‰kkilistan suodatus
+Pys√§kkilistan suodatus
 Home depot not found!\nYou need to send the\nconvoi to the depot\nmanually.
-Sopivaa tallia ei lˆydy.\nSinun t‰ytyy l‰hett‰‰\najonevo talliin manuaalisesti.
+Sopivaa tallia ei l√∂ydy.\nSinun t√§ytyy l√§hett√§√§\najonevo talliin manuaalisesti.
 Homeless
 Kodittomia
+Horizontal stripe ownership
+Omistajuus vaakaraidoin
 hydrogene
-vety‰
+vety√§
+Icon size:
+Kuvakekoko:
 Idle:
 Vapaana:
 ignore climates
-ƒl‰ huomioi ilmastoja
+√Ñl√§ huomioi ilmastoja
+In the industry legend show only currently existing factories
+N√§yt√§ teollisuusselitteess√§ vain olemassa olevat tehtaat
+In Transit
+Matkalla
 Increase Industry density
-Lis‰‰ teollisuuden m‰‰r‰‰
+Lis√§√§ teollisuuden m√§√§r√§√§
 increase underground view level
-lis‰‰ maanalaisen n‰kym‰n tasoa
+lis√§√§ maanalaisen n√§kym√§n tasoa
 industrial building
 tuotantolaitos
+Industry overlay
+Teollisuusn√§kym√§
+Infinite mouse scrolling
+Loputon kartan vieritys
+Infinite scrolling using mouse
+Ei v√§ltt√§m√§tt√§ toimi kosketusn√§yt√∂ill√§!
 Init map ...
 Luodaan karttaa...
 Input
 Raaka-aineet
 Ins Stop
-Lis‰‰ eteen
+Lis√§√§ eteen
 Insert stop before the current stop
-Lis‰‰ pys‰kki ennen nykyist‰ pys‰kki‰
+Lis√§√§ pys√§kki ennen nykyist√§ pys√§kki√§
+Install graphics
+Asenna grafiikka
+Install paks
+Pak-paketit ladataan ja asennetaan.
+Insufficient funds!
+Varat eiv√§t riit√§!
 Intercity road len:
 Maanteiden pituus:
+Intro. date
+K√§ytt√∂√∂nottop√§iv√§
 Intro. date:
-Julkaisup‰iv‰:
+Julkaisup√§iv√§:
 invalid
-ei m‰‰ritelty.
+ei m√§√§ritelty.
 Invalid coordinate
 Virheellinen komento
+Invert stops
+K√§√§nn√§ pys√§kit
 isometric map
 isometrinen kartta
+Jan.
+Tammi.
 January
 tammikuu
+join game
+Pelaa verkossa
 July
-hein‰kuu
+hein√§kuu
 Jump to
 Siirry kohteeseen 
 June
-kes‰kuu
+kes√§kuu
+just now
+juuri nyt
 Kann Spielstand\nnicht laden.\n
-Tallennetun pelin\nlataus ep‰onnistui.\n
+Tallennetun pelin\nlataus ep√§onnistui.\n
 Kann Spielstand\nnicht speichern.\n
-Tallennus ep‰onnistui.\n
+Tallennus ep√§onnistui.\n
+keep city roads
+s√§ilyt√§ kadut
 Kein Besitzer\n
 Ei omistajaa\n
 keine
-ei mit‰‰n
+ei mit√§√§n
 Keine Einzelfahrzeuge im Depot
-Ei kulj.v‰lineit‰ tallissa.
+Ei kulj.v√§lineit√§ tallissa.
 Keyboard_Help\n
-Pikan‰pp‰imet\n
+Pikan√§pp√§imet\n
 koord
 koordinaatit
 Kreuzung
@@ -898,21 +1472,31 @@ Lataa korkokuva
 Laden
 Lataa
 Land attraction
-Maaseutun‰ht‰vyys
+Maaseutun√§ht√§vyys
 Land industries
 Tehtaita:
 LANG_CHOOSE\n
-Valitse kieli\nk‰yttˆliittym‰lle:\n
+Valitse kieli\nk√§ytt√∂liittym√§lle:\n
 LARGE_NUMBER_STRING
 M
 LARGE_NUMBER_VALUE
 1e6
+Last Month
+Viime kuukausi:
+Last used tools
+Viimeksi k√§ytetyt ty√∂kalut
 Last Year
 Viime vuosi:
 Leaving depot!
-L‰hdˆss‰ tallista!
+L√§hd√∂ss√§ tallista!
 leer
-tyhj‰
+tyhj√§
+Left button drags minimap too
+Vasen painike vet√§√§ my√∂s minikarttaa
+legacy (large heights)
+perinteinen (suuret korkeudet)
+legacy (small heights)
+perinteinen (pienet korkeudet)
 Legend
 Selite
 Leistung
@@ -921,94 +1505,146 @@ Leistung: %d kW
 Teho: %d kW
 Leitung
 Voimalinja
+length: %d
+pituus: %d
 letzen Monat: diesen Monat:
-viime kuu:              t‰m‰ kuu:
+viime kuu:              t√§m√§ kuu:
 Line
 linja
 Line Management
 Linjojen hallinta
+line name mouseover tooltips
+linjan nimen ty√∂kaluvihjeet
+linear
+lineaarinen
 Lineless convoys serving this stop
-Linjattomat ajoneuvot t‰ll‰ pys‰kill‰
+Linjattomat ajoneuvot t√§ll√§ pys√§kill√§
 Lines serving this stop
-Linjat, jotka k‰yv‰t t‰ll‰ pys‰kill‰
+Linjat, jotka k√§yv√§t t√§ll√§ pys√§kill√§
+List of industries on the map
+Luettelo kartan teollisuudesta
 LKW_tab
 Rekat
 Load game
 Lataa peli
 load height data from file
 Lataa korkeusdata tiedostosta.
+Load mode:
+Lastaustapa:
 Load scenario
 Lataa skenaario
+Load script tool
+Lataa skriptity√∂kalu
+Load Scripted AI
+Lataa skriptattu teko√§ly
+Load settings from
+K√§yt√§ asetuksia kohteesta
 loaded
 ladattu
 loaded passenger/freight
-J‰rjest‰ matkustajat/rahti:
+J√§rjest√§ matkustajat/rahti:
 Loading (%i->%i%%)!
 Lastataan (%i->%i%%)
+Loading (%i%%) departure %s!
+Ladataan (%i%%) l√§ht√∂ %s!
+Loading (%i%%)!
+Ladataan (%i%%)!
 Loading addon paks ...
-Ladataan lis‰osia...
+Ladataan lis√§osia...
 Loading map ...
 Avataan karttaa...
 Loading paks ...
 Ladataan grafiikoita...
 Loading skins ...
-Ladataan k‰yttˆliittym‰‰...
+Ladataan k√§ytt√∂liittym√§√§...
+Loading time:
+T√§yteen lastattu ajassa: 
+Lock Control key
+Lukitse Ctrl-n√§pp√§in
 Lock game
-Est‰ pelaajan vaihto (edellytt‰‰ vahvistusta)
+Est√§ pelaajan vaihto (edellytt√§√§ vahvistusta)
 Lokomotive_tab
 Veturit
 m3
-m≥
+m¬≥
 maglev vehicle
 Maglev-ajoneuvo
 maglev_track
 Maglev-rata
 Maglevdepot
 Maglev-asema
+Mail Demand %d\n
+Postin kysynt√§ %d\n
+Mail level
+Postin taso
 Mailbox
 Postilaatikko
 Mailbox Options
 Postilaatikon asetukset
 Maintenance
-Yll‰pito
+Yll√§pito
 make stop public (or join with public stop next) costs %i per tile and level
-Tee pys‰kist‰ julkinen (tai liit‰ se viereiseen julkiseen pys‰kkiin). Maksaa %i$ jokaiselta ruudulta ja tasolta.
+Tee pys√§kist√§ julkinen (tai liit√§ se viereiseen julkiseen pys√§kkiin). Maksaa %i$ jokaiselta ruudulta ja tasolta.
+Make way or stop public (will join with neighbours), %i times maintainance
+Muuta v√§yl√§ tai pys√§kki julkiseksi (yhdistyy naapureihin), %i-kertainen yll√§pito
 Manual (Human)
 Pelaaja
 Manufactured:
 Valmistaja:
 Map roughness
 Maaston tasaisuus:
+map view
+Kartta
 map zoom
 suurennos
+Mar.
+Maalis.
 March
 maaliskuu
 Margin (%%)
 Voitto (%%)
 Marker
-Merkkaustyˆkalu
+Merkkausty√∂kalu
+max
+maks.
+Max Boost (%%)
+Maks. tehostus (%%)
 Max income:
 Maksimitulot:
+Max. speed
+Huippunopeus
 Max. speed:
 Huippunopeus:
+Max. waiting time
+Maks. odotusaika (pp:tt:mm)
 Maximum 254 stops\nin a schedule!\n
-Reitill‰ voi olla vain\n254 pys‰kki‰!\n
+Reitill√§ voi olla vain\n254 pys√§kki√§!\n
 maximum length of rivers
 Jokien max.pituus
 Maximum tile height difference reached.
-Korkeusero \nkahden ruudun\nv‰lill‰ saa\nolla enint‰‰n 2.
+Korkeusero \nkahden ruudun\nv√§lill√§ saa\nolla enint√§√§n 2.
+Maxspeed
+Huippunopeus
 May
 toukokuu
 Median Citizen per town
-Asukkaita keskim‰‰rin:
+Asukkaita keskim√§√§rin:
 Meldung
 Viesti
 Menge
-M‰‰r‰
+M√§√§r√§
+merge stop
+yhdist√§ pys√§kki
 MessageOptionsText
-\nUusi vuosi\n\nPelaajauutiset\n\nKaupunkiuutiset\n\nEi reitti‰\n\nUudet yritykset\n\nChat\n\nUudet ajoneuvot\n\nAsema t‰ynn‰\n\nOngelmat\n\nRuuhkat\n\nSkenaario
+\nUusi vuosi\n\nPelaajauutiset\n\nKaupunkiuutiset\n\nEi reitti√§\n\nUudet yritykset\n\nChat\n\nUudet ajoneuvot\n\nAsema t√§ynn√§\n\nOngelmat\n\nRuuhkat\n\nSkenaario
+min
+min.
 minimum length of rivers
 Jokien min.pituus
+Minimum load
+V√§himm√§iskuorma (%%)
+Missing pakfiles
+Objekteja puuttuu!
 Modify the selected line
 Muokkaa valittua linjaa
 Monate alt
@@ -1021,8 +1657,12 @@ Monorailboden
 Monorail-raiteen tuki
 Monoraildepot
 Monorail-talli
+Month
+Kuukausi
 month wait time
 Odotusaika (kk)
+Monthly departures
+Kiinte√§t l√§ht√∂ajat
 Months
 Kuukaudet
 Monument
@@ -1030,21 +1670,23 @@ Muistomerkki
 Monuments
 Monumentit
 Mountain height
-M‰kien korkeus:
+M√§kien korkeus:
+Move the map
+Siirr√§ karttaa
 Movingobj
 liikkuva objekti
 Music playing disabled/not available
-Musiikin soitto pois p‰‰lt‰.
+Musiikin soitto pois p√§√§lt√§.
 Music volume:
 Musiikin voimakkuus:
 mute sound
-Mykist‰
+Mykist√§
 Name
 Nimi
 Narrowgauge
 Kapearaiteinen
 Narrowgauge are not available yet!
-Kapearaide ei ole viel‰ saatavilla!
+Kapearaide ei ole viel√§ saatavilla!
 narrowgauge vehicle
 kapearaidejuna
 narrowgauge_track
@@ -1055,76 +1697,112 @@ Net ID: %p
 Verkko: %p\n
 Net Wealth
 Nettovarallisuus
+Net wealth near zero
+Nettovarallisuus l√§hell√§ nollaa
 Neue Karte
 Uusi kartta
 Neue Welt
 Luo uusi maailma
 new convoi
-Uusi kuljetusv‰line
+Uusi kuljetusv√§line
 New Line
 Uusi linja
 New line created!\nYou can assign the line now\nby selecting it from the\nline selector above.
-Uusi linja on luotu.\nVoit liitt‰‰ sen kulkuneuvoon\nvalitsemalla sen\nlinjavalikosta yl‰reunassa.
+Uusi linja on luotu.\nVoit liitt√§√§ sen kulkuneuvoon\nvalitsemalla sen\nlinjavalikosta yl√§reunassa.
 New Vehicles
-Uudet kulj.v‰lineet
+Uudet kulj.v√§lineet
+Nickname:
+Nimimerkki:
 no buildings hidden
 Ei piilotettuja rakennuksia
 no convois
-Ei kuljetusv‰lineit‰
+Ei kuljetusv√§lineit√§
 No goods are loaded onto this convoi.
-Kuljetusv‰line ei ota uutta lastia
+Kuljetusv√§line ei ota uutta lastia
 no goods waiting
 ei tavaroita odottamassa
 no load
 Ei lastia
+No player
+Ei pelaajaa
 No Route
-ei reitti‰
+ei reitti√§
 No stop here!
-Tyˆkalua voi k‰ytt‰‰\nvain pys‰kkien kohdalla.
+Ty√∂kalua voi k√§ytt√§√§\nvain pys√§kkien kohdalla.
 No suitable ground!
 Alusta ei ole sopiva!
+No suitable townhall available for this climate!
+T√§h√§n ilmastoon sopivaa kaupungintaloa ei ole saatavilla!
 No terminal station here!
-Ei p‰‰tepys‰kki‰ t‰ss‰!
+Ei p√§√§tepys√§kki√§ t√§ss√§!
 no timeline
 Ei aikalinjaa
+No transformer connected.
+Muuntajaa ei ole kytketty: Kaikki s√§hk√∂ menee hukkaan.
 no tree
 Ei puita
+No vehicles are available for purchase.
+Kulkuneuvoja ei ole ostettavissa.
+No. of Factories
+Tehtaat ja kaupat:
 Noch kein Fahrzeug\nmit Fahrplan\nvorhanden\n
-Aseta kuljetusv‰lineelle\nensin reitti.\n
+Aseta kuljetusv√§lineelle\nensin reitti.\n
 none
-ei mit‰‰n
+ei mit√§√§n
 nord
 Pohjoinen
 nordost
 Koillinen
 nordwest
 Luode
+Not allowed to make publicly owned ways!
+Julkisten v√§ylien tekeminen ei ole sallittua!
 Not allowed!\nThe convoi's schedule can\nnot be changed currently.\nTry again later!
-Ei sallittu!\nEt voi muuttaa \nkulkuneuvon reitti‰ \njuuri nyt. \nYrit‰ myˆhemmin uudestaan.
+Ei sallittu!\nEt voi muuttaa \nkulkuneuvon reitti√§ \njuuri nyt. \nYrit√§ my√∂hemmin uudestaan.
 Not enough fields would remain.
-Maatilan ymp‰rille ei j‰isi\ntarpeeksi peltoja.
+Maatilan ymp√§rille ei j√§isi\ntarpeeksi peltoja.
+Not online
+Ei yhteydess√§
+Nov.
+Marras.
 November
 marraskuu
+now
+nyt
 Now active as %s.\n
 Nyt aktiivisena pelaaja %s.
+nowhere
+ei miss√§√§n
 Number of rivers
-Jokien m‰‰r‰
+Jokien m√§√§r√§
 Object
 Objekti
+Oct.
+Loka.
 Odometer: %s km
 Matkamittari: %s km
 Oktober
 lokakuu
 On loan since %i month(s)
 Veloissa %i kuukauden ajan
+On mouseover
+Hiiren osoittaessa
+on the
+l√§ht√∂/kuukausi ensimm√§isen√§ (pp-tt-mm)
 On this map, you are not\nallowed to change player!\n
 Peli lukittu!\nEt voi vaihtaa pelaajaa!\n
 Only city chains
 Vain kaupunkiketjut
+Only first %d differing paks reported. There are probably more.
+Vain ensimm√§iset %d eroavaa pak-tiedostoa n√§ytet√§√§n. Niit√§ on todenn√§k√∂isesti enemm√§n.
+Only full Unicode fonts
+Vain t√§ydet Unicode-fontit
 Only land chains
 Vain maaseutuketjut
 Only one transformer per factory!
 Vain yksi muuntaja tehdasta kohden!
+Only show goods which are currently handled by factories
+N√§yt√§ vain tuotteet, joita tehtaat t√§ll√§ hetkell√§ k√§sittelev√§t
 open
 auki.
 Operation
@@ -1133,12 +1811,30 @@ Ops Profit
 Tuotto toiminnasta
 Optionen
 Asetukset
+Or enter a server manually:
+Tai sy√∂t√§ palvelin k√§sin:
+ORDINAL_DAY_SYMBOL
+.
 Origin
-Alkuper‰
+Alkuper√§
 ost
-It‰
+It√§
 Output
 Tuotanto
+Ownership
+Omistajuus
+Pak which may cause severe errors:
+Seuraavat objektit (pak) puuttuvat, mik√§ voi aiheuttaa kuljetusketjujen katkeamisen:
+Pak which may cause visual errors:
+Seuraavat objektit (pak) korvattiin samankaltaisilla objekteilla:
+Pak(s) different:
+Eroavat pak-tiedostot:
+Pak(s) missing on client:
+Asiakasohjelmalta puuttuvat pak-tiedostot:
+Pak(s) not on server:
+Pak-tiedostot, joita ei ole palvelimella:
+Pakset differences
+Pak-sarjojen erot
 paletten
  laatikkoa
 Pas_tab
@@ -1148,21 +1844,33 @@ matkustajaa
 Passagierrate
 Matkustajia
 Passagierziele
-Matkustajien ja postin m‰‰r‰np‰‰t
+Matkustajien ja postin m√§√§r√§np√§√§t
 Passenger AI
 Matkustaja-AI
+Passenger Demand %d\n
+Matkustajien kysynt√§ %d\n
 Passengers %d %c, %d %c, %d no route
-Matkustajia %d %c, %d %c, %d ei reitti‰
+Matkustajia %d %c, %d %c, %d ei reitti√§
 Passengers %d %s, %d %s, %d no route
-Matkustajia %d %s, %d %s, %d ei reitti‰
+Matkustajia %d %s, %d %s, %d ei reitti√§
+Password
+Salasana:
 Pause
 Tauko
+Pax <%i>  Mail <%i>
+Matkustajat <%i>  Posti <%i>
+Pax level
+Matkustajataso
 PaxDest
-M‰‰r‰np‰‰t
+M√§√§r√§np√§√§t
 Percent Electricity
-S‰hkˆntuotto (%% tarpeesta):
+S√§hk√∂ntuotto (%% tarpeesta):
+personal_chat
+Yksityiskeskustelut
+Pipette
+Rakenna valittu objekti uudelleen
 Planes are not available yet!
-Lentokoneet eiv‰t ole viel‰ k‰ytett‰viss‰!
+Lentokoneet eiv√§t ole viel√§ k√§ytett√§viss√§!
 Plant tree
 Istuta puita
 player
@@ -1190,13 +1898,15 @@ Meyerin Kuljetus oy
 player 5
 Net shipping oy
 player 6
-Katajam‰en Kuljetus
+Katajam√§en Kuljetus
 player 7
 Pelaaja 7
 player 8
 Pelaaja 8
 player 9
 Pelaaja 9
+Player ranking
+Pelaajasijoitukset
 Please choose vehicles first\n
 Valitse kulkuneuvot ensin!\n
 Post
@@ -1205,26 +1915,44 @@ Postrate
 Postia
 Power
 Teho
+Power (MW)
+Teho (MW)
 Power:
 Teho:
+Power: %4d kW\n
+Teho: %4d kW\n
 Powerlines
 Voimalinjat
+Price
+Hinta
+Problems_msg
+Ongelmat
+Produced
+Tuotettu
+Produces: %.1f units/minute
+Tuottaa: %.1f yksikk√∂√§/minuutti
 Production of %s has been stopped:\n%s\n
 %s %s on poistunut tuotannosta.\n
+Production/Boost
+Tuotanto/tehostus
 Produktion
 Tuotanto
 Profit
 Tuotto
 promote to line
 Aseta linjalle
+public_chat
+Yleinen keskustelu
 q1
-Kev‰t
+Kev√§t
 q2
-Kes‰
+Kes√§
 q3
 Syksy
 q4
 Talvi
+Query server
+Kysy palvelimelta
 rail car
 juna
 random
@@ -1239,6 +1967,8 @@ Rating
 Tila
 ratio_pax
 Matk. osuus
+Relevant
+Olennainen
 Reliefkarte
 Kartta
 Remove
@@ -1247,6 +1977,8 @@ remove airstrips
 Poista kiitorata
 remove channels
 Poista kanava
+remove interm. signals
+Poista v√§lisignaalit
 remove maglev tracks
 Poista maglev-rata
 remove monorails
@@ -1257,48 +1989,88 @@ remove powerlines
 Poista voimalinjoja
 remove roads
 Poista tie
+remove signal
+poista signaali
 remove tracks
 Poista rautatie
 Remove wayobj %s
 Poista kohde %s
+replace existing ways
+korvaa olemassa olevat tiet
+replace faster wayobjs
+korvaa nopeammat tieobjektit
+replace other signals
+Korvaa muut signaalit
 replace stop
-Siirr‰ pys‰kki
+Siirr√§ pys√§kki
 request closing
-pyyd‰ sulkemista
+pyyd√§ sulkemista
 residential house
 Asuinrakennus
 Restore natural slope
 Palauta luonnollinen muoto
 Restwert:
 Myyntiarvo:
+Retire date
+K√§yt√∂st√§poistop√§iv√§
 Retire. date:
-El‰kˆitym. p‰iv‰:
+El√§k√∂itym. p√§iv√§:
 return ticket
 Menopaluu
 Revenue
 Tulot
+Revenue/unit/100 tiles
+Tulot/yksikk√∂/100 ruutua
+Revert schedule
+Palauta aikataulu
+Revision:
+Revisio:
 road
 tie
 road vehicle
 ajoneuvo
 Roadsign
 Liikennemerkki
+Rotate Building
+K√§√§nn√§ rakennusta
 Rotate map
-K‰‰nn‰ karttaa
+K√§√§nn√§ karttaa
 Rotation
 Kierto
 Routing
 Reitit
+Running cost
+K√§ytt√∂kustannukset
 sack
- s‰kki‰
+ s√§kki√§
 sail
 tuuli
+Save
+Tallenna
+Save generated script
+Tallenna luotu skripti
 Saving map ...
 Tallennetaan karttaa...
 Scenario complete: %i%%
 Skenaarion edistyminen: %i%%
+Scenario Debug
+Skenaarion virheenkorjaus
+Scenario Error Log
+Skenaarion virheloki
+Scenario Goal
+Skenaarion tavoite
+Scenario Info
+Skenaarion tiedot
+Scenario information
+Skenaarion tiedot
+Scenario Result
+Skenaarion tulos
+Scenario Rules
+Skenaarion s√§√§nn√∂t
+Scenario_
+Skenaario 
 Schedule changing!
-Vaihtaa reitti‰!
+Vaihtaa reitti√§!
 Schienentunnel
 Tunneli (rautatie)
 Schiff_tab
@@ -1307,30 +2079,56 @@ Schiffdepot
 Telakka
 Schleppkahn_tab
 Proomut
+Screen scale:
+N√§yt√∂n skaalaus:
 Screenshot
 Ota kuvankaappaus.
+Scroll threshold
+Vierityskynnys
+Search:
+Etsi:
 Seasons
 Vuodenajat
 Sehenswuerdigkeit
 Turistikohde
+Select a server to join:
+Valitse palvelin, johon liityt:
+Select a theme for display
+Valitse n√§ytett√§v√§ teema
+Select display font
+Valitse n√§ytt√∂fontti
+Select one or more graphics to install (Ctrl+click):
+Valitse yksi tai useampi asennettava grafiikka (Ctrl+klikkaus):
+Select soundfont
+Valitse soundfont
 Sell the selected vehicle(s)
 Myy valitut kulkuneuvot.
+Selling of the program is forbidden.
+Ohjelman myyminen on kielletty.
 sended
-L‰ht. posti
+L√§ht. posti
 SEP_FRACTION
 ,
 SEP_THOUSAND
 .
 SEP_THOUSAND_EXPONENT
 3
+Sept.
+Syys
 September
 syyskuu
+Served by
+Palvelee
+Served by me
+Palvelemani
 Server did not respond!
 Palvelin ei vastannut!
 Serves Line:
 Palvelee linjalla:
 Service
 Palvelu
+set signal spacing
+Aseta signaaliv√§li
 Setting
 Asetukset
 Ship
@@ -1338,61 +2136,121 @@ Laiva
 shops and stores
 Kauppoja ja toimistoja
 Show all
-N‰yt‰ kaikki
+N√§yt√§ kaikki
 show all building
-N‰yt‰ rakennukset
+N√§yt√§ rakennukset
 Show also vehicles no longer in production.
-N‰yt‰ myˆs tuotannosta poistuneet kulkuneuvot.
+N√§yt√§ my√∂s tuotannosta poistuneet kulkuneuvot.
 Show also vehicles that do not match for current action.
-N‰yt‰ myˆs kulkuneuvot, jotka eiv‰t sovellu kyseiseen toimintoon.
+N√§yt√§ my√∂s kulkuneuvot, jotka eiv√§t sovellu kyseiseen toimintoon.
+Show always
+N√§yt√§ aina
+Show climates
+N√§yt√§ ilmastot
+Show construction info
+N√§yt√§ rakennustiedot
+Show contour
+N√§yt√§ korkeusk√§yr√§t
+Show even servers with wrong version or pakset
+N√§yt√§ my√∂s palvelimet, joilla on v√§√§r√§ versio tai pakset
+Show finances for transport type
+N√§yt√§ taloustiedot kuljetusmuodoittain
+Show future
+N√§yt√§ tulevat
 show grid
-N‰yt‰ ruudukko
+N√§yt√§ ruudukko
 Show industry
-N‰yt‰ tehtaat
+N√§yt√§ tehtaat
 Show legend
 Selite
 Show map scale
 Mittakaava
+Show mismatched
+N√§yt√§ yhteensopimattomat
+Show networks
+N√§yt√§ verkot
 Show obsolete
-N‰yt‰ vanhenneet
+N√§yt√§ vanhenneet
+Show offline
+N√§yt√§ offline-tilassa olevat
+Show only used
+N√§yt√§ vain k√§ytetyt
+Show outline
+N√§yt√§ √§√§riviivat
 Show schedules
-N‰yt‰ reitit
+N√§yt√§ reitit
+Show servers that are offline
+N√§yt√§ palvelimet, jotka ovat offline-tilassa
+Show servers where game version or pakset does not match your client
+N√§yt√§ palvelimet, joiden peliversio tai pakset ei vastaa asiakasohjelmaasi
 show station coverage
-N‰yt‰ asemien peitt‰vyys
+N√§yt√§ asemien peitt√§vyys
 show station names
-N‰yt‰ asemien nimet
+N√§yt√§ asemien nimet
 show waiting bars
-N‰yt‰ odottavat pylv‰in‰
+N√§yt√§ odottavat pylv√§in√§
+show/hide block reservations
+n√§yt√§/piilota lohkovaraukset
+Show/hide estimated arrival times
+N√§yt√§/piilota arvioidut saapumisajat
+show/hide object owner
+n√§yt√§/piilota kohteen omistaja
 Show/hide statistics
-N‰yt‰/piilota tiedot
+N√§yt√§/piilota tiedot
+Shows buttons about networks overlay.
+N√§ytt√§√§ verkkokerroksen painikkeet.
+Shows buttons on network overlay.
+N√§ytt√§√§ verkkokerroksen painikkeet.
+Shows buttons on special topics.
+N√§ytt√§√§ erikoisaiheiden painikkeet.
 Shows consumer/suppliers for factories
-N‰yt‰ tehtaiden saapuvat/l‰htev‰t
+N√§yt√§ tehtaiden saapuvat/l√§htev√§t
+Shows the color code for several selections.
+N√§ytt√§√§ v√§rikoodit useille valinnoille.
 Shows the currently selected schedule
-N‰yt‰ valittu reitti
+N√§yt√§ valittu reitti
 Shrink city
-Pienenn‰ kaupunkia
+Pienenn√§ kaupunkia
 shuffle midis
 sekoita kappaleet
+Signal
+Opastin
+signal spacing
+Signaaliv√§li
 Sim:
 Silmukoita:
+Similar view as the main window
+Samanlainen n√§kym√§ kuin p√§√§ikkunassa
+Single toolbar only
+Vain yksi ty√∂kalurivi
 Size (%d MB):
 Kartan koko:
+Size (area)
+Koko (pinta-ala)
 sliced underground mode
-Viipalen‰kym‰
+Viipalen√§kym√§
 slot empty
-tyhj‰
+tyhj√§
+Smart hide objects
+√Ñlyk√§s kohteiden piilotus
 Sort by
-J‰rjest‰:
+J√§rjest√§:
+Sort by:
+J√§rjest√§:
 Sort waiting list by
-J‰rjest‰ odottavien lista:
+J√§rjest√§ odottavien lista:
 Sound
-ƒ‰net
+√Ñ√§net
 Sound settings
-ƒ‰niasetukset
+√Ñ√§niasetukset
 Sound volume:
-ƒ‰nenvoimakkuus:
+√Ñ√§nenvoimakkuus:
+Soundfonts are located in the music directory.
+Soundfontit sijaitsevat musiikkihakemistossa.
 special freight
 Erikoisrahti
+Speed Bonus
+Nopeusbonus
 Speedbonus\nroad %i km/h, rail %i km/h\nships %i km/h, planes %i km/h.
 Nopeusbonus\ntie: %i km/h, rautatie: %i km/h\nlaivat: %i km/h, lentokoneet %i km/h
 Speedlimit
@@ -1416,21 +2274,35 @@ Kielet
 Stadtinformation
 Kaupungin tiedot
 Start
-K‰ynnist‰
+K√§ynnist√§
 Start the selected vehicle(s)
-K‰ynnist‰ kulkuneuvo(t).
+K√§ynnist√§ kulkuneuvo(t).
 Starte Spiel
 Aloita peli
+station labels
+Asemat
 Station tiles:
 Asemaruudut:
+Station_msg
+Asemat
 Status
-Pys‰kin tila
+Pys√§kin tila
+stay on this level
+pysy t√§ll√§ tasolla
 steam
-hˆyry
+h√∂yry
 Step timeline one year
-Siirry vuosi eteenp‰in.
+Siirry vuosi eteenp√§in.
+Stopping permissions
+Pys√§htymisoikeudet
+Stops
+Pys√§kit
+Storage
+Varasto
 Storage capacity
 Varastokapasiteetti
+straight route
+suora reitti
 Strassendepot
 Autovarikko
 Strassentunnel
@@ -1438,45 +2310,63 @@ Tunneli (tie)
 street car
 raitiovaunu
 sued
-etel‰
+etel√§
 suedost
 kaakko
 suedwest
 lounas
 Summer snowline
-Lumiraja kes‰ll‰
+Lumiraja kes√§ll√§
+Supplied: %.0f %%
+Toimitettu: %.0f %%
 Suppliers
 Alihankkijat
 Tage alt
-p‰iv‰‰ vanha.
+p√§iv√§√§ vanha.
+The following graphics are unmaintained:
+Seuraavia grafiikoita ei en√§√§ yll√§pidet√§:
+The generated script was saved!\n
+Luotu skripti on tallennettu!\n
+The gradient does not fit a tunnel
+Kaltevuus ei sovi tunnelille
+The script cannot be saved!\n
+Skripti√§ ei voi tallentaa!\n
+Theme selector
+Teeman valitsin
 There are still vehicles\nstored in this depot!\n
-T‰m‰n tallin sis‰ll‰ on\nyh‰ kuljetusv‰line(it‰)!\n
+T√§m√§n tallin sis√§ll√§ on\nyh√§ kuljetusv√§line(it√§)!\n
 This Month
-T‰ss‰ kuussa
+T√§ss√§ kuussa
 This Year
-T‰m‰ vuosi:
+T√§m√§ vuosi:
 Tile not empty.
-Ruutu ei ole tyhj‰.
+Ruutu ei ole tyhj√§.
 timeline
 Aikalinja
 tl_title
 Lista kaikista kaupungeista
 To attract more tourists\n%s built\na %s\nwith the aid of\n%i tax payers.
-Houkutellakseen enemm‰n\nturisteja %s\nrakensi kohteen\n%s\n %i veronmaksajan avulla.
+Houkutellakseen enemm√§n\nturisteja %s\nrakensi kohteen\n%s\n %i veronmaksajan avulla.
 To heavy traffic\nresults in traffic jam.\n
 Liikenneruuhka!\n
+To: %s
+Mihin: %s
 Toggle day/night view
-Vaihda p‰iv‰/yˆ -tilaa
+Vaihda p√§iv√§/y√∂ -tilaa
 Toggle vehicle tooltips
-Vaihda kulkuneuvovihjeit‰
+Vaihda kulkuneuvovihjeit√§
 tonnen
  tonnia
+Toolbar position:
+Ty√∂kalurivin sijainti:
 Total inhabitants:
 Asukkaita:
 Tourist attractions
 Turistikohteita:
 Tourists
 Turistikohteita
+Town_msg
+Uudet kohteet
 Town: %s\n
 Kaupunki:\n %s\n
 Towns
@@ -1487,10 +2377,12 @@ Tracks
 Raiteet
 Traffic
 Liikenne
+traffic settings
+Liikenne
 Train
 Juna
 Trains are not available yet!
-Junat eiv‰t ole viel‰ k‰ytett‰viss‰.
+Junat eiv√§t ole viel√§ k√§ytett√§viss√§.
 Tram
 Raitiovaunu
 tram %i km/h, monorail %i km/h\nmaglev %i km/h, narrowgauge %i km/h.
@@ -1500,77 +2392,115 @@ raitiovaunurata
 Tramdepot
 Raitiovaunutalli
 Trams are not available yet!
-Raitiovaunut eiv‰t ole viel‰ k‰ytett‰viss‰!
+Raitiovaunut eiv√§t ole viel√§ k√§ytett√§viss√§!
 Transferring game ...
-Siirret‰‰n peli‰...
+Siirret√§√§n peli√§...
 Transformer only next to factory!
-Muuntamon voi rakentaa vain\ntyhj‰‰m, tasaiseen ruutuun\ntehtaan viereen.
+Muuntamon voi rakentaa vain\ntyhj√§√§m, tasaiseen ruutuun\ntehtaan viereen.
 Translation
-K‰‰nnˆs
+K√§√§nn√∂s
+transparencies
+L√§pin√§kyvyys
+transparent background
+l√§pin√§kyv√§ tausta
 transparent station coverage
-L‰pin‰kyv‰ asemien peitt‰vyys
+L√§pin√§kyv√§ asemien peitt√§vyys
 Transported
 Kuljetettu
+Trees disabled!
+Puut poistettu k√§yt√∂st√§!
 TrolleyBus_tab
 Johdinautot
 Truck
 Rekka
+tt_Other
+Muut
 Tunnel muss an\neinfachem\nHang beginnen!\n
-Tunnelin t‰ytyy\nalkaa m‰est‰.\n
+Tunnelin t√§ytyy\nalkaa m√§est√§.\n
 Tunnel must start on single way!
-Tunnelin t‰ytyy alkaa\nyksitt‰isest‰ tiest‰!
+Tunnelin t√§ytyy alkaa\nyksitt√§isest√§ tiest√§!
 Tunnelboden
 Tunneli
+under the Artistic License
+Artistic License -lisenssill√§
 underground mode
-Maanalainen n‰kym‰
+Maanalainen n√§kym√§
 UNDO failed!
-Et voi perua en‰‰.\nReitin rakentamisen voi perua\nvain, jos reitille ei ole\nrakennettu osoittimia,\nasemia, pys‰kkej‰ tai\nmit‰‰n muutakaan.
+Et voi perua en√§√§.\nReitin rakentamisen voi perua\nvain, jos reitille ei ole\nrakennettu osoittimia,\nasemia, pys√§kkej√§ tai\nmit√§√§n muutakaan.
 Undo last ways construction
-Peruuta edellinen tien-/radanrakennustyˆ
+Peruuta edellinen tien-/radanrakennusty√∂
 Unemployed
-Tyˆttˆmi‰
+Ty√∂tt√∂mi√§
 Unhappy
-Pettyneit‰
+Pettyneit√§
 units/day
- yksikkˆ‰/kk
+ yksikk√∂√§/kk\n
+Unloading (%i%%)!
+Puretaan (%i%%)!
 Update Line
-P‰ivit‰ linja
+P√§ivit√§ linja
 upgrade HQ
-P‰ivit‰ p‰‰konttori
+P√§ivit√§ p√§√§konttori
 Usage: %.0f %%
-K‰yttˆaste: %.0f %%
+K√§ytt√∂aste: %.0f %%
+Usage/Output
+K√§ytt√∂/tuotanto
+Use beginner mode
+K√§yt√§ aloittelijatilaa
 Use timeline start year
-K‰yt‰ aikalinjaa vuodesta
+K√§yt√§ aikalinjaa vuodesta
 Vehicle %s can't find a route!
-Kulkuneuvo %s\nei lˆyd‰ reitti‰!
+Kulkuneuvo %s\nei l√∂yd√§ reitti√§!
 Vehicle %s is stucked!
 Kulkuneuvo %s on jumissa!
+Vehicle count:
+Ajoneuvojen m√§√§r√§:
 Vehicle details
 Kulkuneuvon tiedot
+Vehicle Name
+Ajoneuvon nimi
+Vehicle Power
+Ajoneuvon teho
+vehicles stored
+varastoidut ajoneuvot
 Verbrauch
 Kulutus
 Vergroessere die Karte\n
 Suurenna kartta.
+Verkauf
+Poista heti!
 verkaufen
 Myy
 Verkehrsteilnehmer
-Henkilˆautoja
+Henkil√∂autoja
 Verschuldet:\n\nDu hast %d Monate Zeit,\ndie Schulden zurueckzuzahlen.\n
-Yhtiˆll‰si on velkoja!\n\nSinulla on %d kuukautta\naikaa maksaa velkasi.\n
+Yhti√∂ll√§si on velkoja!\n\nSinulla on %d kuukautta\naikaa maksaa velkasi.\n
+vh_title
+Kaikkien ajoneuvojen lista
 via
 Kautta
 via %s\n
  kautta %s\n
 via Menge
-Kautta (m‰‰r‰)
+Kautta (m√§√§r√§)
+via owner
+kautta (omistaja)
 voranstellen
-Liit‰ eteen
+Liit√§ eteen
 Waggon_tab
 Vaunut
 waiting
 odottamassa
 Waiting for clearance!
 Odottaa vuoroaan!
+Walked
+K√§velleet
+walking
+K√§vely
+Warnings_msg
+Liikenne
+Wasser
+Vesi
 Water
 Vesi
 Water level
@@ -1578,19 +2508,35 @@ Veden taso:
 water vehicle
 Vesikulkuneuvo
 way %s cannot longer used:\n
-Tietyyppi‰ %s ei voida en‰‰ k‰ytt‰‰.\n
+Tietyyppi√§ %s ei voida en√§√§ k√§ytt√§√§.\n
 way %s cannot longer used:\n%s\n
-Tietyyppi‰ %s ei voida en‰‰ k‰ytt‰‰:\n
+Tietyyppi√§ %s ei voida en√§√§ k√§ytt√§√§:\n
 way %s now available:\n
 %s nyt saatavilla:\n
+Way toll
+V√§yl√§maksu
 Ways not connected
-Pisteit‰ ei ole yhdistetty.
+Pisteit√§ ei ole yhdistetty.
+waytype
+v√§yl√§tyyppi
 Wegpunkt
 Reittipiste
+Weight
+Paino
+Weight:
+Paino:
+Weight/unit
+Paino/yksikk√∂
+Welcome to Simutrans
+Tervetuloa Simutransiin
+Welcome, %s!
+Tervetuloa, %s!
 Wert
 Arvo
 west
-L‰nsi
+L√§nsi
+Wind direction
+Tuulen suunta
 Winter snowline
 Lumiraja talvella
 withdraw
@@ -1599,46 +2545,84 @@ Withdraw All
 Lakkauta kaikki
 WRONGSAVE
 Tallennetun pelin versio\nei ole yhteensopiva.\nLataus ei onnistu.\n
+Year
+Vuosi
 Year %i has started.
 Vuosi %i on alkanut.
 Years
 Vuodet
+Your primary color:
+Ensisijainen v√§risi:
+Your secondary color:
+Toissijainen v√§risi:
 Zielort
-M‰‰r‰np‰‰
+M√§√§r√§np√§√§
 zooming in
-L‰henn‰
+L√§henn√§
 zooming out
 Loitonna
 Zu nah am Kartenrand
-Et voi rakentaa t‰h‰n,\nsill‰ kartan reuna on\nliian l‰hell‰.\n
+Et voi rakentaa t√§h√§n,\nsill√§ kartan reuna on\nliian l√§hell√§.\n
 #__________________________________record_text__________________________________
 #__________________________________record_text__________________________________
 New world record for maglevs: %.1f km/h by %s.
-Uusi nopeusenn‰tys maglev-junille: %.1f km/h (%s).
+Uusi nopeusenn√§tys maglev-junille: %.1f km/h (%s).
 New world record for monorails: %.1f km/h by %s.
-Uusi nopeusenn‰tys\nmonorail-junille: %.1f km/h\n(%s).
+Uusi nopeusenn√§tys\nmonorail-junille: %.1f km/h\n(%s).
 New world record for motorcars: %.1f km/h by %s.
-Uusi nopeusenn‰tys\nautoille: %.1f km/h\n(%s).
+Uusi nopeusenn√§tys\nautoille: %.1f km/h\n(%s).
 New world record for narrowgauges: %.1f km/h by %s.
-Uusi nopeusenn‰tys\nkapearaideradoilla: %.1f km/h\n(%s).
+Uusi nopeusenn√§tys\nkapearaideradoilla: %.1f km/h\n(%s).
 New world record for planes: %.1f km/h by %s.
-Uusi nopeusenn‰tys\nlentokoneille: %.1f km/h\n(%s).
+Uusi nopeusenn√§tys\nlentokoneille: %.1f km/h\n(%s).
 New world record for railways: %.1f km/h by %s.
-Uusi nopeusenn‰tys\nrautateill‰: %.1f km/h\n(%s).
+Uusi nopeusenn√§tys\nrautateill√§: %.1f km/h\n(%s).
 New world record for ship: %.1f km/h by %s.
-Uusi nopeusenn‰tys\nmerell‰: %.1f km/h\n(%s).
+Uusi nopeusenn√§tys\nmerell√§: %.1f km/h\n(%s).
+#________________________________script_ai_text_________________________________
+#________________________________script_ai_text_________________________________
+%s build additional convoy to line: %s
+%s rakentaa lis√§ajoneuvon linjalle: %s
+%s build rail line from %s (%s) to %s (%s)
+%s rakentaa rautatielinjan kohteesta %s (%s) kohteeseen %s (%s)
+%s build road line from %s (%s) to %s (%s)
+%s rakentaa tielinjan kohteesta %s (%s) kohteeseen %s (%s)
+%s build ship line from %s (%s) to %s (%s)
+%s rakentaa laivalinjan kohteesta %s (%s) kohteeseen %s (%s)
+%s extends the route from %s (%s) to %s (%s)
+%s jatkaa reitti√§ kohteesta %s (%s) kohteeseen %s (%s)
+%s optimize way line from %s (%s) to %s (%s)
+%s optimoi reitin kohteesta %s (%s) kohteeseen %s (%s)
+%s removes convoys from line: %s
+%s poistaa ajoneuvoja linjalta: %s
+vehicles of the line %s were retired
+linjan %s ajoneuvot poistettiin k√§yt√∂st√§
+#_________________________________tooltip_text__________________________________
+#_________________________________tooltip_text__________________________________
+Add convois with similar schedule to this line.
+Lis√§√§ vastaavan aikataulun ajoneuvot t√§lle linjalle.
+Attach current coordinate to the comment
+Liit√§ nykyiset koordinaatit kommenttiin
+Enter intervall in days, hours, minutes
+Anna aikav√§li p√§ivin√§, tunteina, minuutteina
+Mirrors order of stops
+K√§√§nn√§ pys√§kkij√§rjestys
+Revert to original schedule
+Palauta alkuper√§inen aikataulu
+Tutorial not available for this pakset. Please try loading Pak128.
+Opetusohjelma ei ole saatavilla t√§lle paksetille. Kokeile ladata Pak128.
 #_______________________________unnecessary_text________________________________
 #_______________________________unnecessary_text________________________________
 &1_CITY_SYLL
 kaupunki
 &2_CITY_SYLL
-kyl‰
+kyl√§
 &3_CITY_SYLL
 joki
 &4_CITY_SYLL
 linna
 &5_CITY_SYLL
-mets‰
+mets√§
 &6_CITY_SYLL
 laakso
 &7_CITY_SYLL
@@ -1652,7 +2636,7 @@ pohja
 %1_CITY_SYLL
 Uusi
 %2_CITY_SYLL
-V‰h‰
+V√§h√§
 %3_CITY_SYLL
 Peruna
 %4_CITY_SYLL
@@ -1675,21 +2659,53 @@ Kauko
 %s taajama %s
 1extern
 %s haara %s
+1suburb
+%s %s %s
 2center
 %s keskusta %s
 2extern
 %s sivu %s
+2suburb
+%s Viheralue %s %s
 3center
-%s kyl‰ %s
+%s kyl√§ %s
 3extern
 %s maaseutu %s
+3suburb
+%s kyl√§ %s %s
 4center
 %s sisus %s
 4extern
 %s ulkoinen %s
+4suburb
+%s maaseutu %s
 5center
 %s risteys %s
+5extern
+%s vaihto %s
+5suburb
+%s kaupunki %s
 6center
 %s keskus %s
+6extern
+%s vaihtoasema %s
+6suburb
+%s laita %s %s
 7center
 %s kaupunki %s
+7extern
+%s tasanko %s
+7suburb
+%s puisto %s
+8center
+%s liikekeskus %s
+8extern
+%s %s reuna %s
+8suburb
+%s satelliitti %s
+9center
+%s akseli %s
+9extern
+%s ohitustie %s
+9suburb
+%s mezzo %s

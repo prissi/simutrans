@@ -1,3 +1,4 @@
+
 /* This file is part of the Simutrans project under the Artistic License.
  * (see LICENSE.txt)
  */
@@ -97,8 +98,10 @@
 #include "vehicle/vehicle.h"
 #include "vehicle/simroadtraffic.h"
 
+#include "simsocial.h"
+
 #ifdef STEAM_BUILT
-#include "../steam/steam.h"
+#include "../steam/steam_iface.h"
 #endif
 
 using std::string;
@@ -159,26 +162,26 @@ static void show_times(karte_t *welt, main_view_t *view)
 
 	image_id img = ground_desc_t::outside->get_image(0,0);
 
-	display_color_img(img, 120, 100, 1, 0, 1);
+	gfx->draw_color_img(img, 120, 100, 1, 0, 1 CLIP_NUM_DEFAULT);
 	uint32 ms = dr_time();
 	for (i = 0;  i < 6000000;  i++) {
-		display_img_aux( img, 50, 50, 1, 0, true  CLIP_NUM_DEFAULT);
+		gfx->draw_img_aux( img, 50, 50, 1, 0, true  CLIP_NUM_DEFAULT);
 	}
-	dbg->message("show_times()", "display_img() %i iterations took %li ms", i, dr_time() - ms );
+	dbg->message("show_times()", "draw_img_aux() %i iterations took %li ms", i, dr_time() - ms );
 
 	image_id player_img = skinverwaltung_t::color_options->get_image_id(0);
 	ms = dr_time();
 	for (i = 0;  i < 1000000;  i++) {
-		display_color_img( player_img, 120, 100, i%15, 0, 1);
+		gfx->draw_color_img( player_img, 120, 100, i%15, 0, 1 CLIP_NUM_DEFAULT);
 	}
-	dbg->message("show_times()", "display_color_img() with recolor %i iterations took %li ms", i, dr_time() - ms );
+	dbg->message("show_times()", "draw_color_img() with recolor %i iterations took %li ms", i, dr_time() - ms );
 
 	ms = dr_time();
 	for (i = 0;  i < 100000;  i++) {
-		display_color_img( img, 120, 100, 0, 1, 1);
-		display_color_img( player_img, 160, 150, 16, 1, 1);
+		gfx->draw_color_img( img,        120, 100,  0, 1, 1 CLIP_NUM_DEFAULT);
+		gfx->draw_color_img( player_img, 160, 150, 16, 1, 1 CLIP_NUM_DEFAULT);
 	}
-	dbg->message("show_times()", "display_color_img() 3x %i iterations took %li ms", i, dr_time() - ms );
+	dbg->message("show_times()", "draw_color_img() 3x %i iterations took %li ms", i, dr_time() - ms );
 
 #if !defined(MULTI_THREAD)
 	ms = dr_time();
@@ -186,20 +189,20 @@ static void show_times(karte_t *welt, main_view_t *view)
 		dr_prepare_flush();
 		dr_flush();
 	}
-	dbg->message("show_times()", "display_flush_buffer() %i iterations took %li ms", i, dr_time() - ms );
+	dbg->message("show_times()", "dr_prepare_flush()/dr_flush() %i iterations took %li ms", i, dr_time() - ms );
 #endif
 
 	ms = dr_time();
 	for (i = 0;  i < 300000;  i++) {
-		display_text_proportional_len_clip_rgb(100, 120, "Dies ist ein kurzer Textetxt ...", 0, 0, false, -1);
+		gfx->draw_text_clipped_n(100, 120, "Dies ist ein kurzer Textetxt ...", 0, 0, false, -1 CLIP_NUM_DEFAULT);
 	}
-	dbg->message("show_times()", "display_text_proportional_len_clip_rgb() %i iterations took %li ms", i, dr_time() - ms );
+	dbg->message("show_times()", "draw_text_clipped_n() %i iterations took %li ms", i, dr_time() - ms );
 
 	ms = dr_time();
 	for (i = 0;  i < 300000;  i++) {
-		display_fillbox_wh_rgb(100, 120, 300, 50, 0, false);
+		gfx->draw_rect(100, 120, 300, 50, 0, false);
 	}
-	dbg->message("show_times()", "display_fillbox_wh_rgb() %i iterations took %li ms", i, dr_time() - ms );
+	dbg->message("show_times()", "draw_rect() %i iterations took %li ms", i, dr_time() - ms );
 
 	ms = dr_time();
 	for (i = 0; i < 2000; i++) {
@@ -255,7 +258,7 @@ static void show_times(karte_t *welt, main_view_t *view)
 static bool never_quit() { return false; }
 static bool no_language() { return translator::get_language()!=-1; }
 static utf16 testfor_this_character = 0;
-static bool no_font() { return has_character(testfor_this_character); }
+static bool no_font() { return gfx->font_has_character(testfor_this_character); }
 #if COLOUR_DEPTH != 0
 static bool empty_objfilename() { return !env_t::pak_name.empty() ||  pakinstaller_t::finish_install; }
 static bool finish_install() { return pakinstaller_t::finish_install; }
@@ -316,7 +319,7 @@ static sint16 ask_objfilename()
  */
 static void ask_language()
 {
-	if(  display_get_width()==0  ) {
+	if(  gfx->get_screen_size().w==0  ) {
 		// only console available ... => choose english for the moment
 		dbg->warning( "ask_language", "No language selected, will use english!" );
 		translator::set_language( "en" );
@@ -404,7 +407,8 @@ void print_help()
 		" -noaddons           does not load any addon (default)\n"
 		" -nomidi             turns off background music\n"
 		" -nosound            turns off ambient sounds\n"
-		" -objects DIR_NAME/  load the pakset in specified directory\n"
+		" -objects DIR/       loads the pakset in specified directory\n"
+		" -set_pakdir DIR     loads the pakset in specified directory\n"
 		" -pause              starts game with paused after loading\n"
 		"                     a server will pause if there are no clients\n"
 		" -res N              starts in specified resolution: \n"
@@ -505,7 +509,7 @@ void setup_logging(const args_t &args)
 }
 
 // search for this in all possible pakset locations for the directory chkdir and take the first match
-static bool set_pakdir( const char *chkdir )
+bool set_pakdir( const char *chkdir )
 {
 	if(  !chkdir  ||  !*chkdir  ) {
 		return false;
@@ -517,6 +521,9 @@ static bool set_pakdir( const char *chkdir )
 		dr_getcwd(tmp, lengthof(tmp));
 		env_t::pak_dir = tmp;
 		env_t::pak_dir += PATH_SEPARATOR;
+		const char* new_name = strrchr(tmp, *PATH_SEPARATOR);
+		env_t::pak_name = new_name+1;
+		env_t::pak_name += PATH_SEPARATOR;
 		return true;
 	}
 	dr_chdir( env_t::install_dir );
@@ -524,6 +531,9 @@ static bool set_pakdir( const char *chkdir )
 		dr_getcwd(tmp, lengthof(tmp));
 		env_t::pak_dir = tmp;
 		env_t::pak_dir += PATH_SEPARATOR;
+		const char* new_name = strrchr(tmp, *PATH_SEPARATOR);
+		env_t::pak_name = new_name+1;
+		env_t::pak_name += PATH_SEPARATOR;
 		return true;
 	}
 	dr_chdir( env_t::user_dir );
@@ -532,6 +542,9 @@ static bool set_pakdir( const char *chkdir )
 			dr_getcwd(tmp, lengthof(tmp));
 			env_t::pak_dir = tmp;
 			env_t::pak_dir += PATH_SEPARATOR;
+			const char* new_name = strrchr(tmp, *PATH_SEPARATOR);
+			env_t::pak_name = new_name+1;
+			env_t::pak_name += PATH_SEPARATOR;
 			return true;
 		}
 	}
@@ -661,14 +674,19 @@ int simu_main(int argc, char** argv)
 			// we do not allow to change the global font name
 			std::string old_fontname = env_t::fontname;
 			std::string old_soundfont_filename = env_t::soundfont_filename;
+			std::string old_music_folder = env_t::music_folder;
 
 			dbg->message("simu_main()", "Parsing %s%s", env_t::base_dir, path_to_simuconf);
-			env_t::default_settings.parse_simuconf( simuconf, disp_width, disp_height, fullscreen, env_t::pak_name );
+			env_t::default_settings.parse_simuconf( simuconf, disp_width, disp_height, fullscreen, true );
 			simuconf.close();
 
 			if(  (old_soundfont_filename.length() > 0)  &&  (strcmp( old_soundfont_filename.c_str(), "Error" ) != 0)  ) {
 				// We had a valid soundfont saved by the user, let's restore it
 				env_t::soundfont_filename = old_soundfont_filename;
+			}
+			if(  !old_music_folder.empty()  ) {
+				// same for the music folder chosen by the user
+				env_t::music_folder = old_music_folder;
 			}
 			env_t::fontname = old_fontname;
 		}
@@ -681,10 +699,7 @@ int simu_main(int argc, char** argv)
 	string obj_conf = string(env_t::user_dir) + "simuconf.tab";
 	if (simuconf.open(obj_conf.c_str())) {
 		dbg->message("simu_main()", "Parsing %s", obj_conf.c_str());
-		env_t::default_settings.parse_simuconf( simuconf, disp_width, disp_height, fullscreen, env_t::pak_name );
-		if(  set_pakdir( env_t::pak_name.c_str() )  ) {
-			env_t::pak_name += PATH_SEPARATOR;
-		}
+		env_t::default_settings.parse_simuconf( simuconf, disp_width, disp_height, fullscreen, true );
 		simuconf.close();
 	}
 
@@ -697,7 +712,7 @@ int simu_main(int argc, char** argv)
 	// always save and reload on Android
 	env_t::reload_and_save_on_quit = true;
 #elif defined(STEAM_BUILT) && STEAM_BUILT != 0
-	steam_t::get_instance()->install_workshop_items();
+	steam_install_workshop_items();
 #endif
 
 	// now set the desired objectfilename (override all previous settings)
@@ -718,27 +733,18 @@ int simu_main(int argc, char** argv)
 						last_pathsep = c+1;
 					}
 				}
-				if( last_pathsep ) {
-					env_t::pak_name = last_pathsep;
-				}
+				set_pakdir(last_pathsep);
 			}
 		}
 		else {
-			env_t::pak_name = fn;
-			env_t::pak_name += PATH_SEPARATOR;
+			set_pakdir(fn);
 		}
 	}
 
 	if(  env_t::pak_dir.empty()  ) {
 		// old style (deprecated)
 		if( const char* pak = args.gimme_arg( "-objects", 1 ) ) {
-			if( set_pakdir( pak ) ) {
-				env_t::pak_name = pak;
-				if (env_t::pak_name.back() == '/') {
-					env_t::pak_name.pop_back();
-				}
-				env_t::pak_name += PATH_SEPARATOR;
-			}
+			set_pakdir(pak);
 		}
 	}
 
@@ -754,14 +760,12 @@ int simu_main(int argc, char** argv)
 				// add pak extension
 				const char *pak = test.get_pak_extension();
 				if(  strcmp(pak,"(unknown)")!=0  ) {
-					if( set_pakdir( pak ) ) {
-						env_t::pak_name = pak;
-						env_t::pak_name += PATH_SEPARATOR;
-					}
+					set_pakdir(pak);
 				}
 			}
 		}
 	}
+
 	dr_chdir( env_t::base_dir );
 
 	// starting a server?
@@ -920,15 +924,27 @@ int simu_main(int argc, char** argv)
 		}
 	}
 
+	simgraph_type_t preferred_renderer_type =
+#if COLOUR_DEPTH == 0
+		SIMGRAPH_TYPE_NULL;
+#else
+		SIMGRAPH_TYPE_SOFTWARE;
+#endif
+
+	gfx = simgraph_select(preferred_renderer_type);
+
 	DBG_MESSAGE("simu_main()", "simgraph_init disp_width=%d, disp_height=%d, fullscreen=%d", disp_width, disp_height, fullscreen);
-	if (!simgraph_init(scr_size(disp_width, disp_height), fullscreen)) {
+	if (!gfx || !gfx->init(scr_size(disp_width, disp_height), fullscreen)) {
 		dbg->error("simu_main()", "Failed to initialize graphics system.");
 		return EXIT_FAILURE;
 	}
-	DBG_MESSAGE("simu_main()", ".. results in disp_width=%d, disp_height=%d", display_get_width(), display_get_height());
+
+	const scr_size screen = gfx->get_screen_size();
+	DBG_MESSAGE("simu_main()", ".. results in disp_width=%d, disp_height=%d", screen.w, screen.h);
+
 	// now that the graphics system has already started
 	// the saved colours can be converted to the system format
-	env_t_rgb_to_system_colors();
+	gfx->env_t_rgb_to_system_colors();
 
 	// parse colours now that the graphics system has started
 	// default simuconf.tab
@@ -999,7 +1015,7 @@ int simu_main(int argc, char** argv)
 	dr_chdir( env_t::base_dir );
 
 	// The loading screen needs to be initialized
-	display_show_pointer(1);
+	gfx->set_cursor_visible(true);
 
 	// if no object files given, we ask the user
 	int retries=0;
@@ -1008,7 +1024,7 @@ int simu_main(int argc, char** argv)
 			retries++;
 		}
 		if(  env_t::quit_simutrans  ) {
-			simgraph_exit();
+			gfx->exit();
 			return EXIT_SUCCESS;
 		}
 		else if (env_t::pak_name.empty()) {
@@ -1016,6 +1032,7 @@ int simu_main(int argc, char** argv)
 			install_objfilename(); // all other
 		}
 	}
+
 #else
 	// headless server
 	dr_chdir( env_t::base_dir );
@@ -1025,7 +1042,7 @@ int simu_main(int argc, char** argv)
 			"\n"
 			"Please install a pak set and select it using the '-objects'\n"
 			"command line parameter or the 'pak_file_path' simuconf.tab entry.");
-		simgraph_exit();
+		gfx->exit();
 		return EXIT_FAILURE;
 	}
 #endif
@@ -1043,7 +1060,7 @@ int simu_main(int argc, char** argv)
 				env_t::pak_dir.c_str());
 
 			dr_fatal_notify(errmsg);
-			simgraph_exit();
+			gfx->exit();
 			return EXIT_FAILURE;
 		}
 		fclose(f);
@@ -1144,8 +1161,8 @@ int simu_main(int argc, char** argv)
 
 	// just check before loading objects
 	if(  !args.has_arg("-nosound")  &&  dr_init_sound()  ) {
-		dbg->message("simu_main()","Reading compatibility sound data ...");
-		sound_desc_t::init(env_t::pak_dir);
+		dbg->message("simu_main()","Reading sound data ...");
+		sound_desc_t::init(env_t::pak_dir, std::string("addons") + PATH_SEPARATOR + env_t::pak_name);
 	}
 	else {
 		sound_set_mute(true);
@@ -1196,7 +1213,14 @@ int simu_main(int argc, char** argv)
 
 	// loading all objects in the pak
 	skinverwaltung_t::restore_all_skins(); // restore empty skins to have the pakset default
+#ifdef DEBUG
+	uint32 pakload_time = dr_time();
+#endif
 	pakset_manager_t::load_pakset(env_t::default_settings.get_with_private_paks());
+#ifdef DEBUG
+	pakload_time = dr_time() - pakload_time;
+	DBG_DEBUG("simmain", "Loading paksets took %u ms", pakload_time);
+#endif
 	skinverwaltung_t::save_all_skins(); // save pakset default
 
 	// load tool scripts
@@ -1256,7 +1280,7 @@ int simu_main(int argc, char** argv)
 		const utf8 *new_world = (const utf8 *)translator::translate("Beenden");
 		size_t len;
 		testfor_this_character = utf8_decoder_t::decode(new_world,len);
-		if (!has_character(testfor_this_character)) {
+		if (!gfx->font_has_character(testfor_this_character)) {
 			// not valid => show font selector
 			loadfont_frame_t* sel = new loadfont_frame_t();
 			destroy_all_win(true); // since eventually the successful load message is still there ....
@@ -1401,7 +1425,7 @@ int simu_main(int argc, char** argv)
 	// init midi before loading sounds
 	if(  dr_init_midi()  ) {
 		dbg->message("simu_main()","Reading midi data ...");
-		if(  !midi_init( env_t::pak_dir.c_str() )  &&  !midi_init( env_t::user_dir )  &&  !midi_init( env_t::base_dir )  ) {
+		if(  !midi_load_list()  ) {
 			midi_set_mute(true);
 			dbg->message("simu_main()","Midi disabled ...");
 		}
@@ -1538,6 +1562,7 @@ int simu_main(int argc, char** argv)
 		sets.set_factory_count(3);
 		sets.set_tourist_attractions(1);
 		sets.set_traffic_level(7);
+		sets.set_river_number(1);
 		welt->init(&sets,0);
 
 		//  start in June ...
@@ -1632,11 +1657,11 @@ int simu_main(int argc, char** argv)
 	// give user a mouse to work with
 	if (skinverwaltung_t::mouse_cursor != NULL) {
 		// we must use our softpointer (only Allegro!)
-		display_set_pointer(skinverwaltung_t::mouse_cursor->get_image_id(0));
+		gfx->set_default_cursor(skinverwaltung_t::mouse_cursor->get_image_id(0));
 	}
 #endif
-	display_show_pointer(true);
-	display_show_load_pointer(0);
+	gfx->set_cursor_visible(true);
+	gfx->set_show_load_cursor(false);
 
 	welt->set_dirty();
 
@@ -1730,7 +1755,7 @@ int simu_main(int argc, char** argv)
 	remove_port_forwarding( env_t::server );
 	network_core_shutdown();
 
-	simgraph_exit();
+	gfx->exit();
 
 	close_midi();
 
@@ -1739,9 +1764,7 @@ int simu_main(int argc, char** argv)
 	freelist_t::free_all_nodes();
 #endif
 
-#ifdef STEAM_BUILT
-	steam_t::get_instance()->shutdown();
-#endif
+	social_shutdown();
 
 	return EXIT_SUCCESS;
 }

@@ -54,6 +54,7 @@ class records_t;
 class loadingscreen_t;
 class terraformer_t;
 class building_desc_t;
+class schedule_t;
 
 /**
  * Threaded function caller.
@@ -73,6 +74,9 @@ class karte_t : public surface_t
 	static karte_t* world; ///< static single instance
 
 public:
+	// true, if there is a current valid savegame for networkplay
+	bool has_current_network_save;
+
 	// kind of map
 	enum { AUTO_GENERATED, SCENARIO_WORLD, NEW_WORLD, RESTORED_WORLD, CLIENT_WORLD, LOADED_WORLD } type_of_generation;
 
@@ -215,7 +219,7 @@ private:
 	/**
 	 * Array containing the factories.
 	 */
-	slist_tpl<fabrik_t *> fab_list;
+	vector_tpl<fabrik_t *> all_factories;
 
 	/**
 	 * Stores a list of goods produced by factories currently in the game;
@@ -425,11 +429,6 @@ private:
 	bool finish_loop;
 
 	/**
-	 * May change due to timeline.
-	 */
-	const way_desc_t *city_road;
-
-	/**
 	 * What game objectives.
 	 */
 	scenario_t *scenario;
@@ -504,8 +503,9 @@ private:
 
 	/**
 	 * Will create lakes.
+	 * @param height absolute height below which lakes will be created.
 	 */
-	void create_lakes( int xoff, int yoff, sint8 max_lake_height );
+	void create_lakes( int xoff, int yoff, sint8 height );
 
 	/**
 	 * Will create beaches.
@@ -896,12 +896,6 @@ public:
 	uint32 get_current_month() const { return current_month; }
 
 	/**
-	 * current city road.
-	 * @note May change due to timeline.
-	 */
-	const way_desc_t* get_city_road() const { return city_road; }
-
-	/**
 	 * Number of steps elapsed since the map was generated.
 	 */
 	sint32 get_steps() const { return steps; }
@@ -951,6 +945,19 @@ public:
 	 * we defer it to outside sync_step
 	 */
 	void set_deferred_move_to(koord3d pos, uint8 flags);
+
+	/* Route of the schedule that is currently shown by a schedule editor.
+	 * Display only, never saved. Like the deferred move above the route search
+	 * must not run from the GUI, so the editor only asks for it here and it is
+	 * calculated in interactive(). @p owner identifies the asking component, so
+	 * that closing an old window cannot drop the route of a newer one.
+	 */
+	void request_schedule_route(schedule_t *schedule, player_t *pl, uint32 owner, uint16 speed_kmh, bool needs_electrification);
+	void clear_schedule_route(uint32 owner); ///< owner 0 clears unconditionally
+	void step_schedule_route();
+	const vector_tpl<koord3d> &get_schedule_route() const;
+	uint32 get_schedule_route_owner() const;
+	uint8 get_schedule_route_player_nr() const;
 
 	/**
 	 * Calls the work method of the tool.
@@ -1009,9 +1016,9 @@ public:
 
 	bool add_fab(fabrik_t *fab);
 	bool rem_fab(fabrik_t *fab);
-	int get_fab_index(fabrik_t* fab)  const { return fab_list.index_of(fab); }
-	fabrik_t* get_fab(unsigned index) const { return index < fab_list.get_count() ? fab_list.at(index) : NULL; }
-	const slist_tpl<fabrik_t*>& get_fab_list() const { return fab_list; }
+//	int get_fab_index(fabrik_t* fab)  const { return all_factories.index_of(fab); }
+	fabrik_t* get_fab(unsigned index) const { return index < all_factories.get_count() ? all_factories[index]:NULL; }
+	const vector_tpl<fabrik_t*>& get_fab_list() const { return all_factories; }
 
 	/**
 	 * Returns a list of goods produced by factories that exist in current game.

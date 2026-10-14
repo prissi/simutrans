@@ -54,6 +54,7 @@
 #include "tpl/binary_heap_tpl.h"
 
 #include "vehicle/vehicle.h"
+#include "vehicle/air_vehicle.h"
 #include "vehicle/pedestrian.h"
 
 
@@ -163,6 +164,10 @@ void haltestelle_t::end_load_game()
 {
 	delete all_koords;
 	all_koords = NULL;
+
+	for (halthandle_t h : alle_haltestellen) {
+		h->recalc_status();
+	}
 }
 
 /**
@@ -190,35 +195,32 @@ halthandle_t haltestelle_t::get_halt_koord_index(koord k)
 
 
 /* we allow only for a single stop per grund
- * this will only return something if this stop belongs to same player or is public, or is a dock (when on water)
+ * this will only return something if this stop belongs to same player or is public or its permissions allow access, or is a dock (when on water)
  */
-halthandle_t haltestelle_t::get_halt(const koord3d pos, const player_t *player )
+halthandle_t haltestelle_t::get_halt(const koord3d pos, const player_t *player, bool is_water )
 {
 	const grund_t *gr = welt->lookup(pos);
 	if(gr) {
-		if(gr->get_halt().is_bound()  &&  player_t::check_owner(player,gr->get_halt()->get_owner())  ) {
-			return gr->get_halt();
+		if (gr->is_halt()) {
+			halthandle_t h = gr->get_halt();
+			if (h.is_bound()) {
+				if (h->can_use_halt(player)) {
+					return h;
+				}
+				return halthandle_t();
+			}
 		}
 		// no halt? => we do the water check
-		if(gr->is_water()) {
-			// may catch bus stops close to water ...
+		if(gr->is_water()  &&  is_water) {
+			// may catch bus stops close to water so we need to check type ...
 			const planquadrat_t *plan = welt->access(pos.get_2d());
 			const uint8 cnt = plan->get_haltlist_count();
-			// first check for own stop
 			for(  uint8 i=0;  i<cnt;  i++  ) {
 				halthandle_t halt = plan->get_haltlist()[i];
-				if(  halt->get_owner()==player  &&  halt->get_station_type()&dock  ) {
+				if(  halt->can_use_halt(player)  &&  halt->get_station_type()&dock  ) {
 					return halt;
 				}
 			}
-			// then for public stop
-			for(  uint8 i=0;  i<cnt;  i++  ) {
-				halthandle_t halt = plan->get_haltlist()[i];
-				if(  halt->get_owner()==welt->get_public_player()  &&  halt->get_station_type()&dock  ) {
-					return halt;
-				}
-			}
-			// so: nothing found
 		}
 	}
 	return halthandle_t();
@@ -236,7 +238,6 @@ koord3d haltestelle_t::get_basis_pos3d() const
 	if (tiles.empty()) {
 		return koord3d::invalid;
 	}
-	//assert(tiles.front().grund->get_pos().get_2d() == init_pos);
 	return tiles.front().grund->get_pos();
 }
 
@@ -247,11 +248,33 @@ grund_t *haltestelle_t::get_ground_closest_to( const koord here ) const
 	uint32 distance = 0x7FFFFFFFu;
 	grund_t *closest = NULL;
 	for(tile_t const& i : tiles) {
-		uint32 dist = shortest_distance( i.grund->get_pos().get_2d(), here );
+		uint32 dist = koord_distance( i.grund->get_pos(), here );
 		if(  dist < distance  ) {
 			distance = dist;
 			closest = i.grund;
 			if(  distance == 0  ) {
+				break;
+			}
+		}
+	}
+
+	return closest;
+}
+
+// and the same in 3D
+grund_t* haltestelle_t::get_ground_closest_to(const koord3d here, bool only_overground) const
+{
+	uint32 distance = 0x7FFFFFFFu;
+	grund_t* closest = NULL;
+	for (tile_t const& i : tiles) {
+		if (only_overground  &&  i.grund->ist_im_tunnel()) {
+			continue;
+		}
+		uint32 dist = koord_distance(i.grund->get_pos(), here);
+		if (dist < distance  ||  (  dist == distance  &&  abs(i.grund->get_pos().z-here.z) < abs(closest->get_pos().z-here.z)  )  ) {
+			distance = dist;
+			closest = i.grund;
+			if (distance == 0) {
 				break;
 			}
 		}
@@ -276,36 +299,71 @@ koord haltestelle_t::get_next_pos( koord start ) const
 
 
 /* Calculate and set basis position of this station
- * It is the avarage of all tiles' coordinate weighed by level of the building */
+ * It is the avarage of all tiles' coordinate weighed by level of the building
+ * Tries to put it on the map ground
+ */
 void haltestelle_t::recalc_basis_pos()
 {
-	sint64 cent_x, cent_y;
-	cent_x = cent_y = 0;
+	if (tiles.empty()) {
+		set_name(NULL);
+		owners = 0;
+		return;
+	}
+
+	sint64 cent_x = 0, cent_y = 0, cent_z = 0;
 	uint64 level_sum;
 	level_sum = 0;
-	for(tile_t const& i : tiles) {
-		if(  gebaeude_t* const gb = i.grund->find<gebaeude_t>()  ) {
-			uint32 lv;
-			lv = gb->get_tile()->get_desc()->get_level() + 1;
-			cent_x += gb->get_pos().get_2d().x * lv;
-			cent_y += gb->get_pos().get_2d().y * lv;
-			level_sum += lv;
+	bool has_above = false;
+
+	for (tile_t const& i : tiles) {
+		has_above = !i.grund->ist_im_tunnel();
+		if (has_above) {
+			break;
 		}
 	}
-	koord cent;
-	cent = koord((sint16)(cent_x/level_sum),(sint16)(cent_y/level_sum));
+
+	owners = 0;
+	for (tile_t const& i : tiles) {
+		if (has_above && i.grund->ist_im_tunnel()) {
+			// use overground tiles only for center calculation unless its all tunnel
+			if (gebaeude_t* const gb = i.grund->find<gebaeude_t>()) {
+				if (gb->get_owner_nr() != PLAYER_UNOWNED) {
+					owners |= 1 << gb->get_owner_nr();
+				}
+			}
+			continue;
+		}
+		if (gebaeude_t* const gb = i.grund->find<gebaeude_t>()) {
+			sint32 lv;
+			lv = gb->get_tile()->get_desc()->get_level() + 1;
+			cent_x += gb->get_pos().x * lv;
+			cent_y += gb->get_pos().y * lv;
+			cent_z += gb->get_pos().z * lv;
+			level_sum += lv;
+			if (gb->get_owner_nr() != PLAYER_UNOWNED) {
+				owners |= 1 << gb->get_owner_nr();
+			}
+		}
+	}
+
+	koord3d cent;
+	cent = koord3d((sint16)(cent_x / level_sum), (sint16)(cent_y / level_sum), (sint8)(cent_z / level_sum));
+	if (!welt->lookup(cent)) {
+		// no ground for label? Put on surface
+		cent = welt->lookup_kartenboden(cent.get_2d())->get_pos();
+	}
 
 	// save old name
 	plainstring name = get_name();
 	// clear name at old place (and the book-keeping)
 	set_name(NULL);
 
-	if ( level_sum > 0 ) {
-		grund_t *new_center = get_ground_closest_to( cent );
-		if(  new_center != tiles.front().grund  &&  new_center->get_text()==NULL  ) {
+	if (level_sum > 0) {
+		grund_t* new_center = get_ground_closest_to(cent, has_above);
+		if (new_center != tiles.front().grund  &&  new_center->get_text() == NULL) {
 			// move to new center, if there is not yet a name on it
-			tiles.remove( new_center );
-			tiles.insert( new_center );
+			tiles.remove(new_center);
+			tiles.insert(new_center);
 			init_pos = new_center->get_pos().get_2d();
 		}
 	}
@@ -314,6 +372,7 @@ void haltestelle_t::recalc_basis_pos()
 
 	return;
 }
+
 
 /**
  * Station factory method. Returns handles instead of pointers.
@@ -349,10 +408,9 @@ DBG_MESSAGE("haltestelle_t::remove()","removing segment from %d,%d,%d", pos.x, p
 	halt->mark_unmark_coverage(false);
 
 	// only try to remove connected buildings, when still in list to avoid infinite loops
-	if(  halt->rem_grund(bd)  ) {
-		// remove station building?
-		gebaeude_t* gb = bd->find<gebaeude_t>();
-		if(gb) {
+	if(  halt->rem_grund(bd,player)  ) {
+		// remove station building? (ownership was checked)
+		if(gebaeude_t* gb = bd->find<gebaeude_t>()) {
 			DBG_MESSAGE("haltestelle_t::remove()",  "removing building" );
 			hausbauer_t::remove( player, gb );
 			bd = NULL; // no need to recalc image
@@ -364,10 +422,9 @@ DBG_MESSAGE("haltestelle_t::remove()","removing segment from %d,%d,%d", pos.x, p
 	}
 
 	if(!halt->existiert_in_welt()) {
-DBG_DEBUG("haltestelle_t::remove()","remove last");
 		// all deleted?
 DBG_DEBUG("haltestelle_t::remove()","destroy");
-		haltestelle_t::destroy( halt );
+		delete halt.get_rep();
 	}
 	else {
 		halt->recalc_basis_pos();
@@ -393,13 +450,31 @@ halthandle_t haltestelle_t::create(loadsave_t *file)
 }
 
 
-/**
- * Station destruction method.
- */
-void haltestelle_t::destroy(halthandle_t const halt)
+// deletion of all tiles unless shared station
+void haltestelle_t::destroy(halthandle_t const halt, player_t* pl)
 {
-	delete halt.get_rep();
+	if (!pl  ||  halt->get_owners() == (1 << pl->get_player_nr())) {
+		delete halt.get_rep();
+		return;
+	}
+
+	// now we know its a partial delete
+	slist_tpl<tile_t>to_remove;
+	for (tile_t const& i : halt->get_tiles()) {
+		if (gebaeude_t* gb = i.grund->find<gebaeude_t>()) {
+			if (pl == gb->get_owner()) {
+				to_remove.append(i);
+			}
+		}
+	}
+
+	assert(to_remove.get_count() != halt->get_tiles().get_count());
+
+	while (!to_remove.empty()) {
+		halt->rem_grund(to_remove.remove_first().grund, pl);
+	}
 }
+
 
 
 /**
@@ -411,7 +486,7 @@ void haltestelle_t::destroy_all()
 {
 	while (!alle_haltestellen.empty()) {
 		halthandle_t halt = alle_haltestellen.back();
-		destroy(halt);
+		delete halt.get_rep();
 	}
 	delete all_koords;
 	all_koords = NULL;
@@ -428,15 +503,16 @@ haltestelle_t::haltestelle_t(loadsave_t* file)
 	halt_served_this_step = new vector_tpl<halthandle_t>[goods_manager_t::get_max_catg_index()];
 
 	status_color = SYSCOL_TEXT_UNUSED;
-	last_status_color = color_idx_to_rgb(COL_PURPLE);
+	last_status_color = gfx->palette_lookup(COL_PURPLE);
 	last_bar_count = 0;
+	last_permissions = 0;
 
 	reconnect_counter = welt->get_schedule_counter()-1;
 
 	enables = NOT_ENABLED;
 
-	sortierung = freight_list_sorter_t::by_name;
-	resort_freight_info = true;
+	old_sort_mode = 255;
+	owners = 0;
 
 	rdwr(file);
 
@@ -446,7 +522,7 @@ haltestelle_t::haltestelle_t(loadsave_t* file)
 }
 
 
-haltestelle_t::haltestelle_t(koord k, player_t* player)
+haltestelle_t::haltestelle_t(koord k, player_t* )
 {
 	self = halthandle_t(this);
 	assert( !alle_haltestellen.is_contained(self) );
@@ -456,8 +532,8 @@ haltestelle_t::haltestelle_t(koord k, player_t* player)
 
 	last_loading_step = welt->get_steps();
 
-	this->init_pos = k;
-	owner = player;
+	init_pos = k;
+	owners = 0;
 
 	enables = NOT_ENABLED;
 	// force total re-routing
@@ -469,11 +545,11 @@ haltestelle_t::haltestelle_t(koord k, player_t* player)
 	halt_served_this_step = new vector_tpl<halthandle_t>[goods_manager_t::get_max_catg_index()];
 
 	status_color = SYSCOL_TEXT_UNUSED;
-	last_status_color = color_idx_to_rgb(COL_PURPLE);
+	last_status_color = gfx->palette_lookup(COL_PURPLE);
 	last_bar_count = 0;
 
-	sortierung = freight_list_sorter_t::by_name;
 	init_financial_history();
+	set_permissions(0);
 }
 
 
@@ -541,7 +617,7 @@ haltestelle_t::~haltestelle_t()
 	delete[] halt_served_this_step;
 
 	// routes may have changed without this station ...
-	verbinde_fabriken();
+	reconnect_factories();
 }
 
 
@@ -568,9 +644,53 @@ void haltestelle_t::rotate90( const sint16 y_size )
 	}
 
 	// re-linking factories
-	verbinde_fabriken();
+	reconnect_factories(); 
 }
 
+
+// add other players to share
+void haltestelle_t::set_permissions(uint16 perms)
+{
+	uint16 old_perm = permissions;
+	if (owners==(1<<PLAYER_PUBLIC_NR)) {
+		// old style public stops
+		permissions = 0xFFFF;
+	}
+	else {
+		// share player stops
+		permissions = perms | owners;
+	}
+	if (rebuilt_schedule_registration(old_perm & ~permissions, permissions & ~old_perm)) {
+		 // convois/lines changed
+		welt->set_schedule_counter();
+	}
+}
+
+
+// returns the first player in the list
+player_t* haltestelle_t::get_first_owner() const
+{
+	if (!owners) {
+		return NULL;
+	}
+	else {
+		if ((owners & (owners - 1)) == 0) {
+			// single owner
+			return welt->get_player(log2((uint32)owners));
+		}
+		// multiple owners: use public
+		return welt->get_player(PLAYER_PUBLIC_NR);
+	}
+}
+
+
+// returns the first player in the list
+uint8 haltestelle_t::get_player_color() const
+{
+	return owners ?
+		get_first_owner()->get_player_color1() :
+		welt->get_public_player()->get_player_color1();
+}
 
 
 const char* haltestelle_t::get_name() const
@@ -958,7 +1078,7 @@ void haltestelle_t::request_loading( convoihandle_t cnv )
 
 bool haltestelle_t::has_available_network(const player_t* player, uint8 catg_index) const
 {
-	if(!player_t::check_owner( player, owner )) {
+	if (!can_use_halt(player)) {
 		return false;
 	}
 	if(  catg_index != goods_manager_t::INDEX_NONE  &&  !is_enabled(catg_index)  ) {
@@ -1017,10 +1137,10 @@ bool haltestelle_t::step(uint8 what, sint16 &units_remaining)
  */
 void haltestelle_t::new_month()
 {
-	if(  welt->get_active_player()==owner  &&  status_color==color_idx_to_rgb(COL_RED)  ) {
+	if(  ((1<<welt->get_active_player_nr())&owners)  &&  status_color==gfx->palette_lookup(COL_RED)  ) {
 		cbuffer_t buf;
 		buf.printf( translator::translate("%s\nis crowded."), get_name() );
-		welt->get_message()->add_message(buf, get_basis_pos3d(),message_t::full|message_t::EXPIRE_AFTER_ONE_MONTH_MSG, PLAYER_FLAG|owner->get_player_nr(), IMG_EMPTY );
+		welt->get_message()->add_message(buf, get_basis_pos3d(),message_t::full|message_t::EXPIRE_AFTER_ONE_MONTH_MSG, PLAYER_FLAG|welt->get_active_player_nr(), IMG_EMPTY );
 		enables &= (PAX|POST|WARE);
 	}
 
@@ -1111,7 +1231,7 @@ void haltestelle_t::reroute_goods(sint16 &units_remaining)
 		}
 	}
 	// likely the display must be updated after this
-	resort_freight_info = true;
+	old_sort_mode = 255;
 	last_catg_index = 255; // all categories are rerouted
 }
 
@@ -1134,9 +1254,9 @@ bool haltestelle_t::connect_factory(fabrik_t *fab)
 }
 
 
-void haltestelle_t::verbinde_fabriken()
+void haltestelle_t::reconnect_factories()
 {
-	// unlink all
+	// unlink all (because the processing order may change with additional tiles)
 	for(fabrik_t* const f : fab_list) {
 		f->unlink_halt(self);
 	}
@@ -1191,7 +1311,7 @@ sint32 haltestelle_t::rebuild_connections()
 		all_links[i].clear();
 		consecutive_halts[i].clear();
 	}
-	resort_freight_info = true; // might result in error in routing
+	old_sort_mode = 255; // might result in error in routing
 
 	last_catg_index = 255; // must reroute everything
 	sint32 connections_searched = 0;
@@ -1241,7 +1361,7 @@ sint32 haltestelle_t::rebuild_connections()
 
 		// find the index from which to start processing
 		uint8 start_index = 0;
-		while(  start_index < schedule->get_count()  &&  get_halt( schedule->entries[start_index].pos, owner ) != self  ) {
+		while(  start_index < schedule->get_count()  &&  get_halt( schedule->entries[start_index].pos, owner, true ) != self  ) {
 			++start_index;
 		}
 		++start_index; // the next index after self halt; it's okay to be out-of-range
@@ -1267,7 +1387,7 @@ sint32 haltestelle_t::rebuild_connections()
 		uint16 aggregate_weight = WEIGHT_WAIT;
 		for(  uint8 j=0;  j<schedule->get_count();  ++j  ) {
 
-			halthandle_t current_halt = get_halt(schedule->entries[(start_index+j)%schedule->get_count()].pos, owner );
+			halthandle_t current_halt = get_halt(schedule->entries[(start_index+j)%schedule->get_count()].pos, owner, schedule->get_waytype()==water_wt );
 			if(  !current_halt.is_bound()  ) {
 				// ignore way points
 				continue;
@@ -1325,6 +1445,117 @@ sint32 haltestelle_t::rebuild_connections()
 	}
 	return connections_searched;
 }
+
+
+bool haltestelle_t::rebuilt_schedule_registration(bool remove,bool add)
+{
+	bool change = false;
+
+	if (remove) {
+		// remove all old connections
+		for (int i = registered_lines.get_count()-1; i >= 0; i--) {
+			linehandle_t l = registered_lines[i];
+			// wrong owner
+			if (!can_use_halt(l->get_owner())) {
+				stale_lines.append_unique(l);
+				registered_lines.remove_at(i);
+				change = true;
+				continue;
+			}
+			// no convoys anymore
+			if (l->count_convoys() == 0) {
+				registered_lines.remove_at(i);
+				continue;
+			}
+			// now check for changed stops
+			const bool water = l->get_schedule()->get_waytype() == water_wt;
+			bool still_stops_here = false;
+			for (schedule_entry_t const& k : l->get_schedule()->entries) {
+				if (get_halt(k.pos, l->get_owner(), water) == self) {
+					still_stops_here = true;
+					break;
+				}
+			}
+			if (!still_stops_here) {
+				stale_lines.append_unique(l);
+				registered_lines.remove_at(i);
+				change = true;
+			}
+		}
+		// remove old convois
+		for (int i = registered_convoys.get_count()-1; i >= 0; i--) {
+			// wrong owner
+			if (!can_use_halt(registered_convoys[i]->get_owner())) {
+				stale_convois.append_unique(registered_convoys[i]);
+				registered_convoys.remove_at(i);
+				change = true;
+				continue;
+			}
+			// not stopping any more
+			if (const schedule_t* const schedule = registered_convoys[i]->get_schedule()) {
+				const bool water = schedule->get_waytype() == water_wt;
+				bool still_stops_here = false;
+				for (schedule_entry_t const& k : schedule->entries) {
+					if (get_halt(k.pos, registered_convoys[i]->get_owner(), water) == self) {
+						still_stops_here = true;
+						break;
+					}
+				}
+				if (!still_stops_here) {
+					stale_convois.append_unique(registered_convoys[i]);
+					registered_convoys.remove_at(i);
+					change = true;
+				}
+			}
+		}
+	}
+
+	if (add) {
+		vector_tpl<linehandle_t> check_line;
+		// iterate over all lines (public halt: all lines, other: only player's lines)
+		for (uint8 i = 0; i < MAX_PLAYER_COUNT; i++) {
+			if (permissions & (1 << i)) {
+				if (player_t* player = welt->get_player(i)) {
+					player->simlinemgmt.get_lines(simline_t::line, &check_line);
+					for (linehandle_t const j : check_line) {
+						// only add unknown lines
+						if (!registered_lines.is_contained(j) && j->count_convoys() > 0) {
+							bool water = j->get_schedule()->get_waytype() == water_wt;
+							for (schedule_entry_t const& k : j->get_schedule()->entries) {
+								if (get_halt(k.pos, player, water) == self) {
+									registered_lines.append(j);
+									change = true;
+									break;
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// iterate over all convoys
+		for (convoihandle_t const cnv : welt->convoys()) {
+			// only check lineless convoys which have matching ownership and which are not yet registered
+			if (!cnv->get_line().is_bound() && can_use_halt(cnv->get_owner()) && !registered_convoys.is_contained(cnv)) {
+				if (const schedule_t* const schedule = cnv->get_schedule()) {
+					bool water = schedule->get_waytype() == water_wt;
+					for (schedule_entry_t const& k : schedule->entries) {
+						if (get_halt(k.pos, cnv->get_owner(), water) == self) {
+							registered_convoys.append(cnv);
+							change = true;
+							break;
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return change;
+}
+
+
 
 
 void haltestelle_t::rebuild_linked_connections()
@@ -2086,7 +2317,7 @@ bool haltestelle_t::recall_ware( ware_t& w, uint32 menge )
 			}
 			book(w.amount, HALT_ARRIVED);
 			fabrik_t::update_transit( &w, false );
-			resort_freight_info = true;
+			old_sort_mode = 255;
 			return true;
 		}
 	}
@@ -2160,7 +2391,7 @@ void haltestelle_t::fetch_goods( slist_tpl<ware_t> &load, const goods_desc_t *go
 					load.insert(neu);
 
 					book(neu.amount, HALT_DEPARTED);
-					resort_freight_info = true;
+					old_sort_mode = 255;
 
 					if (requested_amount==0) {
 						return;
@@ -2232,7 +2463,7 @@ bool haltestelle_t::vereinige_waren(const ware_t &ware)
 					tmp.set_via_halt( ware.get_via_halt() );
 				}
 				tmp.amount += ware.amount;
-				resort_freight_info = true;
+				old_sort_mode = 255;
 				return true;
 			}
 		}
@@ -2254,7 +2485,7 @@ void haltestelle_t::add_ware_to_halt(ware_t ware)
 		cargo[ware.get_desc()->get_catg_index()] = warray;
 	}
 	// the ware will be put into the first entry with menge==0
-	resort_freight_info = true;
+	old_sort_mode = 255;
 	for(ware_t & i : *warray) {
 		if (i.amount == 0) {
 			i = ware;
@@ -2368,15 +2599,15 @@ dbg->warning("haltestelle_t::liefere_an()","%d %s delivered to %s have no longer
  */
 void haltestelle_t::get_freight_info(cbuffer_t & buf)
 {
-	if(resort_freight_info) {
+	if(old_sort_mode != env_t::default_sortmode) {
 		// resort only inf absolutely needed ...
-		resort_freight_info = false;
+		old_sort_mode = env_t::default_sortmode;
 		buf.clear();
 
 		for(unsigned i=0; i<goods_manager_t::get_max_catg_index(); i++) {
 			const vector_tpl<ware_t> * warray = cargo[i];
 			if(warray) {
-				freight_list_sorter_t::sort_freight(*warray, buf, (freight_list_sorter_t::sort_mode_t)sortierung, NULL, "waiting");
+				freight_list_sorter_t::sort_freight(*warray, buf, (freight_list_sorter_t::sort_mode_t)env_t::default_sortmode, NULL, "waiting", this->self);
 			}
 		}
 	}
@@ -2440,13 +2671,11 @@ sint64 haltestelle_t::calc_maintenance() const
 
 
 
-// changes this to a public transfer exchange stop
-void haltestelle_t::change_owner( player_t *player )
+// changes (partial) ownership of halt and connected infrastructure)
+sint32 haltestelle_t::change_owner( player_t *new_owner, player_t *current_owner )
 {
-	// check if already public
-	if(  owner == player  ) {
-		return;
-	}
+	sint32 tiles_converted = 0;
+	owners = 0;
 
 	// process every tile of stop
 	slist_tpl<halthandle_t> joining;
@@ -2454,48 +2683,52 @@ void haltestelle_t::change_owner( player_t *player )
 
 		grund_t* const gr = i.grund;
 		if(  gebaeude_t* gb = gr->find<gebaeude_t>()  ) {
-			// change ownership
-			player_t *gbplayer =gb->get_owner();
-			gb->set_owner(player);
-			gb->set_flag(obj_t::dirty);
-			sint64 const monthly_costs = welt->get_settings().maint_building * gb->get_tile()->get_desc()->get_level();
-			waytype_t const costs_type = gb->get_waytype();
-			player_t::add_maintenance(gbplayer, -monthly_costs, costs_type);
-			player_t::add_maintenance(player, monthly_costs, costs_type);
+			player_t* gbplayer = gb->get_owner();
+			if (gb->check_owner(current_owner)  &&  gbplayer != new_owner) {
+				// change ownership
+				gb->set_owner(new_owner);
+				gb->set_flag(obj_t::dirty);
+				sint64 const monthly_costs = welt->get_settings().maint_building * gb->get_tile()->get_desc()->get_level();
+				waytype_t const costs_type = gb->get_waytype();
+				player_t::add_maintenance(gbplayer, -monthly_costs, costs_type);
+				player_t::add_maintenance(new_owner, monthly_costs, costs_type);
 
-			// cost is computed as cst_make_public_months
-			sint64 const cost = -welt->scale_with_month_length(monthly_costs * welt->get_settings().cst_make_public_months);
-			player_t::book_construction_costs(gbplayer, cost, get_basis_pos(), costs_type);
-			player_t::book_construction_costs(player, -cost, koord::invalid, costs_type);
+				// cost is computed as cst_make_public_months
+				sint64 const cost = -welt->scale_with_month_length(monthly_costs * welt->get_settings().cst_make_public_months);
+				player_t::book_construction_costs(gbplayer, cost, get_basis_pos(), costs_type);
+				player_t::book_construction_costs(new_owner, -cost, koord::invalid, costs_type);
+				tiles_converted++;
+			}
+			owners |= 1 << gb->get_owner_nr();
 		}
 
 		// change way ownership
 		bool has_been_announced = false;
 		for(  int j=0;  j<2;  j++  ) {
 			if(  weg_t *w=gr->get_weg_nr(j)  ) {
-				// change ownership of way...
-				player_t *wplayer = w->get_owner();
-				if(  owner==wplayer  ) {
-					w->set_owner( player );
+				player_t* wplayer = w->get_owner();
+				if(  w->check_owner(current_owner)  &&  wplayer != new_owner  ) {
+					// change ownership of way...
+					w->set_owner( new_owner );
 					w->set_flag(obj_t::dirty);
 					sint64 cost = w->get_desc()->get_maintenance();
 					// of tunnel...
 					if(  tunnel_t *t=gr->find<tunnel_t>()  ) {
-						t->set_owner( player );
+						t->set_owner( new_owner );
 						t->set_flag(obj_t::dirty);
 						cost = t->get_desc()->get_maintenance();
 					}
 					waytype_t const financetype = w->get_desc()->get_finance_waytype();
 					player_t::add_maintenance( wplayer, -cost, financetype);
-					player_t::add_maintenance( player, cost, financetype);
+					player_t::add_maintenance( new_owner, cost, financetype);
 					// multiplayer notification message
-					if(  owner != welt->get_public_player()  &&  env_t::networkmode  &&  !has_been_announced  ) {
+					if(  new_owner == welt->get_public_player()  &&  env_t::networkmode  &&  !has_been_announced  ) {
 						cbuffer_t buf;
 						buf.printf( translator::translate("(%s) now public way."), w->get_pos().get_str() );
-						welt->get_message()->add_message( buf, w->get_pos(), message_t::ai, PLAYER_FLAG|player->get_player_nr(), IMG_EMPTY );
+						welt->get_message()->add_message( buf, w->get_pos(), message_t::ai, PLAYER_FLAG|new_owner->get_player_nr(), IMG_EMPTY );
 						has_been_announced = true; // one message is enough
 					}
-					cost = -welt->scale_with_month_length(cost * (player==welt->get_public_player())*welt->get_settings().cst_make_public_months );
+					cost = -welt->scale_with_month_length(cost * (new_owner==welt->get_public_player())*welt->get_settings().cst_make_public_months );
 					player_t::book_construction_costs(wplayer, cost, koord::invalid, financetype);
 				}
 			}
@@ -2504,33 +2737,43 @@ void haltestelle_t::change_owner( player_t *player )
 		// make way object public if any suitable
 		for(  uint8 i = 1;  i < gr->obj_count();  i++  ) {
 			if(  wayobj_t *const wo = obj_cast<wayobj_t>(gr->obj_bei(i))  ) {
-				player_t *woplayer = wo->get_owner();
-				if(  owner==woplayer  ) {
+				player_t* woplayer = wo->get_owner();
+				if(  wo->check_owner(current_owner)  &&  woplayer != new_owner  ) {
 					sint64 const cost = wo->get_desc()->get_maintenance();
 					// change ownership
-					wo->set_owner( player );
+					wo->set_owner( new_owner );
 					wo->set_flag(obj_t::dirty);
 					waytype_t const financetype = wo->get_desc()->get_waytype();
 					player_t::add_maintenance( woplayer, -cost, financetype);
-					player_t::add_maintenance( player, cost, financetype);
+					player_t::add_maintenance( new_owner, cost, financetype);
 					player_t::book_construction_costs( woplayer, cost, koord::invalid, financetype);
 				}
 			}
 		}
 	}
 
-	// now finally change owner
-	owner = player;
+	if (permissions & (permissions - 1)) {
+		// multiple permissions
+		set_permissions(permissions);
+	}
+	else {
+		// Old new_owner is still allowed to serve this stop, not breaking networks
+		set_permissions(owners | (1<<current_owner->get_player_nr()));
+	}
+
+	// May need rebuilding as there may be new conenctions enabled
 	rebuild_connections();
 	rebuild_linked_connections();
 	rebuild_connected_components();
 
 	// tell the world of it ...
-	if(  player == welt->get_public_player()  &&  env_t::networkmode  ) {
+	if(  new_owner == welt->get_public_player()  &&  env_t::networkmode  ) {
 		cbuffer_t buf;
 		buf.printf( translator::translate("%s at (%i,%i) now public stop."), get_name(), get_basis_pos().x, get_basis_pos().y );
-		welt->get_message()->add_message( buf, get_basis_pos3d(), message_t::ai, PLAYER_FLAG|player->get_player_nr(), IMG_EMPTY );
+		welt->get_message()->add_message( buf, get_basis_pos3d(), message_t::ai, PLAYER_FLAG|new_owner->get_player_nr(), IMG_EMPTY );
 	}
+
+	return tiles_converted;
 }
 
 
@@ -2541,7 +2784,7 @@ void haltestelle_t::merge_halt( halthandle_t halt_merged )
 		return;
 	}
 
-	halt_merged->change_owner( owner );
+	// we do no longer change ownership as we allow for dual owners
 
 	// take the name from the larger halt
 	if (get_capacity(0) + get_capacity(1) + get_capacity(2) < halt_merged->get_capacity(0) + halt_merged->get_capacity(1) + halt_merged->get_capacity(2)) {
@@ -2570,17 +2813,22 @@ void haltestelle_t::merge_halt( halthandle_t halt_merged )
 		grund_t *gr = tiles_to_join.remove_first().grund;
 
 		// transfer tiles to us
-		halt_merged->rem_grund(gr);
-		add_grund(gr);
+		halt_merged->rem_grund(gr, NULL);
+		add_grund(gr, tiles_to_join.empty());	// just reconnect on last tile to merge
 	}
 
 	assert(!halt_merged->existiert_in_welt());
 
+	// also recalculates ownerships
+	recalc_basis_pos();
+
 	// transfer goods
 	halt_merged->transfer_goods(self);
-	destroy(halt_merged);
 
-	recalc_basis_pos();
+	// Allow everyone who could serve either halt to continue serving it
+	set_permissions(halt_merged->get_permissions() | permissions);
+
+	delete halt_merged.get_rep();
 
 	// also rebuild our connections
 	recalc_station_type();
@@ -2648,7 +2896,16 @@ void haltestelle_t::add_to_station_type( grund_t *gr )
 				capacity[2] = capacity[1] = capacity[0];
 			}
 		}
+		if (gb && gb->get_owner_nr() != PLAYER_UNOWNED) {
+			owners |= 1 << gb->get_owner_nr();
+			permissions |= owners;
+		}
 		return;
+	}
+
+	if (gb && gb->get_owner_nr() != PLAYER_UNOWNED) {
+		owners |= 1 << gb->get_owner_nr();
+		permissions |= owners;
 	}
 
 	if(  desc==NULL  ) {
@@ -2751,7 +3008,7 @@ void haltestelle_t::rdwr(loadsave_t *file)
 {
 	xml_tag_t h( file, "haltestelle_t" );
 
-	sint32 owner_n;
+	sint32 owner_n = owners ? get_first_owner()->get_player_nr() : PLAYER_UNOWNED;
 	koord3d k;
 
 	// will restore halthandle_t after loading
@@ -2773,10 +3030,6 @@ void haltestelle_t::rdwr(loadsave_t *file)
 		}
 	}
 
-	if(file->is_saving()) {
-		owner_n = welt->sp2num( owner );
-	}
-
 	if(file->is_version_less(99, 8)) {
 		init_pos.rdwr( file );
 	}
@@ -2790,7 +3043,9 @@ void haltestelle_t::rdwr(loadsave_t *file)
 	}
 
 	if(file->is_loading()) {
-		owner = welt->get_player_or_create(owner_n);
+		// owners will be restored when loading tiles
+		owners = 0;
+		permissions = 0;
 		k.rdwr( file );
 		while(k!=koord3d::invalid) {
 			grund_t *gr = welt->lookup(k);
@@ -2805,16 +3060,17 @@ void haltestelle_t::rdwr(loadsave_t *file)
 				dbg->warning( "haltestelle_t::rdwr()", "bound to ground twice at (%i,%i)!", k.x, k.y );
 			}
 			// now check, if there is a building -> we allow no longer ground without building!
-			const gebaeude_t* gb = gr->find<gebaeude_t>();
-			const building_desc_t *desc=gb?gb->get_tile()->get_desc():NULL;
-			if(desc) {
+			if(const gebaeude_t* gb = gr->find<gebaeude_t>()) {
 				add_grund( gr, false /*do not relink factories now*/ );
+				owners |= 1<< gb->get_owner_nr();
 				// verbinde_fabriken will be called in finish_rd
 			}
 			else {
 				dbg->warning("haltestelle_t::rdwr()", "will no longer add ground without building at %s!", k.get_str() );
 			}
 			k.rdwr( file );
+
+			set_permissions(permissions);
 		}
 	}
 	else {
@@ -2916,13 +3172,19 @@ void haltestelle_t::rdwr(loadsave_t *file)
 			financial_history[k][HALT_WALKED] = 0;
 		}
 	}
+
+	if (file->is_version_atleast(124, 5)) {
+		file->rdwr_short(permissions);
+	}
 }
 
 
 
 void haltestelle_t::finish_rd()
 {
-	verbinde_fabriken();
+	set_permissions(permissions);
+
+	reconnect_factories();
 
 	stale_convois.clear();
 	stale_lines.clear();
@@ -2995,7 +3257,10 @@ void haltestelle_t::finish_rd()
 			all_names.set( current_name, self );
 		}
 	}
-	recalc_status();
+
+	// probably moving name position?
+	recalc_basis_pos();
+
 	reconnect_counter = welt->get_schedule_counter()-1;
 	last_search_origin = halthandle_t();
 }
@@ -3027,7 +3292,7 @@ void haltestelle_t::init_financial_history()
  */
 void haltestelle_t::recalc_status()
 {
-	status_color = color_idx_to_rgb(financial_history[0][HALT_CONVOIS_ARRIVED] > 0 ? COL_GREEN : COL_YELLOW);
+	status_color = gfx->palette_lookup(financial_history[0][HALT_CONVOIS_ARRIVED] > 0 ? COL_GREEN : COL_YELLOW);
 
 	// since the status is ordered ...
 	uint8 status_bits = 0;
@@ -3035,32 +3300,50 @@ void haltestelle_t::recalc_status()
 	MEMZERO(overcrowded);
 
 	uint64 total_sum = 0;
-	if(get_pax_enabled()) {
-		const uint32 max_ware = get_capacity(0);
-		total_sum += get_ware_summe(goods_manager_t::passengers);
-		if(total_sum>max_ware) {
+
+	if (get_pax_enabled()) {
+		const uint32 pax_capacity = get_capacity(0);
+		const uint32 pax_count    = get_ware_summe(goods_manager_t::passengers);
+		total_sum += pax_count;
+
+		const uint32 num_happy   = get_pax_happy();
+		const uint32 num_unhappy = get_pax_unhappy();
+		const uint32 num_routed  = num_happy + num_unhappy;
+
+		const bool is_overcrowded           = pax_count > pax_capacity;
+		const bool is_seriously_overcrowded = pax_count > pax_capacity + 200;
+
+		const uint32 satisfaction_percent = num_routed > 0 ? (num_happy * 100) / num_routed : 100;
+
+		if (is_overcrowded) {
 			overcrowded[0] |= 1;
+			status_bits |= is_seriously_overcrowded ? 2 : 1;
 		}
-		if(get_pax_unhappy() > 40 ) {
-			status_bits = (total_sum>max_ware+200 || (total_sum>max_ware  &&  get_pax_unhappy()>200)) ? 2 : 1;
+
+		if (num_unhappy >= 200 && is_overcrowded && satisfaction_percent < 75) {
+			status_bits |= 2;
 		}
-		else if(total_sum>max_ware) {
-			status_bits = total_sum>max_ware+200 ? 2 : 1;
+		else if (num_unhappy >= 40 && satisfaction_percent < 90) {
+			status_bits |= 1;
 		}
 	}
 
 	if(get_mail_enabled()) {
-		const uint32 max_ware = get_capacity(1);
-		const uint32 mail = get_ware_summe(goods_manager_t::mail);
-		total_sum += mail;
-		if(mail>max_ware) {
-			status_bits |= mail>max_ware+200 ? 2 : 1;
+		const uint32 mail_capacity = get_capacity(1);
+		const uint32 mail_count    = get_ware_summe(goods_manager_t::mail);
+		total_sum += mail_count;
+
+		const bool is_overcrowded           = mail_count > mail_capacity;
+		const bool is_seriously_overcrowded = mail_count > mail_capacity + 200;
+
+		if(is_overcrowded) {
+			status_bits |= is_seriously_overcrowded ? 2 : 1;
 			overcrowded[0] |= 2;
 		}
 	}
 
 	// now for all goods
-	if(status_color!=color_idx_to_rgb(COL_RED)  &&  get_ware_enabled()) {
+	if(status_color!=gfx->palette_lookup(COL_RED)  &&  get_ware_enabled()) {
 		const uint8  count = goods_manager_t::get_count();
 		const uint32 max_ware = get_capacity(2);
 		for(  uint32 i = 3;  i < count;  i++  ) {
@@ -3074,12 +3357,18 @@ void haltestelle_t::recalc_status()
 		}
 	}
 
-	// take the worst color for status
-	if(  status_bits  ) {
-		status_color = color_idx_to_rgb(status_bits&2 ? COL_RED : COL_ORANGE);
+	const bool has_any_activity = (financial_history[0][HALT_WAITING] + financial_history[0][HALT_DEPARTED] + financial_history[0][HALT_ARRIVED]) > 0;
+	const bool is_connected     = !registered_convoys.empty() || !registered_lines.empty();
+
+	if (!is_connected) {
+		status_color = gfx->palette_lookup(COL_NO_ROUTE);
+	}
+	else if (status_bits != 0) {
+		// take the worst color for status
+		status_color = gfx->palette_lookup(status_bits&2 ? COL_RED : COL_ORANGE);
 	}
 	else {
-		status_color = color_idx_to_rgb((financial_history[0][HALT_WAITING]+financial_history[0][HALT_DEPARTED] == 0) ? COL_YELLOW : COL_GREEN);
+		status_color = gfx->palette_lookup(has_any_activity ? COL_GREEN : COL_YELLOW);
 	}
 
 	financial_history[0][HALT_WAITING] = total_sum;
@@ -3092,6 +3381,19 @@ void haltestelle_t::recalc_status()
  */
 void haltestelle_t::display_status(sint16 xpos, sint16 ypos)
 {
+	// Do we need to display permissions?
+	uint16 player_count = 0;
+	PIXVAL colors[MAX_PLAYER_COUNT];
+	for(  uint16 i = 0;  i < MAX_PLAYER_COUNT;  i++  ) {
+		if (permissions & (1 << i)) {
+			if (const player_t* pl = welt->get_player(i)) {
+				if (!pl->is_public_service()) {
+					colors[player_count++] = gfx->palette_lookup(pl->get_player_color1() + 4);
+				}
+			}
+		}
+	}
+ 
 	// ignore freight that cannot reach to this station
 	sint16 count = 0;
 	for(  uint16 i = 0;  i < goods_manager_t::get_count();  i++  ) {
@@ -3104,16 +3406,33 @@ void haltestelle_t::display_status(sint16 xpos, sint16 ypos)
 	}
 	ypos += -D_WAITINGBAR_WIDTH - LINESPACE/6;
 
-	if(  count != last_bar_count  ) {
-		// bars will shift x positions, mark entire station bar region dirty
+	bool players_dirty = permissions != last_permissions;
+	if (permissions | last_permissions) {
+		const sint16 wo = (64 * LINESPACE) / 14;
+		const sint16 xo = xpos - (wo - gfx->get_tile_raster_width()) / 2;
+		if (players_dirty  &&  player_count <= 1) {
+			// one or less: will vanish
+			// => erase old permissions display
+			gfx->mark_rect_dirty_wc(xo, ypos, xo + wo, ypos + D_WAITINGBAR_WIDTH);
+		}
+		last_permissions = permissions;
+		if (player_count > 1) {
+			gfx->draw_rect_colors_clipped(xo, ypos - 1, wo, D_WAITINGBAR_WIDTH, colors, player_count, true, players_dirty  CLIP_NUM_DEFAULT);
+			ypos += -D_WAITINGBAR_WIDTH - 3;
+		}
+	}
+
+	if(  count != last_bar_count  ||  players_dirty  ) {
+		// bars will shift x positions, extra players may shift y positions,
+		// mark entire station bar region dirty
 		scr_coord_val max_bar_height = 0;
 		for(  sint16 i = 0;  i < last_bar_count;  i++  ) {
 			if(  last_bar_height[i] > max_bar_height  ) {
 				max_bar_height = last_bar_height[i];
 			}
 		}
-		const scr_coord_val x = xpos - (last_bar_count * D_WAITINGBAR_WIDTH - get_tile_raster_width()) / 2;
-		mark_rect_dirty_wc( x - 1 - D_WAITINGBAR_WIDTH, ypos, x + last_bar_count * D_WAITINGBAR_WIDTH + 12 - 2, ypos - 11 );
+		const scr_coord_val x = xpos - (last_bar_count * D_WAITINGBAR_WIDTH - gfx->get_tile_raster_width()) / 2;
+		gfx->mark_rect_dirty_wc( x - 1 - D_WAITINGBAR_WIDTH, ypos, x + last_bar_count * D_WAITINGBAR_WIDTH + 12 - 2, ypos - 11 );
 
 		// reset bar heights for new count
 		last_bar_height.clear();
@@ -3124,7 +3443,7 @@ void haltestelle_t::display_status(sint16 xpos, sint16 ypos)
 		last_bar_count = count;
 	}
 
-	xpos -= (count * D_WAITINGBAR_WIDTH - get_tile_raster_width()) / 2;
+	xpos -= (count * D_WAITINGBAR_WIDTH - gfx->get_tile_raster_width()) / 2;
 	const int x = xpos;
 
 	sint16 bar_height_index = 0;
@@ -3150,25 +3469,25 @@ void haltestelle_t::display_status(sint16 xpos, sint16 ypos)
 				v = (v / 4) + 2;
 			}
 
-			display_fillbox_wh_clip_rgb( xpos, ypos - v - 1, 1, v, color_idx_to_rgb( COL_GREY4 ), false );
-			display_fillbox_wh_clip_rgb( xpos + 1, ypos - v - 1, D_WAITINGBAR_WIDTH - 2, v, wtyp->get_color(), false );
-			display_fillbox_wh_clip_rgb( xpos + D_WAITINGBAR_WIDTH - 1, ypos - v - 1, 1, v, color_idx_to_rgb( COL_GREY1 ), false );
+			gfx->draw_rect_clipped( xpos, ypos - v - 1, 1, v, gfx->palette_lookup( COL_GREY4 ), false CLIP_NUM_DEFAULT);
+			gfx->draw_rect_clipped( xpos + 1, ypos - v - 1, D_WAITINGBAR_WIDTH - 2, v, wtyp->get_color(), false CLIP_NUM_DEFAULT);
+			gfx->draw_rect_clipped( xpos + D_WAITINGBAR_WIDTH - 1, ypos - v - 1, 1, v, gfx->palette_lookup( COL_GREY1 ), false CLIP_NUM_DEFAULT);
 
 			// show up arrow for capped values
 			if(  sum > max_capacity  ) {
-				display_fillbox_wh_clip_rgb( xpos + (D_WAITINGBAR_WIDTH / 2) - 1, ypos - v - 6, 2, 4, color_idx_to_rgb( COL_WHITE ), false );
-				display_fillbox_wh_clip_rgb( xpos + (D_WAITINGBAR_WIDTH / 2) - 2, ypos - v - 5, 4, 1, color_idx_to_rgb( COL_WHITE ), false );
+				gfx->draw_rect_clipped( xpos + (D_WAITINGBAR_WIDTH / 2) - 1, ypos - v - 6, 2, 4, gfx->palette_lookup( COL_WHITE ), false CLIP_NUM_DEFAULT);
+				gfx->draw_rect_clipped( xpos + (D_WAITINGBAR_WIDTH / 2) - 2, ypos - v - 5, 4, 1, gfx->palette_lookup( COL_WHITE ), false CLIP_NUM_DEFAULT);
 				v += 5; // for marking dirty
 			}
 
 			if(  last_bar_height[bar_height_index] != (scr_coord_val)v  ) {
 				if(  (scr_coord_val)v > last_bar_height[bar_height_index]  ) {
 					// bar will be longer, mark new height dirty
-					mark_rect_dirty_wc( xpos, ypos - v - 1, xpos + D_WAITINGBAR_WIDTH, ypos - 1 );
+					gfx->mark_rect_dirty_wc( xpos, ypos - v - 1, xpos + D_WAITINGBAR_WIDTH, ypos - 1 );
 				}
 				else {
 					// bar will be shorter, mark old height dirty
-					mark_rect_dirty_wc( xpos, ypos - last_bar_height[ bar_height_index ] - 1, xpos + D_WAITINGBAR_WIDTH, ypos - 1 );
+					gfx->mark_rect_dirty_wc( xpos, ypos - last_bar_height[ bar_height_index ] - 1, xpos + D_WAITINGBAR_WIDTH, ypos - 1 );
 				}
 				last_bar_height[bar_height_index] = v;
 			}
@@ -3184,7 +3503,7 @@ void haltestelle_t::display_status(sint16 xpos, sint16 ypos)
 		last_status_color = get_status_farbe();
 		dirty = true;
 	}
-	display_fillbox_wh_clip_rgb( x - 1 - 4, ypos, count * D_WAITINGBAR_WIDTH + 12 - 2, D_WAITINGBAR_WIDTH, get_status_farbe(), dirty );
+	gfx->draw_rect_clipped( x - 1 - 4, ypos, count * D_WAITINGBAR_WIDTH + 12 - 2, D_WAITINGBAR_WIDTH, get_status_farbe(), dirty CLIP_NUM_DEFAULT);
 }
 
 
@@ -3226,47 +3545,7 @@ bool haltestelle_t::add_grund(grund_t *gr, bool relink_factories)
 
 	// since suddenly other factories may be connect to us too
 	if (relink_factories) {
-		verbinde_fabriken();
-	}
-
-	// check if we have to register line(s) and/or lineless convoy(s) which serve this halt
-	vector_tpl<linehandle_t> check_line(0);
-
-	// public halt: must iterate over all players lines / convoys
-	bool public_halt = get_owner() == welt->get_public_player();
-
-	uint8 const pl_min = public_halt ? 0                : get_owner()->get_player_nr();
-	uint8 const pl_max = public_halt ? MAX_PLAYER_COUNT : get_owner()->get_player_nr()+1;
-	// iterate over all lines (public halt: all lines, other: only player's lines)
-	for(  uint8 i=pl_min;  i<pl_max;  i++  ) {
-		if(  player_t *player = welt->get_player(i)  ) {
-			player->simlinemgmt.get_lines(simline_t::line, &check_line);
-			for(linehandle_t const j : check_line  ) {
-				// only add unknown lines
-				if(  !registered_lines.is_contained(j)  &&  j->count_convoys() > 0  ) {
-					for(schedule_entry_t const& k : j->get_schedule()->entries  ) {
-						if(  get_halt(k.pos, player) == self  ) {
-							registered_lines.append(j);
-							break;
-						}
-					}
-				}
-			}
-		}
-	}
-	// iterate over all convoys
-	for(convoihandle_t const cnv : welt->convoys()) {
-		// only check lineless convoys which have matching ownership and which are not yet registered
-		if(  !cnv->get_line().is_bound()  &&  (public_halt  ||  cnv->get_owner()==get_owner())  &&  !registered_convoys.is_contained(cnv)  ) {
-			if(  const schedule_t *const schedule = cnv->get_schedule()  ) {
-				for(schedule_entry_t const& k : schedule->entries) {
-					if (get_halt(k.pos, cnv->get_owner()) == self) {
-						registered_convoys.append(cnv);
-						break;
-					}
-				}
-			}
-		}
+		reconnect_factories();
 	}
 
 	// This entire loop is just for the assertion below.
@@ -3284,14 +3563,19 @@ bool haltestelle_t::add_grund(grund_t *gr, bool relink_factories)
 		dbg->error( "haltestelle_t::add_grund()", "no ground added to (%s)", gr->get_pos().get_str() );
 	}
 	init_pos = tiles.front().grund->get_pos().get_2d();
-	welt->set_schedule_counter();
+
+	// need to add lines or convois?
+	if (relink_factories  &&  rebuilt_schedule_registration(false,true)) {
+		// we may more convois serving us
+		welt->set_schedule_counter();
+	}
 
 	return true;
 }
 
 
 
-bool haltestelle_t::rem_grund(grund_t *gr)
+bool haltestelle_t::rem_grund(grund_t *gr, player_t *pl_)
 {
 	// namen merken
 	if(!gr) {
@@ -3303,6 +3587,14 @@ bool haltestelle_t::rem_grund(grund_t *gr)
 		// was not part of station => do nothing
 		dbg->error("haltestelle_t::rem_grund()","removed illegal ground from halt");
 		return false;
+	}
+
+	// hausbauer calls remove tile after removing the buiding, so there might be nothing on it ...
+	if (gebaeude_t* gb = gr->find<gebaeude_t>()) {
+		if (pl_  &&  !gb->check_owner(pl_)) {
+			// wrong owner!
+			return false;
+		}
 	}
 
 	// first tile => remove name from this tile ...
@@ -3359,43 +3651,13 @@ bool haltestelle_t::rem_grund(grund_t *gr)
 		}
 
 		// factory reach may have been changed ...
-		verbinde_fabriken();
+		reconnect_factories();
 	}
 
 	// needs to be done, if this was a dock
 	recalc_station_type();
 
-	// remove lines eventually
-	for(  size_t j = registered_lines.get_count();  j-- != 0;  ) {
-		bool ok = false;
-		for(schedule_entry_t const& k : registered_lines[j]->get_schedule()->entries  ) {
-			if(  get_halt(k.pos, registered_lines[j]->get_owner()) == self  ) {
-				ok = true;
-				break;
-			}
-		}
-		// need removal?
-		if(!ok) {
-			stale_lines.append_unique( registered_lines[j] );
-			registered_lines.remove_at(j);
-		}
-	}
-
-	// remove registered lineless convoys as well
-	for(  size_t j = registered_convoys.get_count();  j-- != 0;  ) {
-		bool ok = false;
-		for(schedule_entry_t const& k : registered_convoys[j]->get_schedule()->entries  ) {
-			if(  get_halt(k.pos, registered_convoys[j]->get_owner()) == self  ) {
-				ok = true;
-				break;
-			}
-		}
-		// need removal?
-		if(  !ok  ) {
-			stale_convois.append_unique( registered_convoys[j] );
-			registered_convoys.remove_at(j);
-		}
-	}
+	rebuilt_schedule_registration(true,false);
 
 	return true;
 }
@@ -3437,30 +3699,52 @@ const grund_t *haltestelle_t::find_matching_position(const waytype_t w) const
 
 
 
-/* checks, if there is an unoccupied loading bay for this kind of thing
- */
-bool haltestelle_t::find_free_position(const waytype_t w,convoihandle_t cnv,const obj_t::typ d) const
+grund_t *haltestelle_t::find_free_position(const waytype_t w,convoihandle_t cnv,const obj_t::typ d) const
 {
 	// iterate over all tiles
 	for(tile_t const& i : tiles) {
-		if (i.reservation == cnv || !i.reservation.is_bound()) {
+		if (i.reservation == cnv) {
+			// already reserved
+			return i.grund;
+		}
+		if (!i.reservation.is_bound()) {
 			// not reserved
 			grund_t* const gr = i.grund;
-			assert(gr);
 			// found a stop for this waytype but without object d ...
-			if(gr->hat_weg(w)  &&  gr->suche_obj(d)==NULL) {
-				// not occupied
-				return true;
+			if (gr->hat_weg(w)) {
+				if (w == air_wt) {
+					bool free = true;
+					// we ignore flying airplanes but do not allow airplanes on the ground
+					for (uint8 i = 1; i < gr->obj_count(); i++) {
+						if (gr->obj_bei(i)->get_typ() == obj_t::air_vehicle) {
+							air_vehicle_t* v = (air_vehicle_t*)gr->obj_bei(i);
+							if (!v->is_flying()) {
+								// assume any airplane here is loading or trying to leave
+								free = false;
+								break;
+							}
+						}
+					}
+					if (free) {
+						return gr;
+					}
+
+				}
+				else {
+					obj_t* o = gr->suche_obj(d);
+					if (o == NULL) {
+						// not occupied
+						return gr;
+					}
+				}
 			}
 		}
 	}
-	return false;
+	return NULL;
 }
 
 
-/* reserves a position (caution: railblocks work differently!
- */
-bool haltestelle_t::reserve_position(grund_t *gr,convoihandle_t cnv)
+bool haltestelle_t::reserve_position(grund_t *gr, convoihandle_t cnv)
 {
 	slist_tpl<tile_t>::iterator i = std::find(tiles.begin(), tiles.end(), gr);
 	if (i != tiles.end()) {
@@ -3474,12 +3758,19 @@ bool haltestelle_t::reserve_position(grund_t *gr,convoihandle_t cnv)
 			if(gr) {
 				// found a stop for this waytype but without object d ...
 				vehicle_t const& v = *cnv->front();
-				if (gr->hat_weg(v.get_waytype()) && !gr->suche_obj(v.get_typ())) {
-					// not occupied
-//DBG_MESSAGE("haltestelle_t::reserve_position()","success for gr=%i,%i cnv=%d",gr->get_pos().x,gr->get_pos().y,cnv.get_id());
-					i->reservation = cnv;
-					return true;
+				if (gr->hat_weg(v.get_waytype())) {
+					for (uint8 i = 1; i < gr->obj_count(); i++) {
+						if(gr->obj_bei(i)->get_typ() == obj_t::air_vehicle) {
+							air_vehicle_t* v = (air_vehicle_t *)gr->obj_bei(i);
+							if (!v->is_flying()) {
+								// assume any airplane here is loading or trying to leave
+								return false;
+							}
+						}
+					}
 				}
+				i->reservation = cnv;
+				return true;
 			}
 		}
 	}
@@ -3488,20 +3779,56 @@ bool haltestelle_t::reserve_position(grund_t *gr,convoihandle_t cnv)
 }
 
 
-/** frees a reserved  position (caution: railblocks work differently!
- */
-bool haltestelle_t::unreserve_position(grund_t *gr, convoihandle_t cnv)
+/** frees a reserved  position (caution: railblocks work differently!  */
+int haltestelle_t::unreserve_position(grund_t *gr, convoihandle_t cnv)
 {
-	slist_tpl<tile_t>::iterator i = std::find(tiles.begin(), tiles.end(), gr);
-	if (i != tiles.end()) {
-		if (i->reservation == cnv) {
-			i->reservation = convoihandle_t();
-			return true;
+	if (gr) {
+		// unreserve only this tile
+		slist_tpl<tile_t>::iterator i = std::find(tiles.begin(), tiles.end(), gr);
+		if (i != tiles.end()) {
+			if (i->reservation == cnv) {
+				i->reservation = convoihandle_t();
+				return 1;
+			}
 		}
+		DBG_MESSAGE("haltestelle_t::unreserve_position()", "failed for %i", this->self.get_id());
 	}
-DBG_MESSAGE("haltestelle_t::unreserve_position()","failed for gr=%p",gr);
+	else {
+		// unreserve all matching tile
+		int j = 0;
+		for( tile_t &i : tiles) {
+			if (i.reservation == cnv) {
+				i.reservation = convoihandle_t();
+				j++;
+			}
+		}
+		return j;
+	}
 	return false;
 }
+
+
+convoihandle_t haltestelle_t::get_reserved(const grund_t* gr) const
+{
+	for (tile_t const& i : tiles) {
+		if (gr == i.grund) {
+			return i.reservation;
+		}
+	}
+	return convoihandle_t();
+}
+
+
+grund_t* haltestelle_t::get_reserved(convoihandle_t c) const
+{
+	for (tile_t const& i : tiles) {
+		if (i.reservation==c) {
+			return i.grund;
+		}
+	}
+	return NULL;
+}
+
 
 
 /** can a convoi reserve this position?

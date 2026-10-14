@@ -42,6 +42,7 @@
 #include "../obj/gebaeude.h"
 #include "../obj/leitung2.h"
 #include "../obj/tunnel.h"
+#include "../obj/roadsign.h"
 
 #include "../gui/messagebox.h"
 #include "../gui/player_frame.h"
@@ -120,7 +121,8 @@ sint64 player_t::add_maintenance(sint64 change, waytype_t const wt)
 void player_t::add_money_message(const sint64 amount, const koord pos)
 {
 	if(amount != 0  &&  player_nr != 1) {
-		if(  koord_distance(welt->get_viewport()->get_world_position(),pos)<2*(uint32)(display_get_width()/get_tile_raster_width())+3  ) {
+		const scr_size screen = gfx->get_screen_size();
+		if(  koord_distance(welt->get_viewport()->get_world_position(),pos)<2*(uint32)(screen.w / gfx->get_tile_raster_width())+3  ) {
 			// only display, if near the screen ...
 			add_message(amount, pos);
 
@@ -220,9 +222,9 @@ void player_t::display_messages()
 
 	for(income_message_t* const m : messages) {
 
-		const scr_coord scr_pos = vp->get_screen_coord(koord3d(m->pos,welt->lookup_hgt(m->pos)),koord(0,m->alter >> 4)) + scr_coord((get_tile_raster_width()-display_calc_proportional_string_len_width(m->str, 0x7FFF))/2,0);
+		const scr_coord scr_pos = vp->get_screen_coord(koord3d(m->pos,welt->lookup_hgt(m->pos)),koord(0,m->alter >> 4)) + scr_coord((gfx->get_tile_raster_width()-gfx->calc_text_width_n(m->str, 0x7FFF))/2,0);
 
-		display_shadow_proportional_rgb( scr_pos.x, scr_pos.y, PLAYER_FLAG|color_idx_to_rgb(player_color_1+3), color_idx_to_rgb(COL_BLACK), m->str, true);
+		gfx->draw_text_shadowed( scr_pos.x, scr_pos.y, PLAYER_FLAG|gfx->palette_lookup(player_color_1+3), gfx->palette_lookup(COL_BLACK), m->str, true);
 		if(  m->pos.x < 3  ||  m->pos.y < 3  ) {
 			// very close to border => renew background
 			welt->set_background_dirty();
@@ -267,7 +269,9 @@ void player_t::set_player_color(uint8 col1, uint8 col2)
 {
 	player_color_1 = col1;
 	player_color_2 = col2;
-	display_set_player_color_scheme( player_nr, col1, col2 );
+
+	gfx->set_player_color_scheme(player_nr, col1, col2);
+
 	// update player window
 	if (ki_kontroll_t* frame = dynamic_cast<ki_kontroll_t*>(win_get_magic(magic_ki_kontroll_t))) {
 		frame->update_data();
@@ -299,7 +303,7 @@ bool player_t::new_month()
 			if(  welt->get_active_player_nr()==player_nr  &&  !env_t::networkmode  ) {
 				if(  finance->get_netwealth() < 0 ) {
 					destroy_all_win(true);
-					create_win({ display_get_width()/2-128, 40 }, new news_img("Bankrott:\n\nDu bist bankrott.\n"), w_info, magic_none);
+					create_win({ gfx->get_screen_size().w/2-128, 40 }, new news_img("Bankrott:\n\nDu bist bankrott.\n"), w_info, magic_none);
 					ticker::add_msg( translator::translate("Bankrott:\n\nDu bist bankrott.\n"), koord3d::invalid, PLAYER_FLAG | player_nr );
 					welt->stop(false);
 				}
@@ -480,32 +484,18 @@ void player_t::ai_bankrupt()
 	// remove headquarters pos
 	headquarter_pos = koord::invalid;
 
-	// remove all stops
-	// first generate list of our stops
-	slist_tpl<halthandle_t> halt_list;
-	for(halthandle_t const halt : haltestelle_t::get_alle_haltestellen()) {
-		if(  halt->get_owner()==this  ) {
-			halt_list.append(halt);
-		}
-	}
-	// ... and destroy them
-	while (!halt_list.empty()) {
-		halthandle_t h = halt_list.remove_first();
-		haltestelle_t::destroy( h );
-	}
-
-	// transfer all ways in public stops belonging to me to no one
-	for(halthandle_t const halt : haltestelle_t::get_alle_haltestellen()) {
-		if(  halt->get_owner()==welt->get_public_player()  ) {
+	// transfer all ways in stops with my permission
+	for (halthandle_t const halt : haltestelle_t::get_alle_haltestellen()) {
+		if (halt->can_use_halt(this)) {
 			// only concerns public stops tiles
-			for(haltestelle_t::tile_t const& i : halt->get_tiles()) {
+			for (haltestelle_t::tile_t const& i : halt->get_tiles()) {
 				grund_t const* const gr = i.grund;
-				for(  uint8 wnr=0;  wnr<2;  wnr++  ) {
-					weg_t *w = gr->get_weg_nr(wnr);
+				for (uint8 wnr = 0; wnr < 2; wnr++) {
+					weg_t* w = gr->get_weg_nr(wnr);
 					// make public
-					if(  w  &&  w->get_owner()==this  ) {
+					if (w && w->get_owner() == this) {
 						// tunnels and bridges are handled later? (logic needs to be checked for correct maintenance costs)
-						if (!gr->ist_bruecke()  &&  !gr->ist_tunnel()) {
+						if (!gr->ist_bruecke() && !gr->ist_tunnel()) {
 							sint32 const costs = w->get_desc()->get_maintenance();
 							waytype_t const wt = w->get_desc()->get_finance_waytype();
 							player_t::add_maintenance(this, -costs, wt);
@@ -516,6 +506,19 @@ void player_t::ai_bankrupt()
 				}
 			}
 		}
+	}
+
+	// remove me from all
+	slist_tpl<halthandle_t> halt_list;
+	for(halthandle_t const halt : haltestelle_t::get_alle_haltestellen()) {
+		if(  halt->get_owners() & (1<<player_nr)  ) {
+			halt_list.append(halt);
+		}
+	}
+	// ... and destroy them
+	while (!halt_list.empty()) {
+		halthandle_t h = halt_list.remove_first();
+		haltestelle_t::destroy( h, this );
 	}
 
 	// deactivate active tool (remove dummy grounds)
@@ -547,11 +550,11 @@ void player_t::ai_bankrupt()
 				}
 				for (uint8 i = gr->obj_count(); i-- != 0;) {
 					obj_t *obj = gr->obj_bei(i);
+
 					if(obj->get_owner()==this) {
 						sint32 costs = 0;
 						waytype_t wt = ignore_wt;
 						switch(obj->get_typ()) {
-							case obj_t::roadsign:
 							case obj_t::signal:
 							case obj_t::airdepot:
 							case obj_t::bahndepot:
@@ -566,6 +569,7 @@ void player_t::ai_bankrupt()
 								obj->cleanup(this);
 								delete obj;
 								break;
+
 							case obj_t::leitung:
 								// do not remove powerline from bridges
 								if(gr->ist_bruecke()) {
@@ -579,10 +583,12 @@ void player_t::ai_bankrupt()
 									delete obj;
 								}
 								break;
+
 							case obj_t::gebaeude:
 								hausbauer_t::remove( this, (gebaeude_t *)obj );
 								gr = plan->get_boden_bei(b); // fundament has now been replaced by normal ground
 								break;
+
 							case obj_t::way:
 							{
 								weg_t *w=(weg_t *)obj;
@@ -603,6 +609,7 @@ void player_t::ai_bankrupt()
 								}
 								break;
 							}
+
 							case obj_t::bruecke:
 								costs = ((bruecke_t*)obj)->get_desc()->get_maintenance();
 								wt = obj->get_waytype();
@@ -610,6 +617,7 @@ void player_t::ai_bankrupt()
 								psplayer->add_maintenance(costs, wt);
 								obj->set_owner(psplayer);
 								break;
+
 							case obj_t::tunnel:
 								costs = ((tunnel_t*)obj)->get_desc()->get_maintenance();
 								wt = ((tunnel_t*)obj)->get_desc()->get_finance_waytype();
@@ -617,6 +625,30 @@ void player_t::ai_bankrupt()
 								psplayer->add_maintenance(costs, wt);
 								obj->set_owner(psplayer);
 								break;
+
+							case obj_t::roadsign: {
+								costs = ((roadsign_t *)obj)->get_desc()->get_maintenance();
+								wt = ((roadsign_t *)obj)->get_desc()->get_waytype();
+
+								// take care of normal rail signals on tram track
+								if (wt == track_wt && gr->get_weg(tram_wt)) {
+									wt = tram_wt;
+								}
+
+								if (wt != road_wt && wt != water_wt) {
+									// Only road/water signals remain!
+									// The rest is destroyed with the way
+									obj->cleanup(this);
+									delete obj;
+									break;
+								}
+
+								this->add_maintenance(-costs, wt);
+								psplayer->add_maintenance(costs, wt);
+
+								obj->set_owner(psplayer);
+								break;
+							}
 
 							default:
 								obj->set_owner(psplayer);
@@ -766,7 +798,9 @@ DBG_DEBUG("player_t::rdwr()","player %i: loading %i halts.",welt->sp2num( this )
 void player_t::finish_rd()
 {
 	simlinemgmt.finish_rd();
-	display_set_player_color_scheme( player_nr, player_color_1, player_color_2 );
+
+	gfx->set_player_color_scheme(player_nr, player_color_1, player_color_2);
+
 	// recalculate vehicle value
 	calc_assets();
 

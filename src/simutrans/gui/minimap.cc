@@ -1,3 +1,4 @@
+
 /*
  * This file is part of the Simutrans project under the Artistic License.
  * (see LICENSE.txt)
@@ -28,6 +29,7 @@
 
 #include "../obj/way/schiene.h"
 #include "../obj/leitung2.h"
+#include "../obj/field.h"
 #include "../utils/cbuffer.h"
 #include "../display/scr_coord.h"
 #include "../display/simgraph.h"
@@ -235,7 +237,7 @@ void minimap_t::add_to_schedule_cache( convoihandle_t cnv, bool with_waypoints )
 
 		//cycle on stops
 		//try to read station's coordinates if there's a station at this schedule stop
-		halthandle_t station = haltestelle_t::get_halt( cur.pos, cnv->get_owner() );
+		halthandle_t station = haltestelle_t::get_halt( cur.pos, cnv->get_owner(), add_schedule );
 		if(  station.is_bound()  ) {
 			stop_cache.append_unique( station );
 			temp_stop = station->get_basis_pos();
@@ -341,7 +343,7 @@ static void display_airport( const scr_coord_val xx, const scr_coord_val yy, con
 	for ( int i = 0; i < 11; i++ ) {
 		for ( int j = 0; j < 11; j++ ) {
 			if ( symbol[i + j * 11] == 'X' ) {
-				display_vline_wh_clip_rgb( x + i, y + j, 1,  color, true );
+				gfx->draw_vline_clipped(x + i, y + j, 1,  color, true CLIP_NUM_DEFAULT);
 			}
 		}
 	}
@@ -373,7 +375,7 @@ static void display_harbor( const scr_coord_val xx, const scr_coord_val yy, cons
 	for ( int i = 0; i < 11; i++ ) {
 		for ( int j = 0; j < 11; j++ ) {
 			if ( symbol[i + j * 11] == 'X' ) {
-				display_vline_wh_clip_rgb( x + i, y + j, 1,  color, true );
+				gfx->draw_vline_clipped(x + i, y + j, 1,  color, true CLIP_NUM_DEFAULT);
 			}
 		}
 	}
@@ -392,10 +394,10 @@ static void display_thick_line( scr_coord_val x1, scr_coord_val y1, scr_coord_va
 		x2 -= thickness/2;
 		for(  int i = 0;  i < thickness;  i++  ) {
 			if ( !dotting ) {
-				display_direct_line_rgb( x1 + i, y1, x2 + i, y2, col );
+				gfx->draw_line( x1 + i, y1, x2 + i, y2, col );
 			}
 			else {
-				display_direct_line_dotted_rgb( x1 + i, y1, x2 + i, y2, dot_full, dot_empty, col );
+				gfx->draw_line_dotted( x1 + i, y1, x2 + i, y2, dot_full, dot_empty, col );
 			}
 		}
 	}
@@ -405,10 +407,10 @@ static void display_thick_line( scr_coord_val x1, scr_coord_val y1, scr_coord_va
 		y2 -= thickness/2;
 		for(  int i = 0;  i < thickness;  i++  ) {
 			if ( !dotting ) {
-				display_direct_line_rgb( x1, y1 + i, x2, y2 + i, col );
+				gfx->draw_line( x1, y1 + i, x2, y2 + i, col );
 			}
 			else {
-				display_direct_line_dotted_rgb( x1, y1 + i, x2, y2 + i, dot_full, dot_empty, col );
+				gfx->draw_line_dotted( x1, y1 + i, x2, y2 + i, dot_full, dot_empty, col );
 			}
 		}
 	}
@@ -422,12 +424,12 @@ static void display_thick_line( scr_coord_val x1, scr_coord_val y1, scr_coord_va
 		y2 -= thickness*y_multiplier/2;
 		for(  int i = 0;  i < thickness;  i++  ) {
 			if ( !dotting ) {
-				display_direct_line_rgb( x1+i, y1+i*y_multiplier, x2+i, y2+i*y_multiplier, col );
-				display_direct_line_rgb( x1+i+1, y1+i*y_multiplier, x2+i+1, y2+i*y_multiplier, col );
+				gfx->draw_line( x1+i, y1+i*y_multiplier, x2+i, y2+i*y_multiplier, col );
+				gfx->draw_line( x1+i+1, y1+i*y_multiplier, x2+i+1, y2+i*y_multiplier, col );
 			}
 			else {
-				display_direct_line_dotted_rgb( x1 + i, y1 + i*y_multiplier, x2 + i, y2 + i*y_multiplier, dot_full, dot_empty, col );
-				display_direct_line_dotted_rgb( x1 + i + 1, y1 + i*y_multiplier, x2 + i + 1, y2 + i*y_multiplier, dot_full, dot_empty, col );
+				gfx->draw_line_dotted( x1 + i, y1 + i*y_multiplier, x2 + i, y2 + i*y_multiplier, dot_full, dot_empty, col );
+				gfx->draw_line_dotted( x1 + i + 1, y1 + i*y_multiplier, x2 + i + 1, y2 + i*y_multiplier, dot_full, dot_empty, col );
 			}
 		}
 	}
@@ -439,8 +441,8 @@ static void line_segment_draw( waytype_t type, scr_coord start, const uint8 star
 	// airplanes are different, so we must check for them first
 	if(  type ==  air_wt  ) {
 		// ignore offset for airplanes
-		draw_bezier_rgb( start.x, start.y, end.x, end.y, 50, 50, 50, 50, colore, 5, 5 );
-		draw_bezier_rgb( start.x + 1, start.y + 1, end.x + 1, end.y + 1, 50, 50, 50, 50, colore, 5, 5 );
+		gfx->draw_bezier(start.x,   start.y,   end.x,   end.y,   50, 50, 50, 50, colore, 5, 5);
+		gfx->draw_bezier(start.x+1, start.y+1, end.x+1, end.y+1, 50, 50, 50, 50, colore, 5, 5);
 	}
 	else {
 		// determine line style
@@ -583,9 +585,9 @@ PIXVAL minimap_t::calc_severity_color(sint32 amount, sint32 max_value)
 	if(max_value!=0) {
 		// color array goes from light blue to red
 		const sint32 severity = ((sint64)amount * MAX_SEVERITY_COLORS) / ((sint64)max_value + 1);
-		return color_idx_to_rgb( minimap_t::severity_color[ clamp( severity, 0, MAX_SEVERITY_COLORS-1 ) ]);
+		return gfx->palette_lookup( minimap_t::severity_color[ clamp( severity, 0, MAX_SEVERITY_COLORS-1 ) ]);
 	}
-	return color_idx_to_rgb( minimap_t::severity_color[0]);
+	return gfx->palette_lookup( minimap_t::severity_color[0]);
 }
 
 
@@ -599,9 +601,9 @@ PIXVAL minimap_t::calc_severity_color_log(sint32 amount, sint32 max_value)
 		else {
 			severity = (uint32)( log( (double)amount*(double)(1<<MAX_SEVERITY_COLORS)/(double)max_value) + 0.5 );
 		}
-		return color_idx_to_rgb( minimap_t::severity_color[ clamp( severity, 0, MAX_SEVERITY_COLORS-1 ) ]);
+		return gfx->palette_lookup( minimap_t::severity_color[ clamp( severity, 0, MAX_SEVERITY_COLORS-1 ) ]);
 	}
-	return color_idx_to_rgb( minimap_t::severity_color[0]);
+	return gfx->palette_lookup( minimap_t::severity_color[0]);
 }
 
 
@@ -676,7 +678,7 @@ PIXVAL minimap_t::calc_height_color(const sint16 hoehe, const sint16 groundwater
 	else {
 		relative_index = hoehe-groundwater;
 	}
-	return color_idx_to_rgb(map_type_color[clamp( relative_index+MAX_MAP_TYPE_WATER-1, 0, MAX_MAP_TYPE_WATER+MAX_MAP_TYPE_LAND-1 )]);
+	return gfx->palette_lookup(map_type_color[clamp( relative_index+MAX_MAP_TYPE_WATER-1, 0, MAX_MAP_TYPE_WATER+MAX_MAP_TYPE_LAND-1 )]);
 }
 
 
@@ -685,12 +687,12 @@ PIXVAL minimap_t::calc_height_color(const sint16 hoehe, const sint16 groundwater
  */
 PIXVAL minimap_t::calc_ground_color(const grund_t *gr)
 {
-	PIXVAL color = color_idx_to_rgb(COL_BLACK);
+	PIXVAL color = gfx->palette_lookup(COL_BLACK);
 
 #ifdef DEBUG_ROUTES
 	/* for debug purposes only ...*/
 	if(gr->get_flag(grund_t::marked)) {
-		color = color_idx_to_rgb(COL_PURPLE);
+		color = gfx->palette_lookup(COL_PURPLE);
 	}
 	else
 #endif
@@ -700,44 +702,35 @@ PIXVAL minimap_t::calc_ground_color(const grund_t *gr)
 	else {
 		switch(gr->get_typ()) {
 			case grund_t::brueckenboden:
-				color = color_idx_to_rgb(MN_GREY3);
+				color = gfx->palette_lookup(MN_GREY3);
 				break;
 			case grund_t::tunnelboden:
-				color = color_idx_to_rgb(COL_BROWN);
+				color = gfx->palette_lookup(COL_BROWN);
 				break;
 			case grund_t::monorailboden:
 				color = COL_MONORAIL;
 				break;
 			case grund_t::fundament:
-				{
-					// object at zero is either factory or house (or attraction ... )
-					gebaeude_t *gb = gr->find<gebaeude_t>();
-					fabrik_t *fab = gb ? gb->get_fabrik() : NULL;
-					if(fab==NULL) {
-						color = color_idx_to_rgb(COL_GREY3);
-					}
-					else {
+				if (gebaeude_t* gb = gr->find<gebaeude_t>()) {
+					if (fabrik_t* fab = gb->get_fabrik()) {
 						color = fab->get_color();
+						break;
 					}
 				}
+				else if (field_t* field = gr->find<field_t>()) {
+					color = field->get_factory()->get_color();
+					break;
+				}
+				color = gfx->palette_lookup(COL_GREY3);
 				break;
 			case grund_t::wasser:
 				{
-					// object at zero is either factory or boat
-					gebaeude_t *gb = gr->find<gebaeude_t>();
-					fabrik_t *fab = gb ? gb->get_fabrik() : NULL;
-					if(fab==NULL) {
-						sint16 height = corner_sw(gr->get_grund_hang());
-						if( mode&MAP_HIDE_CONTOUR ) {
-							color = color_idx_to_rgb(map_type_color[1]); // second deep water color
-						}
-						else {
-							color = calc_height_color( world->lookup_hgt( gr->get_pos().get_2d() ) + height, world->get_water_hgt( gr->get_pos().get_2d() ) );
-						}
-						//color = color_idx_to_rgb(COL_BLUE); // water with boat?
+					sint16 height = corner_sw(gr->get_grund_hang());
+					if( mode&MAP_HIDE_CONTOUR ) {
+						color = gfx->palette_lookup(map_type_color[1]); // second deep water color
 					}
 					else {
-						color = fab->get_color();
+						color = calc_height_color( world->lookup_hgt( gr->get_pos().get_2d() ) + height, world->get_water_hgt( gr->get_pos().get_2d() ) );
 					}
 				}
 				break;
@@ -752,7 +745,7 @@ PIXVAL minimap_t::calc_ground_color(const grund_t *gr)
 						case air_wt: color = COL_RUNWAY; break;
 						case monorail_wt:
 						default: // all other ways light red ...
-							color = color_idx_to_rgb(135); break;
+							color = gfx->palette_lookup(135); break;
 					}
 				}
 				else {
@@ -762,11 +755,11 @@ PIXVAL minimap_t::calc_ground_color(const grund_t *gr)
 					}
 					else {
 						if( mode&MAP_HIDE_CONTOUR ) {
-							color = color_idx_to_rgb(map_type_color[MAX_MAP_TYPE_WATER+2]); // lowest land color
+							color = gfx->palette_lookup(map_type_color[MAX_MAP_TYPE_WATER+2]); // lowest land color
 						}
 						else if( mode&MAP_CLIMATES ) {
 							static uint8 climate_color[ 8 ] = { 0, COL_YELLOW, COL_LIGHT_GREEN, COL_GREEN, COL_DARK_GREEN, COL_DARK_YELLOW, COL_BROWN, COL_GREY4 };
-							color = color_idx_to_rgb( climate_color[ world->get_climate(gr->get_pos().get_2d()) ] );
+							color = gfx->palette_lookup( climate_color[ world->get_climate(gr->get_pos().get_2d()) ] );
 						}
 						else {
 							sint16 height = corner_sw(gr->get_grund_hang());
@@ -868,15 +861,15 @@ bool minimap_t::calc_map_pixel(const grund_t *gr)
 				const schiene_t* sch = (const schiene_t*)(gr->get_weg(track_wt));
 				// show signals
 				if (sch->has_sign() || sch->has_signal()) {
-					set_map_color(k, color_idx_to_rgb(COL_YELLOW));
+					set_map_color(k, gfx->palette_lookup(COL_YELLOW));
 					return true;
 				}
 				else if (sch->is_electrified()) {
-					set_map_color(k, color_idx_to_rgb(COL_RED));
+					set_map_color(k, gfx->palette_lookup(COL_RED));
 					return true;
 				}
 				else {
-					set_map_color(k, color_idx_to_rgb(COL_WHITE));
+					set_map_color(k, gfx->palette_lookup(COL_WHITE));
 					return true;
 				}
 
@@ -903,7 +896,7 @@ bool minimap_t::calc_map_pixel(const grund_t *gr)
 
 		case MAP_FOREST:
 			if (gr->obj_count() > 1 && gr->obj_bei(gr->obj_count() - 1)->get_typ() == obj_t::baum) {
-				set_map_color(k, color_idx_to_rgb(COL_GREEN));
+				set_map_color(k, gfx->palette_lookup(COL_GREEN));
 				return true;
 			}
 			break;
@@ -911,16 +904,17 @@ bool minimap_t::calc_map_pixel(const grund_t *gr)
 	case MAP_OWNER:
 		// show ownership
 		if (gr->is_halt()) {
-			set_map_color(k, color_idx_to_rgb(gr->get_halt()->get_owner()->get_player_color1() + 3));
+			// needs fixing!!!
+			set_map_color(k, gfx->palette_lookup(gr->get_halt()->get_player_color() + 3));
 			return true;
 		}
 		else if (weg_t* weg = gr->get_weg_nr(0)) {
-			set_map_color(k, weg->get_owner() == NULL ? color_idx_to_rgb(COL_ORANGE) : color_idx_to_rgb(weg->get_owner()->get_player_color1() + 3));
+			set_map_color(k, weg->get_owner() == NULL ? gfx->palette_lookup(COL_ORANGE) : gfx->palette_lookup(weg->get_owner()->get_player_color1() + 3));
 			return true;
 		}
 		if (gebaeude_t* gb = gr->find<gebaeude_t>()) {
 			if (gb->get_owner() != NULL) {
-				set_map_color(k, color_idx_to_rgb(gb->get_owner()->get_player_color1() + 3));
+				set_map_color(k, gfx->palette_lookup(gb->get_owner()->get_player_color1() + 3));
 				return true;
 			}
 		}
@@ -975,7 +969,8 @@ void minimap_t::calc_map_pixel(const koord k)
 			for (int i = 0; i < plan->get_haltlist_count(); i++) {
 				halthandle_t halt = plan->get_haltlist()[i];
 				if (halt->get_pax_enabled() && !halt->get_pax_connections().empty()) {
-					set_map_color(k, color_idx_to_rgb(halt->get_owner()->get_player_color1() + 3));
+					// need fixing!!!
+					set_map_color(k, gfx->palette_lookup(halt->get_player_color() + 3));
 					return;
 				}
 			}
@@ -987,7 +982,8 @@ void minimap_t::calc_map_pixel(const koord k)
 			for (int i = 0; i < plan->get_haltlist_count(); i++) {
 				halthandle_t halt = plan->get_haltlist()[i];
 				if (halt->get_mail_enabled() && !halt->get_mail_connections().empty()) {
-					set_map_color(k, color_idx_to_rgb(halt->get_owner()->get_player_color1() + 3));
+					// need fixing!!!
+					set_map_color(k, gfx->palette_lookup(halt->get_player_color() + 3));
 					return;
 				}
 			}
@@ -1009,7 +1005,7 @@ void minimap_t::calc_map_pixel(const koord k)
 			set_map_color(k, calc_ground_color(last_tunnel));
 		}
 		else {
-			set_map_color(k, color_idx_to_rgb(COL_BLACK));
+			set_map_color(k, gfx->palette_lookup(COL_BLACK));
 		}
 	}
 	else if(grund_t::underground_mode == grund_t::ugm_level) {
@@ -1027,7 +1023,7 @@ void minimap_t::calc_map_pixel(const koord k)
 			set_map_color(k, calc_ground_color(gr));
 		}
 		else {
-			set_map_color(k, color_idx_to_rgb(COL_BLACK));
+			set_map_color(k, gfx->palette_lookup(COL_BLACK));
 		}
 	}
 	else {
@@ -1096,7 +1092,7 @@ void minimap_t::calc_map()
 	else {
 		// always the whole map ...
 		if(isometric) {
-			map_data->init( color_idx_to_rgb(COL_BLACK) );
+			map_data->init( gfx->palette_lookup(COL_BLACK) );
 		}
 		koord k;
 		for(  k.y=0;  k.y < world->get_size().y;  k.y++  ) {
@@ -1161,12 +1157,6 @@ void minimap_t::set_display_mode(MAP_DISPLAY_MODE new_mode)
 }
 
 
-void minimap_t::new_month()
-{
-	needs_redraw = true;
-}
-
-
 void minimap_t::invalidate_map_lines_cache()
 {
 	last_schedule_counter = world->get_schedule_counter() - 1;
@@ -1222,21 +1212,21 @@ const fabrik_t* minimap_t::get_factory_near( const koord, bool enlarge ) const
 const fabrik_t* minimap_t::draw_factory_connections(const fabrik_t* const fab, bool supplier_link, const scr_coord pos) const
 {
 	if(fab) {
-		PIXVAL color = supplier_link ? color_idx_to_rgb(COL_RED) : color_idx_to_rgb(COL_WHITE);
+		PIXVAL color = supplier_link ? gfx->palette_lookup(COL_RED) : gfx->palette_lookup(COL_WHITE);
 		scr_coord fabpos = map_to_screen_coord( fab->get_pos().get_2d() ) + pos;
 		const vector_tpl<koord>& consumer = supplier_link ? fab->get_suppliers() : fab->get_consumer();
 		for(koord lieferziel : consumer) {
 			const fabrik_t * fab2 = fabrik_t::get_fab(lieferziel);
 			if (fab2) {
 				const scr_coord end = map_to_screen_coord( lieferziel ) + pos;
-				display_direct_line_rgb(fabpos.x, fabpos.y, end.x, end.y, color);
-				display_fillbox_wh_clip_rgb(end.x, end.y, 3, 3, ((world->get_ticks() >> 10) & 1) == 0 ? color_idx_to_rgb(COL_RED) : color_idx_to_rgb(COL_WHITE), true);
+				gfx->draw_line(fabpos.x, fabpos.y, end.x, end.y, color);
+				gfx->draw_rect_clipped(end.x, end.y, 3, 3, ((world->get_ticks() >> 10) & 1) == 0 ? gfx->palette_lookup(COL_RED) : gfx->palette_lookup(COL_WHITE), true CLIP_NUM_DEFAULT);
 
 				scr_coord boxpos = end + scr_coord(10, 0);
 				const char * name = translator::translate(fab2->get_name());
-				int name_width = proportional_string_width(name)+(LINESPACE/2);
+				int name_width = gfx->calc_text_width(name) + (LINESPACE/2);
 				boxpos.x = clamp( boxpos.x, pos.x, pos.x+get_size().w-name_width );
-				display_ddd_proportional_clip(boxpos.x, boxpos.y, color_idx_to_rgb(5), color_idx_to_rgb(COL_WHITE), name, true);
+				gfx->draw_textbox3d_clipped(boxpos.x, boxpos.y, gfx->palette_lookup(5), gfx->palette_lookup(COL_WHITE), name, true CLIP_NUM_DEFAULT);
 			}
 		}
 	}
@@ -1304,43 +1294,48 @@ void minimap_t::draw(scr_coord pos)
 		return;
 	}
 
-	if(  mode & MAP_PAX_DEST  &&  selected_city!=NULL  ) {
-		const uint32 current_pax_destinations = selected_city->get_pax_destinations_new_change();
-		if(  pax_destinations_last_change > current_pax_destinations  ) {
-			// new month started.
+	if(  mode & MAP_PAX_DEST) {
+		if(  selected_city==NULL ||  pax_destinations_last_change > selected_city->get_pax_destinations_new_change()) {
+			// new month started or deselect.
 			calc_map();
+			pax_destinations_last_change = 0;
 		}
-		else if(  pax_destinations_last_change < current_pax_destinations  ) {
+		else if(  pax_destinations_last_change < selected_city->get_pax_destinations_new_change()) {
 			// new pax_dest in city.
-			const sparse_tpl<PIXVAL> *pax_dests = selected_city->get_pax_destinations_new();
+			const sparse_tpl<pax_dest_status_t> &pax_dests = selected_city->get_pax_destinations_new();
 			koord pos, min, max;
-			PIXVAL color;
-			for(  uint16 i = 0;  i < pax_dests->get_data_count();  i++  ) {
-				pax_dests->get_nonzero( i, pos, color );
+			pax_dest_status_t dst_status;
+
+			for(  uint16 i = 0;  i < pax_dests.get_data_count();  i++  ) {
+				pax_dests.get_nonzero( i, pos, dst_status);
 				min = koord((pos.x*world->get_size().x)/PAX_DESTINATIONS_SIZE,
 				            (pos.y*world->get_size().y)/PAX_DESTINATIONS_SIZE);
 				max = koord(((pos.x+1)*world->get_size().x)/PAX_DESTINATIONS_SIZE,
 				            ((pos.y+1)*world->get_size().y)/PAX_DESTINATIONS_SIZE);
 				pos = min;
+				PIXVAL sc = gfx->palette_lookup(pax_dest_status_colors[dst_status]);
 				do {
 					do {
-						set_map_color(pos, color);
+						set_map_color(pos, sc);
 						pos.y++;
 					} while(pos.y < max.y);
 					pos.x++;
+					pos.y = min.y;
 				} while (pos.x < max.x);
 			}
 		}
-		pax_destinations_last_change = selected_city->get_pax_destinations_new_change();
+		if (selected_city) {
+			pax_destinations_last_change = selected_city->get_pax_destinations_new_change();
+		}
 	}
 
 	if(  (uint16)cur_size.w > map_data->get_width()  ) {
-		display_fillbox_wh_clip_rgb( pos.x+new_off.x+map_data->get_width(), new_off.y+pos.y, 32767, map_data->get_height(), color_idx_to_rgb(COL_BLACK), true);
+		gfx->draw_rect_clipped( pos.x+new_off.x+map_data->get_width(), new_off.y+pos.y, 32767, map_data->get_height(), gfx->palette_lookup(COL_BLACK), true CLIP_NUM_DEFAULT);
 	}
 	if(  (uint16)cur_size.h > map_data->get_height()  ) {
-		display_fillbox_wh_clip_rgb( pos.x+new_off.x, pos.y+new_off.y+map_data->get_height(), 32767, 32767, color_idx_to_rgb(COL_BLACK), true);
+		gfx->draw_rect_clipped( pos.x+new_off.x, pos.y+new_off.y+map_data->get_height(), 32767, 32767, gfx->palette_lookup(COL_BLACK), true CLIP_NUM_DEFAULT);
 	}
-	display_array_wh( cur_off.x+pos.x, new_off.y+pos.y, map_data->get_width(), map_data->get_height(), map_data->to_array());
+	gfx->draw_array( cur_off.x+pos.x, new_off.y+pos.y, map_data->get_width(), map_data->get_height(), map_data->to_array());
 
 	if(  !current_cnv.is_bound()  &&  mode & MAP_LINES    ) {
 		vector_tpl<linehandle_t> linee;
@@ -1454,24 +1449,24 @@ void minimap_t::draw(scr_coord pos)
 			// top and bottom part
 			const int toplines = min( p4.y, p2.y );
 			for( scr_coord_val y = 0;  y < toplines;  y++  ) {
-				display_blend_wh_rgb( pos.x+p1.x-2*y, pos.y+y, 4*y+4, 1, color_idx_to_rgb(COL_WHITE), 75 );
-				display_blend_wh_rgb( pos.x+p3.x-2*y, pos.y+p3.y-y-1, 4*y+4, 1, color_idx_to_rgb(COL_WHITE), 75 );
+				gfx->tint_rect( pos.x+p1.x-2*y, pos.y+y,        4*y+4, 1, gfx->palette_lookup(COL_WHITE), 75 );
+				gfx->tint_rect( pos.x+p3.x-2*y, pos.y+p3.y-y-1, 4*y+4, 1, gfx->palette_lookup(COL_WHITE), 75 );
 			}
 			// center area
 			if(  p1.x < p3.x  ) {
 				for( scr_coord_val y = toplines;  y < p3.y-toplines;  y++  ) {
-					display_blend_wh_rgb( pos.x+(y-toplines)*2, pos.y+y, 4*toplines+4, 1, color_idx_to_rgb(COL_WHITE), 75 );
+					gfx->tint_rect( pos.x+(y-toplines)*2, pos.y+y, 4*toplines+4, 1, gfx->palette_lookup(COL_WHITE), 75 );
 				}
 			}
 			else {
 				for( scr_coord_val y = toplines;  y < p3.y-toplines;  y++  ) {
-					display_blend_wh_rgb( pos.x+(y-toplines)*2, pos.y+p3.y-y-1, 4*toplines+4, 1, color_idx_to_rgb(COL_WHITE), 75 );
+					gfx->tint_rect( pos.x+(y-toplines)*2, pos.y+p3.y-y-1, 4*toplines+4, 1, gfx->palette_lookup(COL_WHITE), 75 );
 				}
 			}
 		}
 		else {
 			// easier with rectangular maps ...
-			display_blend_wh_rgb( cur_off.x+pos.x, cur_off.y+pos.y, map_data->get_width(), map_data->get_height(), color_idx_to_rgb(COL_WHITE), 75 );
+			gfx->tint_rect( cur_off.x+pos.x, cur_off.y+pos.y, map_data->get_width(), map_data->get_height(), gfx->palette_lookup(COL_WHITE), 75 );
 		}
 
 		scr_coord k1,k2;
@@ -1500,7 +1495,7 @@ void minimap_t::draw(scr_coord pos)
 				diagonal = seg.start_diagonal;
 			}
 			// and finally draw ...
-			line_segment_draw( seg.waytype, k1, seg.start_offset*offset, k2, seg.end_offset*offset, diagonal, color_idx_to_rgb(color) );
+			line_segment_draw( seg.waytype, k1, seg.start_offset*offset, k2, seg.end_offset*offset, diagonal, gfx->palette_lookup(color) );
 		}
 	}
 
@@ -1601,7 +1596,8 @@ void minimap_t::draw(scr_coord pos)
 		}
 		else {
 			const int stype = station->get_station_type();
-			color = color_idx_to_rgb(station->get_owner()->get_player_color1()+3);
+			// needs fixing
+			color = gfx->palette_lookup(station->get_first_owner()->get_player_color1()+3);
 
 			// invalid=0, loadingbay=1, railstation = 2, dock = 4, busstop = 8, airstop = 16, monorailstop = 32, tramstop = 64, maglevstop=128, narrowgaugestop=256
 			if(  stype > 0  ) {
@@ -1628,7 +1624,8 @@ void minimap_t::draw(scr_coord pos)
 					if(  (stype>>type)&1  ) {
 						image_id img = skinverwaltung_t::station_type->get_image_id(type);
 						if(  img!=IMG_EMPTY  ) {
-							display_color_img( img, temp_stop.x+diagonal_dist+4+(icon/2)*12, temp_stop.y+diagonal_dist+4+(icon&1)*12, station->get_owner()->get_player_nr(), false, false );
+							// needs fixing!!!
+							gfx->draw_color_img( img, temp_stop.x+diagonal_dist+4+(icon/2)*12, temp_stop.y+diagonal_dist+4+(icon&1)*12, station->get_first_owner()->get_player_nr(), false, false CLIP_NUM_DEFAULT);
 							icon++;
 						}
 					}
@@ -1651,17 +1648,19 @@ void minimap_t::draw(scr_coord pos)
 		}
 
 		int out_radius = (radius == 0) ? 1 : radius;
-		display_filled_circle_rgb( temp_stop.x, temp_stop.y, radius, color );
-		display_circle_rgb( temp_stop.x, temp_stop.y, out_radius, color_idx_to_rgb(COL_BLACK) );
+		gfx->draw_filled_circle(temp_stop.x, temp_stop.y, radius,     color );
+		gfx->draw_empty_circle (temp_stop.x, temp_stop.y, out_radius, gfx->palette_lookup(COL_BLACK));
+
 		if(  diagonal_dist>0  ) {
-			display_filled_circle_rgb( temp_stop.x+diagonal_dist, temp_stop.y+diagonal_dist, radius, color );
-			display_circle_rgb( temp_stop.x+diagonal_dist, temp_stop.y+diagonal_dist, out_radius, color_idx_to_rgb(COL_BLACK) );
+			gfx->draw_filled_circle( temp_stop.x+diagonal_dist, temp_stop.y+diagonal_dist, radius,     color );
+			gfx->draw_empty_circle ( temp_stop.x+diagonal_dist, temp_stop.y+diagonal_dist, out_radius, gfx->palette_lookup(COL_BLACK));
+
 			for(  int i=1;  i < diagonal_dist;  i++  ) {
-				display_filled_circle_rgb( temp_stop.x+i, temp_stop.y+i, radius, color );
+				gfx->draw_filled_circle( temp_stop.x+i, temp_stop.y+i, radius, color );
 			}
 			out_radius = sqrt_i32( 2*out_radius+1 );
-			display_direct_line_rgb( temp_stop.x+out_radius, temp_stop.y-out_radius, temp_stop.x+out_radius+diagonal_dist, temp_stop.y-out_radius+diagonal_dist, color_idx_to_rgb(COL_BLACK) );
-			display_direct_line_rgb( temp_stop.x-out_radius, temp_stop.y+out_radius, temp_stop.x-out_radius+diagonal_dist, temp_stop.y+out_radius+diagonal_dist, color_idx_to_rgb(COL_BLACK) );
+			gfx->draw_line( temp_stop.x+out_radius, temp_stop.y-out_radius, temp_stop.x+out_radius+diagonal_dist, temp_stop.y-out_radius+diagonal_dist, gfx->palette_lookup(COL_BLACK) );
+			gfx->draw_line( temp_stop.x-out_radius, temp_stop.y+out_radius, temp_stop.x-out_radius+diagonal_dist, temp_stop.y+out_radius+diagonal_dist, gfx->palette_lookup(COL_BLACK) );
 		}
 
 		if(  koord_distance( last_world_pos, station->get_basis_pos() ) <= 2  ) {
@@ -1669,31 +1668,26 @@ void minimap_t::draw(scr_coord pos)
 			display_station = station;
 		}
 	}
-	if(  display_station.is_bound()  ) {
-		scr_coord temp_stop = map_to_screen_coord( display_station->get_basis_pos() );
-		temp_stop = temp_stop + pos;
-		display_ddd_proportional_clip( temp_stop.x + 10, temp_stop.y + 7, color_idx_to_rgb(display_station->get_owner()->get_player_color1()+3), color_idx_to_rgb(COL_WHITE), display_station->get_name(), false );
-	}
 	max_waiting_change = new_max_waiting_change; // update waiting tendencies
 
 	// if we do not do this here, vehicles would erase the town names
 	// ADD: if CRTL key is pressed, temporary show the name
 	if(  mode & MAP_TOWN  ) {
 		const weighted_vector_tpl<stadt_t*>& staedte = world->get_cities();
-		const PIXVAL col = color_idx_to_rgb(showing_schedule ? COL_BLACK : COL_WHITE);
+		const PIXVAL col = gfx->palette_lookup(showing_schedule ? COL_BLACK : COL_WHITE);
 
 		for(stadt_t* const stadt : staedte ) {
 			const char * name = stadt->get_name();
 
 			scr_coord p = map_to_screen_coord( stadt->get_pos() );
 			p += pos;
-			display_proportional_clip_rgb( p.x, p.y, name, ALIGN_LEFT, col, true );
+			gfx->draw_text_clipped( p.x, p.y, name, ALIGN_LEFT, col, true );
 		}
 	}
 
 	// draw city limit
 	if(  mode & MAP_CITYLIMIT  ) {
-		const PIXVAL col = color_idx_to_rgb(showing_schedule ? COL_DARK_BROWN : COL_ORANGE);
+		const PIXVAL col = gfx->palette_lookup(showing_schedule ? COL_DARK_BROWN : COL_ORANGE);
 
 		// for all cities
 		for(stadt_t* const stadt :  world->get_cities()  ) {
@@ -1713,10 +1707,10 @@ void minimap_t::draw(scr_coord pos)
 				c[i] = map_to_screen_coord(k[i]) + pos;
 			}
 
-			display_direct_line_dotted_rgb( c[0].x, c[0].y, c[1].x, c[1].y, 3, 3, col );
-			display_direct_line_dotted_rgb( c[1].x, c[1].y, c[2].x, c[2].y, 3, 3, col );
-			display_direct_line_dotted_rgb( c[2].x, c[2].y, c[3].x, c[3].y, 3, 3, col );
-			display_direct_line_dotted_rgb( c[3].x, c[3].y, c[0].x, c[0].y, 3, 3, col );
+			gfx->draw_line_dotted( c[0].x, c[0].y, c[1].x, c[1].y, 3, 3, col );
+			gfx->draw_line_dotted( c[1].x, c[1].y, c[2].x, c[2].y, 3, 3, col );
+			gfx->draw_line_dotted( c[2].x, c[2].y, c[3].x, c[3].y, 3, 3, col );
+			gfx->draw_line_dotted( c[3].x, c[3].y, c[0].x, c[0].y, 3, 3, col );
 		}
 	}
 
@@ -1733,8 +1727,8 @@ void minimap_t::draw(scr_coord pos)
 				}
 				PIXVAL color = calc_severity_color_log(gb->get_passagier_level(), max_tourist_ziele);
 				int radius = max( (number_to_radius( pax*4 )*zoom_in)/zoom_out, 1 );
-				display_filled_circle_rgb( gb_pos.x, gb_pos.y, radius, color );
-				display_circle_rgb( gb_pos.x, gb_pos.y, radius, color_idx_to_rgb(COL_BLACK) );
+				gfx->draw_filled_circle(gb_pos.x, gb_pos.y, radius, color);
+				gfx->draw_empty_circle (gb_pos.x, gb_pos.y, radius, gfx->palette_lookup(COL_BLACK) );
 			}
 			// otherwise larger attraction will be shown more often ...
 		}
@@ -1754,8 +1748,12 @@ void minimap_t::draw(scr_coord pos)
 			koord size = f->get_desc()->get_building()->get_size(f->get_rotate());
 			sint16 x_size = max( 5, size.x*zoom_in );
 			sint16 y_size = max( 5, size.y*zoom_in );
-			display_fillbox_wh_clip_rgb( fab_pos.x-1, fab_pos.y-1, x_size+2, y_size+2, color_idx_to_rgb(COL_BLACK), false );
-			display_fillbox_wh_clip_rgb( fab_pos.x, fab_pos.y, x_size, y_size, f->get_color(), false );
+			sint16 border = max(1, (zoom_in*2)/3);
+			rgb888_t frgb = gfx->get_pixval_rgb(f->get_color());
+			// make a dark or bright border depending of the colors used
+			PIXVAL box_color = gfx->palette_lookup((frgb.r | frgb.b | frgb.g) > 128 ? COL_BLACK : COL_WHITE);
+			gfx->draw_rect_clipped( fab_pos.x-border, fab_pos.y-border, x_size+2*border, y_size+2*border, box_color, false CLIP_NUM_DEFAULT);
+			gfx->draw_rect_clipped( fab_pos.x, fab_pos.y, x_size, y_size, f->get_color(), false CLIP_NUM_DEFAULT);
 		}
 	}
 
@@ -1766,19 +1764,28 @@ void minimap_t::draw(scr_coord pos)
 				depot_pos = depot_pos + pos;
 				// offset of one to avoid
 				static uint8 depot_typ_to_color[19]={ COL_ORANGE, COL_YELLOW, COL_RED, 0, 0, 0, 0, 0, 0, COL_PURPLE, COL_DARK_RED, COL_DARK_ORANGE, 0, 0, 0, 0, 0, 0, COL_LIGHT_RED };
-				display_filled_circle_rgb( depot_pos.x, depot_pos.y, 4, color_idx_to_rgb(depot_typ_to_color[d->get_typ() - obj_t::bahndepot]) );
-				display_circle_rgb( depot_pos.x, depot_pos.y, 4, color_idx_to_rgb(COL_BLACK) );
+				gfx->draw_filled_circle(depot_pos.x, depot_pos.y, 4, gfx->palette_lookup(depot_typ_to_color[d->get_typ() - obj_t::bahndepot]) );
+				gfx->draw_empty_circle (depot_pos.x, depot_pos.y, 4, gfx->palette_lookup(COL_BLACK) );
 			}
 		}
 	}
 
+	if(  display_station.is_bound()  ) {
+		scr_coord temp_stop = map_to_screen_coord( display_station->get_basis_pos() );
+		temp_stop = temp_stop + pos;
+		grund_t::display_text_label(temp_stop.x + 10, temp_stop.y + 7, display_station->get_name(), display_station->get_owners(), true);
+//		gfx->draw_textbox3d_clipped( temp_stop.x + 10, temp_stop.y + 7, gfx->palette_lookup(display_station->get_owner()->get_player_color1()+3), gfx->palette_lookup(COL_WHITE), display_station->get_name(), false CLIP_NUM_DEFAULT);
+	}
+
 	// zoom/resize "selection box" in map
 	// this must be rotated by 45 degree (sin45=cos45=0,5*sqrt(2)=0.707...)
-	const sint16 raster=get_tile_raster_width();
+	const sint16 raster = gfx->get_tile_raster_width();
+
+	const scr_size screen = gfx->get_screen_size();
 
 	// calculate and draw the rotated coordinates
 	koord ij = world->get_viewport()->get_world_position();
-	const koord diff = koord( display_get_width()/(2*raster), display_get_height()/raster );
+	const koord diff = koord( screen.w/(2*raster), screen.h/raster );
 
 	koord view[4];
 	scr_coord test[4];
@@ -1789,10 +1796,10 @@ void minimap_t::draw(scr_coord pos)
 	view[3] = ij + koord( diff.y+diff.x, diff.y-diff.x );
 
 	// try to find tile under the four corners of the screen
-	test[0] = scr_coord(display_get_width(),0);
+	test[0] = scr_coord(screen.w,0);
 	test[1] = scr_coord(0,0);
-	test[2] = scr_coord(0,display_get_height());
-	test[3] = scr_coord(display_get_width(),display_get_height());
+	test[2] = scr_coord(0,screen.h);
+	test[3] = scr_coord(screen.w, screen.h);
 
 	for(int i=0; i<4; i++) {
 		sint32 dummy1, dummy2;
@@ -1807,7 +1814,7 @@ void minimap_t::draw(scr_coord pos)
 		c[i] = map_to_screen_coord( view[i] ) + pos;
 	}
 	for(  int i=0;  i<4;  i++  ) {
-		display_direct_line_rgb( c[i].x, c[i].y, c[(i+1)%4].x, c[(i+1)%4].y, color_idx_to_rgb(showing_schedule?COL_RED:COL_YELLOW));
+		gfx->draw_line( c[i].x, c[i].y, c[(i+1)%4].x, c[(i+1)%4].y, gfx->palette_lookup(showing_schedule?COL_RED:COL_YELLOW));
 	}
 
 	if(  !showing_schedule  ) {
@@ -1820,10 +1827,10 @@ void minimap_t::draw(scr_coord pos)
 			scr_coord fabpos = map_to_screen_coord( fab->get_pos().get_2d() );
 			scr_coord boxpos = fabpos + scr_coord(10, 0);
 			const char * name = translator::translate(fab->get_name());
-			int name_width = proportional_string_width(name)+(LINESPACE/2);
+			int name_width = gfx->calc_text_width(name) + (LINESPACE/2);
 			boxpos.x = clamp( boxpos.x, 0, 0+get_size().w-name_width );
 			boxpos += pos;
-			display_ddd_proportional_clip(boxpos.x, boxpos.y, color_idx_to_rgb(10), color_idx_to_rgb(COL_WHITE), name, true);
+			gfx->draw_textbox3d_clipped(boxpos.x, boxpos.y, gfx->palette_lookup(10), gfx->palette_lookup(COL_WHITE), name, true CLIP_NUM_DEFAULT);
 		}
 
 		for (int i = win_get_open_count() - 1; i >= 0; i--) {
@@ -1844,19 +1851,17 @@ void minimap_t::draw(scr_coord pos)
 		scr_coord_val wd = max( zoom_in/zoom_out, 1) * 2 + 1; // to have it always odd
 		for(  int i = 0;  i < current_cnv->get_vehicle_count();  i++  ) {
 			const scr_coord veh_pos = map_to_screen_coord(current_cnv->get_vehicle(i)->get_pos().get_2d()) + pos;
-			display_fillbox_wh_clip_rgb(veh_pos.x-(wd/2)+offset, veh_pos.y-(wd/2)+offset, wd, wd, color_idx_to_rgb(COL_MAGENTA), true);
+			gfx->draw_rect_clipped(veh_pos.x-(wd/2)+offset, veh_pos.y-(wd/2)+offset, wd, wd, gfx->palette_lookup(COL_MAGENTA), true CLIP_NUM_DEFAULT);
 		}
 	}
 }
 
 
-void minimap_t::set_selected_city( const stadt_t* _city )
+void minimap_t::set_selected_city(const stadt_t* _city)
 {
-	if(  selected_city != _city  ) {
+	if (selected_city != _city) {
 		selected_city = _city;
-		if(  _city  ) {
-			pax_destinations_last_change = _city->get_pax_destinations_new_change();
-		}
+		pax_destinations_last_change = 0;
 		calc_map();
 	}
 }

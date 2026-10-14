@@ -49,6 +49,7 @@
 #include "../tpl/inthashtable_tpl.h"
 
 #include "../utils/cbuffer.h"
+#include "../utils/simrandom.h"	// for log2
 
 #include "../vehicle/pedestrian.h"
 
@@ -127,28 +128,6 @@ const char *grund_t::get_text() const
 		assert(result);
 	}
 	return result;
-}
-
-
-const player_t* grund_t::get_label_owner() const
-{
-	const player_t* player = NULL;
-	// if this ground belongs to a halt, the color should reflect the halt owner, not the ground owner!
-	// Now, we use the color of label_t owner
-	if(is_halt()  &&  find<label_t>()==NULL) {
-		// only halt label
-		const halthandle_t halt = get_halt();
-		player=halt->get_owner();
-	}
-	// else color according to current owner
-	else if(obj_bei(0)) {
-		player = obj_bei(0)->get_owner(); // for cityhall
-		const label_t* l = find<label_t>();
-		if(l) {
-			player = l->get_owner();
-		}
-	}
-	return player;
 }
 
 
@@ -487,7 +466,7 @@ grund_t::~grund_t()
 	set_text(NULL);
 
 	if(flags&is_halt_flag) {
-		get_halt()->rem_grund(this);
+		get_halt()->rem_grund(this,NULL);
 	}
 }
 
@@ -624,6 +603,16 @@ void grund_t::info(cbuffer_t& buf) const
 				buf.printf(translator::translate("Constructed by %s"), maker);
 				buf.append("\n\n");
 			}
+#ifdef DEBUG
+			if (get_weg_nr(0)->get_waytype() == road_wt && get_weg_nr(0)->hat_gehweg()) {
+				buf.append("Has sidewalk (cityroad)\n\n");
+			}
+#endif
+#if MSG_LEVEL >= 4
+			if (wayobj_t* wo = get_wayobj(get_weg_nr(0)->get_waytype())) {
+				buf.printf("Wayobj ribi %d\n\n", wo->get_dir());
+			}
+#endif
 			// second way
 			if(flags&has_way2) {
 				//translator::get_obj_info(buf, get_weg_nr(0)->get_name()) // might get too long ...
@@ -654,6 +643,11 @@ void grund_t::info(cbuffer_t& buf) const
 		buf.printf("\ncanal ribi: %i", ((const wasser_t*)this)->get_canal_ribi());
 	}
 	buf.printf("\ndraw_as_obj= %i",(flags&draw_as_obj)!=0);
+	if (this_halt.is_bound()) {
+		if (this_halt->get_reserved(this).is_bound()) {
+			buf.printf("\nhalt %i reserevd by convoi %i", this_halt->get_init_pos(), this_halt->get_reserved(this).get_id());
+		}
+	}
 #endif
 }
 
@@ -760,9 +754,9 @@ static inline uint8 get_back_image_from_diff(sint8 h1, sint8 h2)
 void grund_t::mark_image_dirty() const
 {
 	// see obj_t::mark_image_dirty
-	if(imageid!=IMG_EMPTY) {
-		const scr_coord scr_pos = welt->get_viewport()->get_screen_coord(koord3d(pos.get_2d(),get_disp_height()));
-		display_mark_img_dirty( imageid, scr_pos.x, scr_pos.y );
+	if (imageid != IMG_EMPTY) {
+		const scr_coord scr_pos = welt->get_viewport()->get_screen_coord(koord3d(pos.get_2d(), get_disp_height()));
+		gfx->mark_img_dirty(imageid, scr_pos.x, scr_pos.y);
 	}
 }
 
@@ -963,7 +957,7 @@ void grund_t::display_boden(const sint16 xpos, const sint16 ypos, const sint16 r
 			// fence before a drop
 			const sint16 offset = -tile_raster_scale_y( TILE_HEIGHT_STEP*corner_nw(get_grund_hang()), raster_tile_width);
 			const uint16 typ = abs_back_imageid - grund_t::BIID_ENCODE_FENCE_OFFSET - 1 + (artificial ? grund_t::FENCE_IMAGE_COUNT : 0);
-			display_normal( ground_desc_t::fences->get_image(typ), xpos, ypos + offset, 0, true, dirty CLIP_NUM_PAR );
+			gfx->draw_normal( ground_desc_t::fences->get_image(typ), xpos, ypos + offset, 0, true, dirty CLIP_NUM_PAR );
 		}
 		else {
 			// artificial slope
@@ -1005,12 +999,12 @@ void grund_t::display_boden(const sint16 xpos, const sint16 ypos, const sint16 r
 							if( sl_draw->get_image( img_index ) == IMG_EMPTY ) {
 								img_index = 4 + 4 * (hgt_diff>1) + grund_t::WALL_IMAGE_COUNT * (uint16)i;
 							}
-							display_normal( sl_draw->get_image( img_index ), xpos, ypos + yoff, 0, true, dirty CLIP_NUM_PAR );
+							gfx->draw_normal( sl_draw->get_image( img_index ), xpos, ypos + yoff, 0, true, dirty CLIP_NUM_PAR );
 							yoff     -= tile_raster_scale_y( TILE_HEIGHT_STEP * (hgt_diff > 1 ? 2 : 1), raster_tile_width );
 							hgt_diff -= 2;
 						}
 					}
-					display_normal( sl_draw->get_image( back_image[i] + wall_image_offset[i] ), xpos, ypos + yoff, 0, true, dirty CLIP_NUM_PAR );
+					gfx->draw_normal( sl_draw->get_image( back_image[i] + wall_image_offset[i] ), xpos, ypos + yoff, 0, true, dirty CLIP_NUM_PAR );
 				}
 			}
 		}
@@ -1021,17 +1015,17 @@ void grund_t::display_boden(const sint16 xpos, const sint16 ypos, const sint16 r
 	if(image==IMG_EMPTY) {
 		// only check for forced redraw (of marked ... )
 		if(dirty) {
-			mark_rect_dirty_clip( xpos, ypos + raster_tile_width / 2, xpos + raster_tile_width - 1, ypos + raster_tile_width - 1 CLIP_NUM_PAR );
+			gfx->mark_rect_dirty_clip( xpos, ypos + raster_tile_width / 2, xpos + raster_tile_width - 1, ypos + raster_tile_width - 1 CLIP_NUM_PAR );
 		}
 	}
 	else {
 		if(get_typ()!=wasser) {
 			// show image if tile is visible
 			if (visible)  {
-				display_normal( get_image(), xpos, ypos, 0, true, dirty CLIP_NUM_PAR );
+				gfx->draw_normal( get_image(), xpos, ypos, 0, true, dirty CLIP_NUM_PAR );
 #ifdef SHOW_FORE_GRUND
 				if (get_flag(grund_t::draw_as_obj)) {
-					display_blend( get_image(), xpos, ypos, 0, color_idx_to_rgb(COL_RED) | OUTLINE_FLAG |TRANSPARENT50_FLAG, true, dirty CLIP_NUM_PAR );
+					gfx->draw_blend( get_image(), xpos, ypos, 0, gfx->palette_lookup(COL_RED) | OUTLINE_FLAG |TRANSPARENT50_FLAG, true, dirty CLIP_NUM_PAR );
 				}
 #endif
 				//display climate transitions - only needed if below snowline (snow_transition>0)
@@ -1106,7 +1100,7 @@ void grund_t::display_boden(const sint16 xpos, const sint16 ypos, const sint16 r
 									}
 								}
 								// overlay transition climates
-								display_alpha( ground_desc_t::get_climate_tile( transition_climate, slope ), ground_desc_t::get_alpha_tile( slope, overlay_corners ), ALPHA_GREEN | ALPHA_BLUE, xpos, ypos, 0, 0, true, dirty CLIP_NUM_PAR );
+								gfx->draw_alpha( ground_desc_t::get_climate_tile( transition_climate, slope ), ground_desc_t::get_alpha_tile( slope, overlay_corners ), ALPHA_GREEN | ALPHA_BLUE, xpos, ypos, 0, 0, true, dirty CLIP_NUM_PAR );
 							}
 						}
 						slope_corner /= slope_t::southeast;
@@ -1114,19 +1108,19 @@ void grund_t::display_boden(const sint16 xpos, const sint16 ypos, const sint16 r
 					// finally overlay any water transition
 					if(  water_corners  ) {
 						if(  slope  ) {
-							display_alpha( ground_desc_t::get_water_tile(slope, wasser_t::stage), ground_desc_t::get_beach_tile( slope, water_corners ), ALPHA_RED, xpos, ypos, 0, 0, true, dirty|wasser_t::change_stage CLIP_NUM_PAR );
+							gfx->draw_alpha( ground_desc_t::get_water_tile(slope, wasser_t::stage), ground_desc_t::get_beach_tile( slope, water_corners ), ALPHA_RED, xpos, ypos, 0, 0, true, dirty|wasser_t::change_stage CLIP_NUM_PAR );
 							if(  ground_desc_t::shore  ) {
 								// additional shore image
 								image_id shore = ground_desc_t::shore->get_image(slope,snow_transition<=0);
 								if(  shore==IMG_EMPTY  &&  snow_transition<=0  ) {
 									shore = ground_desc_t::shore->get_image(slope,0);
 								}
-								display_normal( shore, xpos, ypos, 0, true, dirty CLIP_NUM_PAR );
+								gfx->draw_normal( shore, xpos, ypos, 0, true, dirty CLIP_NUM_PAR );
 							}
 						}
 						else {
 							// animate
-							display_alpha( ground_desc_t::sea->get_image(0,wasser_t::stage), ground_desc_t::get_beach_tile( slope, water_corners ), ALPHA_RED, xpos, ypos, 0, 0, true, dirty|wasser_t::change_stage CLIP_NUM_PAR );
+							gfx->draw_alpha( ground_desc_t::sea->get_image(0,wasser_t::stage), ground_desc_t::get_beach_tile( slope, water_corners ), ALPHA_RED, xpos, ypos, 0, 0, true, dirty|wasser_t::change_stage CLIP_NUM_PAR );
 						}
 					}
 				}
@@ -1136,12 +1130,12 @@ void grund_t::display_boden(const sint16 xpos, const sint16 ypos, const sint16 r
 					// the gehweg flag is used for rail switches, but a slope has no switches ...
 					switch(  snow_transition  ) {
 						case 1: {
-							display_alpha( ground_desc_t::get_snow_tile(slope), ground_desc_t::get_alpha_tile(slope), ALPHA_GREEN | ALPHA_BLUE, xpos, ypos, 0, 0, true, dirty CLIP_NUM_PAR );
+							gfx->draw_alpha( ground_desc_t::get_snow_tile(slope), ground_desc_t::get_alpha_tile(slope), ALPHA_GREEN | ALPHA_BLUE, xpos, ypos, 0, 0, true, dirty CLIP_NUM_PAR );
 							break;
 						}
 						case 2: {
 							if(  slope_t::max_diff(slope) > 1  ) {
-								display_alpha( ground_desc_t::get_snow_tile(slope), ground_desc_t::get_alpha_tile(slope), ALPHA_BLUE, xpos, ypos, 0, 0, true, dirty CLIP_NUM_PAR );
+								gfx->draw_alpha( ground_desc_t::get_snow_tile(slope), ground_desc_t::get_alpha_tile(slope), ALPHA_BLUE, xpos, ypos, 0, 0, true, dirty CLIP_NUM_PAR );
 							}
 							break;
 						}
@@ -1156,17 +1150,17 @@ void grund_t::display_boden(const sint16 xpos, const sint16 ypos, const sint16 r
 				if(  show_grid  ){
 #endif
 					const uint8 hang = get_grund_hang();
-					display_normal( ground_desc_t::get_border_image(hang), xpos, ypos, 0, true, dirty CLIP_NUM_PAR );
+					gfx->draw_normal( ground_desc_t::get_border_image(hang), xpos, ypos, 0, true, dirty CLIP_NUM_PAR );
 				}
 			}
 		}
 		else {
 			// take animation into account
 			if(  underground_mode != ugm_all  ) {
-				display_normal( ground_desc_t::sea->get_image(get_image(),wasser_t::stage), xpos, ypos, 0, true, dirty|wasser_t::change_stage CLIP_NUM_PAR );
+				gfx->draw_normal( ground_desc_t::sea->get_image(get_image(),wasser_t::stage), xpos, ypos, 0, true, dirty|wasser_t::change_stage CLIP_NUM_PAR );
 			}
 			else {
-				display_blend( ground_desc_t::sea->get_image(get_image(),wasser_t::stage), xpos, ypos, 0, TRANSPARENT50_FLAG, true, dirty|wasser_t::change_stage CLIP_NUM_PAR );
+				gfx->draw_blend( ground_desc_t::sea->get_image(get_image(),wasser_t::stage), xpos, ypos, 0, TRANSPARENT50_FLAG, true, dirty|wasser_t::change_stage CLIP_NUM_PAR );
 			}
 			return;
 		}
@@ -1181,23 +1175,23 @@ void grund_t::display_boden(const sint16 xpos, const sint16 ypos, const sint16 r
 			// .. nonconvex n/w if not both n/w are active
 			if(  clip  ) {
 				const ribi_t::ribi way_ribi = (static_cast<const weg_t*>(d))->get_ribi_unmasked();
-				clear_all_poly_clip( CLIP_NUM_VAR );
+				gfx->clear_all_poly_clip( CLIP_NUM_VAR );
 				const uint8 non_convex = (way_ribi & ribi_t::northwest) == ribi_t::northwest ? 0 : 16;
 				if(  way_ribi & ribi_t::west  ) {
 					const int dh = corner_nw(get_disp_way_slope()) * hgt_step;
-					add_poly_clip( xpos + raster_tile_width / 2 - 1, ypos + raster_tile_width / 2 - dh, xpos - 1, ypos + 3 * raster_tile_width / 4 - dh, ribi_t::west | non_convex CLIP_NUM_PAR );
+					gfx->add_poly_clip( xpos + raster_tile_width / 2 - 1, ypos + raster_tile_width / 2 - dh, xpos - 1, ypos + 3 * raster_tile_width / 4 - dh, ribi_t::west | non_convex CLIP_NUM_PAR );
 				}
 				if(  way_ribi & ribi_t::north  ) {
 					const int dh = corner_nw(get_disp_way_slope()) * hgt_step;
-					add_poly_clip( xpos + raster_tile_width, ypos + 3 * raster_tile_width / 4 - dh, xpos + raster_tile_width / 2, ypos + raster_tile_width / 2 - dh, ribi_t::north | non_convex CLIP_NUM_PAR );
+					gfx->add_poly_clip( xpos + raster_tile_width, ypos + 3 * raster_tile_width / 4 - dh, xpos + raster_tile_width / 2, ypos + raster_tile_width / 2 - dh, ribi_t::north | non_convex CLIP_NUM_PAR );
 				}
-				activate_ribi_clip( (way_ribi & ribi_t::northwest) | non_convex  CLIP_NUM_PAR );
+				gfx->activate_ribi_clip( (way_ribi & ribi_t::northwest) | non_convex  CLIP_NUM_PAR );
 			}
 			d->display( xpos, ypos CLIP_NUM_PAR );
 		}
 		// end of clipping
 		if(  clip  ) {
-			clear_all_poly_clip( CLIP_NUM_VAR );
+			gfx->clear_all_poly_clip( CLIP_NUM_VAR );
 		}
 	}
 }
@@ -1216,47 +1210,47 @@ void grund_t::display_border( sint16 xpos, sint16 ypos, const sint16 raster_tile
 	if(  pos.y-welt->get_size().y+1 == 0  ) {
 		// move slopes to front of tile
 		sint16 x = xpos - raster_tile_width/2;
-		sint16 y = ypos + raster_tile_width/4 + (pos.z-welt->get_groundwater())*hgt_step;
+		sint16 y = ypos + raster_tile_width/4 + (pos.z - welt->min_height) * hgt_step;
 		// left side border
 		sint16 diff = corner_sw(slope)-corner_se(slope);
 		image_id slope_img = ground_desc_t::slopes->get_image( lookup_hgt[ 2+diff ]+11 );
 		diff = -min(corner_sw(slope),corner_se(slope));
-		sint16 zz = pos.z-welt->get_groundwater();
+		sint16 zz = pos.z - welt->min_height;
 		if(  diff < zz && ((zz-diff)&1)==1  ) {
-			display_normal( ground_desc_t::slopes->get_image(15), x, y, 0, true, false CLIP_NUM_PAR );
+			gfx->draw_normal( ground_desc_t::slopes->get_image(15), x, y, 0, true, false CLIP_NUM_PAR );
 			y -= hgt_step;
 			diff++;
 		}
 		// ok, now we have the height; since the slopes may end with a fence they are drawn in reverse order
 		while(  diff < zz  ) {
-			display_normal( ground_desc_t::slopes->get_image(19), x, y, 0, true, false CLIP_NUM_PAR );
+			gfx->draw_normal( ground_desc_t::slopes->get_image(19), x, y, 0, true, false CLIP_NUM_PAR );
 			y -= hgt_step*2;
 			diff+=2;
 		}
-		display_normal( slope_img, x, y, 0, true, false CLIP_NUM_PAR );
+		gfx->draw_normal( slope_img, x, y, 0, true, false CLIP_NUM_PAR );
 	}
 
 	if(  pos.x-welt->get_size().x+1 == 0  ) {
 		// move slopes to front of tile
 		sint16 x = xpos + raster_tile_width/2;
-		sint16 y = ypos + raster_tile_width/4 + (pos.z-welt->get_groundwater())*hgt_step;
+		sint16 y = ypos + raster_tile_width/4 + (pos.z - welt->min_height) * hgt_step;
 		// right side border
 		sint16 diff = corner_se(slope)-corner_ne(slope);
 		image_id slope_img = ground_desc_t::slopes->get_image( lookup_hgt[ 2+diff ] );
 		diff = -min(corner_se(slope),corner_ne(slope));
-		sint16 zz = pos.z-welt->get_groundwater();
+		sint16 zz = pos.z - welt->min_height;
 		if(  diff < zz && ((zz-diff)&1)==1  ) {
-			display_normal( ground_desc_t::slopes->get_image(4), x, y, 0, true, false CLIP_NUM_PAR );
+			gfx->draw_normal( ground_desc_t::slopes->get_image(4), x, y, 0, true, false CLIP_NUM_PAR );
 			y -= hgt_step;
 			diff++;
 		}
 		// ok, now we have the height; since the slopes may end with a fence they are drawn in reverse order
 		while(  diff < zz  ) {
-			display_normal( ground_desc_t::slopes->get_image(8), x, y, 0, true, false CLIP_NUM_PAR );
+			gfx->draw_normal( ground_desc_t::slopes->get_image(8), x, y, 0, true, false CLIP_NUM_PAR );
 			y -= hgt_step*2;
 			diff+=2;
 		}
-		display_normal( slope_img, x, y, 0, true, false CLIP_NUM_PAR );
+		gfx->draw_normal( slope_img, x, y, 0, true, false CLIP_NUM_PAR );
 	}
 }
 
@@ -1270,7 +1264,7 @@ void grund_t::display_if_visible(sint16 xpos, sint16 ypos, const sint16 raster_t
 	if(  !is_karten_boden_visible()  ) {
 		// only check for forced redraw (of marked ... )
 		if(  get_flag(grund_t::dirty)  ) {
-			mark_rect_dirty_clip( xpos, ypos + raster_tile_width / 2, xpos + raster_tile_width - 1, ypos + raster_tile_width - 1 CLIP_NUM_PAR );
+			gfx->mark_rect_dirty_clip( xpos, ypos + raster_tile_width / 2, xpos + raster_tile_width - 1, ypos + raster_tile_width - 1 CLIP_NUM_PAR );
 		}
 		return;
 	}
@@ -1338,31 +1332,31 @@ void grund_t::display_obj_all_quick_and_dirty(const sint16 xpos, sint16 ypos, co
 	if(  visible  ) {
 		if(  is_global  &&  get_flag( grund_t::marked )  ) {
 			const uint8 hang = get_grund_hang();
-			display_img_aux( ground_desc_t::get_marker_image( hang, true ), xpos, ypos, 0, true, dirty CLIP_NUM_PAR );
+			gfx->draw_img_aux( ground_desc_t::get_marker_image( hang, true ), xpos, ypos, 0, true, dirty CLIP_NUM_PAR );
 #ifdef MULTI_THREAD
 			objlist.display_obj_quick_and_dirty( xpos, ypos, start_offset CLIP_NUM_PAR );
 #else
 			objlist.display_obj_quick_and_dirty( xpos, ypos, start_offset, is_global );
 #endif
-			display_img_aux( ground_desc_t::get_marker_image( hang, false ), xpos, ypos, 0, true, dirty CLIP_NUM_PAR );
+			gfx->draw_img_aux( ground_desc_t::get_marker_image( hang, false ), xpos, ypos, 0, true, dirty CLIP_NUM_PAR );
 			if(  !ist_karten_boden()  ) {
 				const grund_t *gr = welt->lookup_kartenboden(pos.get_2d());
 				if(  pos.z > gr->get_hoehe()  ) {
 					//display front part of marker for grunds in between
 					for(  sint8 z = pos.z - 1;  z > gr->get_hoehe();  z--  ) {
-						display_img_aux( ground_desc_t::get_marker_image(0, false), xpos, ypos - tile_raster_scale_y( (z - pos.z) * TILE_HEIGHT_STEP, raster_tile_width ), 0, true, true CLIP_NUM_PAR );
+						gfx->draw_img_aux( ground_desc_t::get_marker_image(0, false), xpos, ypos - tile_raster_scale_y( (z - pos.z) * TILE_HEIGHT_STEP, raster_tile_width ), 0, true, true CLIP_NUM_PAR );
 					}
 					//display front part of marker for ground
-					display_img_aux( ground_desc_t::get_marker_image( gr->get_grund_hang(), false ), xpos, ypos - tile_raster_scale_y( (gr->get_hoehe() - pos.z) * TILE_HEIGHT_STEP, raster_tile_width ), 0, true, true CLIP_NUM_PAR );
+					gfx->draw_img_aux( ground_desc_t::get_marker_image( gr->get_grund_hang(), false ), xpos, ypos - tile_raster_scale_y( (gr->get_hoehe() - pos.z) * TILE_HEIGHT_STEP, raster_tile_width ), 0, true, true CLIP_NUM_PAR );
 				}
 				else if(  pos.z < gr->get_disp_height()  ) {
 					//display back part of marker for grunds in between
 					for(  sint8 z = pos.z + 1;  z < gr->get_disp_height();  z++  ) {
-						display_img_aux( ground_desc_t::get_border_image(0), xpos, ypos - tile_raster_scale_y( (z - pos.z) * TILE_HEIGHT_STEP, raster_tile_width ), 0, true, true CLIP_NUM_PAR );
+						gfx->draw_img_aux( ground_desc_t::get_border_image(0), xpos, ypos - tile_raster_scale_y( (z - pos.z) * TILE_HEIGHT_STEP, raster_tile_width ), 0, true, true CLIP_NUM_PAR );
 					}
 					//display back part of marker for ground
 					const uint8 kbhang = gr->get_grund_hang() | gr->get_weg_hang();
-					display_img_aux( ground_desc_t::get_border_image(kbhang), xpos, ypos - tile_raster_scale_y( (gr->get_hoehe() - pos.z) * TILE_HEIGHT_STEP, raster_tile_width ), 0, true, true CLIP_NUM_PAR );
+					gfx->draw_img_aux( ground_desc_t::get_border_image(kbhang), xpos, ypos - tile_raster_scale_y( (gr->get_hoehe() - pos.z) * TILE_HEIGHT_STEP, raster_tile_width ), 0, true, true CLIP_NUM_PAR );
 				}
 			}
 		}
@@ -1377,11 +1371,12 @@ void grund_t::display_obj_all_quick_and_dirty(const sint16 xpos, sint16 ypos, co
 	else { // must be karten_boden
 		// in undergroundmode: draw ground grid
 		const uint8 hang = underground_mode==ugm_all ? get_grund_hang() : (uint8)slope_t::flat;
-		display_img_aux( ground_desc_t::get_border_image(hang), xpos, ypos, 0, true, dirty CLIP_NUM_PAR );
+		gfx->draw_img_aux( ground_desc_t::get_border_image(hang), xpos, ypos, 0, true, dirty CLIP_NUM_PAR );
+
 		// show marker for marked but invisible tiles
 		if(  is_global  &&  get_flag(grund_t::marked)  ) {
-			display_img_aux( ground_desc_t::get_marker_image( hang, true ), xpos, ypos, 0, true, dirty CLIP_NUM_PAR );
-			display_img_aux( ground_desc_t::get_marker_image( hang, false ), xpos, ypos, 0, true, dirty CLIP_NUM_PAR );
+			gfx->draw_img_aux( ground_desc_t::get_marker_image( hang, true ), xpos, ypos, 0, true, dirty CLIP_NUM_PAR );
+			gfx->draw_img_aux( ground_desc_t::get_marker_image( hang, false ), xpos, ypos, 0, true, dirty CLIP_NUM_PAR );
 		}
 	}
 }
@@ -1415,7 +1410,7 @@ void grund_t::display_obj_all(const sint16 xpos, const sint16 ypos, const sint16
 	}
 
 	// end of clipping
-	clear_all_poly_clip( CLIP_NUM_VAR );
+	gfx->clear_all_poly_clip( CLIP_NUM_VAR );
 
 	// here: we are either ground(kartenboden) or visible
 	const bool visible = !ist_karten_boden()  ||  is_karten_boden_visible();
@@ -1461,34 +1456,34 @@ void grund_t::display_obj_all(const sint16 xpos, const sint16 ypos, const sint16
 	const uint8 non_convex = ((ribi & ribi_t::northwest) == ribi_t::northwest)  &&  back_imageid ? 0 : 16;
 	if(  ribi & ribi_t::west  ) {
 		const int dh = corner_nw(slope) * hgt_step;
-		add_poly_clip( xpos + raster_tile_width / 2 - 1, ypos + raster_tile_width / 2 - dh, xpos - 1, ypos + 3 * raster_tile_width / 4 - dh, ribi_t::west | non_convex CLIP_NUM_PAR );
+		gfx->add_poly_clip( xpos + raster_tile_width / 2 - 1, ypos + raster_tile_width / 2 - dh, xpos - 1, ypos + 3 * raster_tile_width / 4 - dh, ribi_t::west | non_convex CLIP_NUM_PAR );
 	}
 	if(  ribi & ribi_t::north  ) {
 		const int dh = corner_nw(slope) * hgt_step;
-		add_poly_clip( xpos + raster_tile_width, ypos + 3 * raster_tile_width / 4 - dh, xpos + raster_tile_width / 2, ypos + raster_tile_width / 2 - dh, ribi_t::north | non_convex CLIP_NUM_PAR );
+		gfx->add_poly_clip( xpos + raster_tile_width, ypos + 3 * raster_tile_width / 4 - dh, xpos + raster_tile_width / 2, ypos + raster_tile_width / 2 - dh, ribi_t::north | non_convex CLIP_NUM_PAR );
 	}
 	if(  ribi & ribi_t::east  ) {
 		const int dh = corner_se(slope) * hgt_step;
-		add_poly_clip( xpos + raster_tile_width / 2, ypos + raster_tile_width - dh, xpos + raster_tile_width, ypos + 3 * raster_tile_width / 4 - dh, ribi_t::east|16 CLIP_NUM_PAR );
+		gfx->add_poly_clip( xpos + raster_tile_width / 2, ypos + raster_tile_width - dh, xpos + raster_tile_width, ypos + 3 * raster_tile_width / 4 - dh, ribi_t::east|16 CLIP_NUM_PAR );
 	}
 	if(  ribi & ribi_t::south  ) {
 		const int dh = corner_se(slope) * hgt_step;
-		add_poly_clip( xpos- 1, ypos + 3 * raster_tile_width / 4  - dh, xpos + raster_tile_width / 2 - 1, ypos + raster_tile_width  - dh, ribi_t::south|16  CLIP_NUM_PAR );
+		gfx->add_poly_clip( xpos- 1, ypos + 3 * raster_tile_width / 4  - dh, xpos + raster_tile_width / 2 - 1, ypos + raster_tile_width  - dh, ribi_t::south|16  CLIP_NUM_PAR );
 	}
 
 	// display background
 	if (!tunnel_portal  ||  slope == slope_t::flat) {
-		activate_ribi_clip( (ribi_t::northwest & ribi) | 16 CLIP_NUM_PAR );
+		gfx->activate_ribi_clip( (ribi_t::northwest & ribi) | 16 CLIP_NUM_PAR );
 	}
 	else {
 		// also clip along the upper edge of the tunnel tile
-		activate_ribi_clip( ribi | 16 CLIP_NUM_PAR );
+		gfx->activate_ribi_clip( ribi | 16 CLIP_NUM_PAR );
 	}
 	// get offset of first vehicle
 	const uint8 offset_vh = display_obj_bg( xpos, ypos, is_global, false, visible CLIP_NUM_PAR );
 	if(  !visible  ) {
 		// end of clipping
-		clear_all_poly_clip( CLIP_NUM_VAR );
+		gfx->clear_all_poly_clip( CLIP_NUM_VAR );
 		return;
 	}
 	// display vehicles of w/nw/n neighbors
@@ -1529,7 +1524,7 @@ void grund_t::display_obj_all(const sint16 xpos, const sint16 ypos, const sint16
 		grund_t *gr;
 		if(  get_neighbour( gr, invalid_wt, ribi_t::east )  ) {
 			const bool draw_other_ways = (flags&draw_as_obj)  ||  (gr->flags&draw_as_obj)  ||  !gr->ist_karten_boden();
-			activate_ribi_clip( ribi_t::east|16 CLIP_NUM_PAR );
+			gfx->activate_ribi_clip( ribi_t::east|16 CLIP_NUM_PAR );
 			gr->display_obj_bg( xpos + raster_tile_width / 2, ypos + raster_tile_width / 4 - tile_raster_scale_y( (gr->get_hoehe() - pos.z) * TILE_HEIGHT_STEP, raster_tile_width ), is_global, draw_other_ways, true CLIP_NUM_PAR );
 		}
 	}
@@ -1537,7 +1532,7 @@ void grund_t::display_obj_all(const sint16 xpos, const sint16 ypos, const sint16
 		grund_t *gr;
 		if(  get_neighbour( gr, invalid_wt, ribi_t::south )  ) {
 			const bool draw_other_ways = (flags&draw_as_obj)  ||  (gr->flags&draw_as_obj)  ||  !gr->ist_karten_boden();
-			activate_ribi_clip( ribi_t::south|16 CLIP_NUM_PAR );
+			gfx->activate_ribi_clip( ribi_t::south|16 CLIP_NUM_PAR );
 			gr->display_obj_bg( xpos - raster_tile_width / 2, ypos + raster_tile_width / 4 - tile_raster_scale_y( (gr->get_hoehe() - pos.z) * TILE_HEIGHT_STEP, raster_tile_width ), is_global, draw_other_ways, true CLIP_NUM_PAR );
 		}
 	}
@@ -1582,16 +1577,16 @@ void grund_t::display_obj_all(const sint16 xpos, const sint16 ypos, const sint16
 	// foreground
 	if (tunnel_portal  &&  slope != 0) {
 		// clip at the upper edge
-		activate_ribi_clip( (ribi & (corner_se(slope)>0 ?  ribi_t::southeast : ribi_t::northwest) )| 16 CLIP_NUM_PAR );
+		gfx->activate_ribi_clip( (ribi & (corner_se(slope)>0 ?  ribi_t::southeast : ribi_t::northwest) )| 16 CLIP_NUM_PAR );
 	}
 	else {
-		clear_all_poly_clip( CLIP_NUM_VAR );
+		gfx->clear_all_poly_clip( CLIP_NUM_VAR );
 	}
 	display_obj_fg( xpos, ypos, is_global, offset_fg CLIP_NUM_PAR );
 
 	// end of clipping
 	if (tunnel_portal) {
-		clear_all_poly_clip( CLIP_NUM_VAR );
+		gfx->clear_all_poly_clip( CLIP_NUM_VAR );
 	}
 }
 
@@ -1603,17 +1598,18 @@ uint8 grund_t::display_obj_bg(const sint16 xpos, const sint16 ypos, const bool i
 	if(  visible  ) {
 		// display back part of markers
 		if(  is_global  &&  get_flag( grund_t::marked )  ) {
-			display_normal( ground_desc_t::get_marker_image( get_grund_hang(), true ), xpos, ypos, 0, true, dirty CLIP_NUM_PAR );
+			gfx->draw_normal( ground_desc_t::get_marker_image( get_grund_hang(), true ), xpos, ypos, 0, true, dirty CLIP_NUM_PAR );
 			if(  !ist_karten_boden()  ) {
 				const grund_t *gr = welt->lookup_kartenboden(pos.get_2d());
-				const sint16 raster_tile_width = get_current_tile_raster_width();
+				const sint16 raster_tile_width = gfx->get_current_tile_raster_width();
+
 				if(  pos.z < gr->get_disp_height()  ) {
 					//display back part of marker for grunds in between
 					for(  sint8 z = pos.z + 1;  z < gr->get_disp_height();  z++  ) {
-						display_normal( ground_desc_t::get_marker_image(0, true), xpos, ypos - tile_raster_scale_y( (z - pos.z) * TILE_HEIGHT_STEP, raster_tile_width ), 0, true, true CLIP_NUM_PAR );
+						gfx->draw_normal( ground_desc_t::get_marker_image(0, true), xpos, ypos - tile_raster_scale_y( (z - pos.z) * TILE_HEIGHT_STEP, raster_tile_width ), 0, true, true CLIP_NUM_PAR );
 					}
 					//display back part of marker for ground
-					display_normal( ground_desc_t::get_marker_image( gr->get_grund_hang() | gr->get_weg_hang(), true ), xpos, ypos - tile_raster_scale_y( (gr->get_hoehe() - pos.z) * TILE_HEIGHT_STEP, raster_tile_width ), 0, true, true CLIP_NUM_PAR );
+					gfx->draw_normal( ground_desc_t::get_marker_image( gr->get_grund_hang() | gr->get_weg_hang(), true ), xpos, ypos - tile_raster_scale_y( (gr->get_hoehe() - pos.z) * TILE_HEIGHT_STEP, raster_tile_width ), 0, true, true CLIP_NUM_PAR );
 				}
 			}
 		}
@@ -1624,11 +1620,11 @@ uint8 grund_t::display_obj_bg(const sint16 xpos, const sint16 ypos, const bool i
 	else { // must be karten_boden
 		// in undergroundmode: draw ground grid
 		const uint8 hang = underground_mode == ugm_all ? get_grund_hang() : (slope_t::type)slope_t::flat;
-		display_normal( ground_desc_t::get_border_image(hang), xpos, ypos, 0, true, dirty CLIP_NUM_PAR );
+		gfx->draw_normal( ground_desc_t::get_border_image(hang), xpos, ypos, 0, true, dirty CLIP_NUM_PAR );
 		// show marker for marked but invisible tiles
 		if(  is_global  &&  get_flag( grund_t::marked )  ) {
-			display_img_aux( ground_desc_t::get_marker_image( hang, true ), xpos, ypos, 0, true, dirty CLIP_NUM_PAR );
-			display_img_aux( ground_desc_t::get_marker_image( hang, false ), xpos, ypos, 0, true, dirty CLIP_NUM_PAR );
+			gfx->draw_img_aux( ground_desc_t::get_marker_image( hang, true  ), xpos, ypos, 0, true, dirty CLIP_NUM_PAR );
+			gfx->draw_img_aux( ground_desc_t::get_marker_image( hang, false ), xpos, ypos, 0, true, dirty CLIP_NUM_PAR );
 		}
 		return 255;
 	}
@@ -1651,17 +1647,17 @@ void grund_t::display_obj_fg(const sint16 xpos, const sint16 ypos, const bool is
 #endif
 	// display front part of markers
 	if(  is_global  &&  get_flag( grund_t::marked )  ) {
-		display_normal( ground_desc_t::get_marker_image( get_grund_hang(), false ), xpos, ypos, 0, true, dirty CLIP_NUM_PAR );
+		gfx->draw_normal( ground_desc_t::get_marker_image( get_grund_hang(), false ), xpos, ypos, 0, true, dirty CLIP_NUM_PAR );
 		if(  !ist_karten_boden()  ) {
 			const grund_t *gr = welt->lookup_kartenboden(pos.get_2d());
-			const sint16 raster_tile_width = get_tile_raster_width();
+			const sint16 raster_tile_width = gfx->get_tile_raster_width();
 			if(  pos.z > gr->get_hoehe()  ) {
 				//display front part of marker for grunds in between
 				for(  sint8 z = pos.z - 1;  z > gr->get_hoehe();  z--  ) {
-					display_normal( ground_desc_t::get_marker_image( 0, false ), xpos, ypos - tile_raster_scale_y( (z - pos.z) * TILE_HEIGHT_STEP, raster_tile_width ), 0, true, true CLIP_NUM_PAR );
+					gfx->draw_normal( ground_desc_t::get_marker_image( 0, false ), xpos, ypos - tile_raster_scale_y( (z - pos.z) * TILE_HEIGHT_STEP, raster_tile_width ), 0, true, true CLIP_NUM_PAR );
 				}
 				//display front part of marker for ground
-				display_normal( ground_desc_t::get_marker_image( gr->get_grund_hang(), false ), xpos, ypos - tile_raster_scale_y( (gr->get_hoehe() - pos.z) * TILE_HEIGHT_STEP, raster_tile_width ), 0, true, true CLIP_NUM_PAR );
+				gfx->draw_normal( ground_desc_t::get_marker_image( gr->get_grund_hang(), false ), xpos, ypos - tile_raster_scale_y( (gr->get_hoehe() - pos.z) * TILE_HEIGHT_STEP, raster_tile_width ), 0, true, true CLIP_NUM_PAR );
 			}
 		}
 	}
@@ -1669,27 +1665,78 @@ void grund_t::display_obj_fg(const sint16 xpos, const sint16 ypos, const bool is
 
 
 // display text label in player colors using different styles set by env_t::show_names
-void display_text_label(sint16 xpos, sint16 ypos, const char* text, const player_t *player, bool dirty)
+void grund_t::display_text_label(sint16 xpos, sint16 ypos, const char* text, const uint16 players_bit, bool dirty)
 {
-	switch( env_t::show_names >> 2 ) {
-		case 0: {
-			const PIXVAL bg_color = player ? color_idx_to_rgb(player->get_player_color1()+4) : SYSCOL_TEXT_HIGHLIGHT;
-			display_ddd_proportional_clip( xpos, ypos, bg_color, color_idx_to_rgb(COL_BLACK), text, dirty );
-			break;
+	uint8 players[16];
+	uint16 num_players = 0;
+	players[0] = COL_ORANGE;
+	for (uint16 i = 0; i < MAX_PLAYER_COUNT; i++) {
+		if ((1 << i) & players_bit  &&  welt->get_player(i)) {
+			players[num_players++] = welt->get_player(i)->get_player_color1();
 		}
-		case 1: {
-			const PIXVAL text_color = player ? color_idx_to_rgb(player->get_player_color1()+7) : SYSCOL_TEXT_HIGHLIGHT;
-			display_outline_proportional_rgb( xpos, ypos, text_color, color_idx_to_rgb(COL_BLACK), text, dirty );
-			break;
+	}
+
+	if (num_players <= 1) {
+		switch (env_t::show_names >> 2) {
+			case 0:
+				gfx->draw_textbox3d_clipped(xpos, ypos, gfx->palette_lookup(players[0] + 4), gfx->palette_lookup(COL_BLACK), text, dirty CLIP_NUM_DEFAULT);
+				break;
+			case 1:
+				gfx->draw_text_outlined(xpos, ypos, gfx->palette_lookup(players[0] + 7), gfx->palette_lookup(COL_BLACK), text, dirty);
+				break;
+			case 2: 
+				gfx->draw_text_outlined(xpos + LINESPACE + D_H_SPACE, ypos, gfx->palette_lookup(COL_YELLOW), gfx->palette_lookup(COL_BLACK), text, dirty);
+				gfx->draw_rect(xpos, ypos, LINESPACE, LINESPACE, gfx->palette_lookup(COL_BLACK), dirty );
+				gfx->draw_rect(xpos + 1, ypos + 1, LINESPACE - 2, LINESPACE - 2, gfx->palette_lookup(players[0] + 4), false );
+				break;
 		}
-		case 2: {
-			const PIXVAL dark   = player ? color_idx_to_rgb(player->get_player_color1()+2) : SYSCOL_TEXT_HIGHLIGHT;
-			const PIXVAL normal = player ? color_idx_to_rgb(player->get_player_color1()+4) : SYSCOL_TEXT_HIGHLIGHT;
-			const PIXVAL bright = player ? color_idx_to_rgb(player->get_player_color1()+6) : SYSCOL_TEXT_HIGHLIGHT;
-			display_outline_proportional_rgb( xpos + LINESPACE + D_H_SPACE, ypos,   color_idx_to_rgb(COL_YELLOW), color_idx_to_rgb(COL_BLACK), text, dirty );
-			display_ddd_box_clip_rgb(         xpos,                         ypos,   LINESPACE,   LINESPACE,   dark, PLAYER_FLAG|bright );
-			display_fillbox_wh_rgb(           xpos+1,                       ypos+1, LINESPACE-2, LINESPACE-2, normal, dirty );
-			break;
+	}
+	else {
+		if (env_t::show_names >> 2 == 2) {
+			PIXVAL colors[MAX_PLAYER_COUNT];
+			for (int i = 0; i < num_players; i++) {
+				colors[i] = gfx->palette_lookup(players[i] + 4);
+			}
+			gfx->draw_text_outlined(xpos + LINESPACE + D_H_SPACE, ypos, gfx->palette_lookup(COL_YELLOW), gfx->palette_lookup(COL_BLACK), text, dirty);
+			gfx->draw_rect(xpos, ypos, LINESPACE, LINESPACE, gfx->palette_lookup(COL_BLACK), dirty );
+			gfx->draw_rect_colors_clipped(xpos + 1, ypos + 1, LINESPACE - 2, (LINESPACE - 2), colors, num_players, env_t::horizontal_stripe_owner, dirty CLIP_NUM_DEFAULT);
+		}
+		else {
+			for (int i = 0; i < num_players; i++) {
+				const int hpadding = (env_t::show_names >> 2) == 1 ? 1 : LINESPACE / 4;
+				const int vpadding = (env_t::show_names >> 2) == 1 ? 1 : LINESPACE / 7;
+				const int w = hpadding * 2 + gfx->calc_text_width_n(text, 0x7FFFu);
+				const int h = vpadding * 2 + LINESPACE;
+				for (int i = 0; i < num_players; i++) {
+					int cx, cy, cw, ch;
+					if (env_t::horizontal_stripe_owner) {
+						cx = xpos + (i * w) / num_players;
+						cy = ypos - vpadding;
+						cw = w / num_players + 1;
+						ch = h;
+					}
+					else {
+						cx = xpos;
+						cy = ypos - vpadding + (i * h) / num_players;
+						cw = 1000;
+						ch = h / num_players + 1;
+					}
+					PUSH_CLIP_FIT(cx, cy, cw, ch);
+					switch (env_t::show_names >> 2) {
+						case 0: {
+							const PIXVAL bg_color = gfx->palette_lookup(players[i] + 4);
+							gfx->draw_textbox3d_clipped(xpos, ypos, bg_color, gfx->palette_lookup(COL_BLACK), text, dirty CLIP_NUM_DEFAULT);
+							break;
+						}
+						case 1: {
+							const PIXVAL text_color = gfx->palette_lookup(players[i] + 7);
+							gfx->draw_text_outlined(xpos, ypos, text_color, gfx->palette_lookup(COL_BLACK), text, dirty);
+							break;
+						}
+					}
+					POP_CLIP()
+				}
+			}
 		}
 	}
 }
@@ -1698,20 +1745,32 @@ void display_text_label(sint16 xpos, sint16 ypos, const char* text, const player
 void grund_t::display_overlay(const sint16 xpos, const sint16 ypos)
 {
 	const bool dirty = get_flag(grund_t::dirty);
-#ifdef MULTI_THREAD
 	objlist.display_obj_overlay( xpos, ypos );
-#endif
 	// marker/station text
 	if(  get_flag(has_text)  ) {
+		
 		if(  env_t::show_names & 1  ) {
 			const char *text = get_text();
-			const sint16 raster_tile_width = get_tile_raster_width();
-			const int width = proportional_string_width(text)+7;
+			const sint16 raster_tile_width = gfx->get_tile_raster_width();
+			const int width = gfx->calc_text_width(text) + 7;
 			int new_xpos = xpos - (width-raster_tile_width)/2;
 
-			const player_t* owner = get_label_owner();
-
-			display_text_label(new_xpos, ypos, text, owner, dirty);
+			// if this ground belongs to a halt, the color should reflect the halt owner(s)
+			uint16 players = 0;
+			if (is_halt() && find<label_t>() == NULL) {
+				// only halt label
+				const halthandle_t halt = get_halt();
+				players = halt->get_owners();
+			}
+			// else color according to current owner
+			else if (obj_bei(0)) {
+				players = 1 << obj_bei(0)->get_owner_nr(); // for cityhall
+				const label_t* l = find<label_t>();
+				if (l) {
+					players = 1 << l->get_owner_nr();
+				}
+			}
+			display_text_label(new_xpos, ypos, text, players, dirty);
 		}
 
 		// display station waiting information/status
@@ -1726,27 +1785,33 @@ void grund_t::display_overlay(const sint16 xpos, const sint16 ypos)
 	if( env_t::show_factory_storage_bar ) {
 		if( gebaeude_t *gb=find<gebaeude_t>() ) {
 			if(  fabrik_t* fab = gb->get_fabrik()  ) {
-				if( env_t::show_factory_storage_bar == 1  &&  welt->get_zeiger()->get_pos() == get_pos() ) {
-					const sint16 raster_tile_width = get_tile_raster_width();
-					const char* text = fab->get_name();
-					const int width = proportional_string_width( text )+7;
-					sint16 new_xpos = xpos - (width-raster_tile_width)/2;
-					sint16 new_ypos = ypos + 5;
-//					display_text_label( new_xpos, new_ypos, text, fab->get_owner(), dirty );
-					// ... and status
-					fab->display_status( xpos, new_ypos );
-					win_set_tooltip( { new_xpos, ypos }, fab->get_name(), NULL, NULL );
+				if( env_t::show_factory_storage_bar == 1) {
+					if (welt->get_zeiger()->get_pos() == get_pos()) {
+						const sint16 raster_tile_width = gfx->get_tile_raster_width();
+						const char* text = fab->get_name();
+						const int width = gfx->calc_text_width(text) + 7;
+						sint16 new_xpos = xpos - (width - raster_tile_width) / 2;
+						sint16 new_ypos = ypos + 5;
+						//  display_text_label( new_xpos, new_ypos, text, fab->get_owner(), dirty );
+						// ... and status
+						fab->display_status(xpos, new_ypos, false);
+						win_set_tooltip({ new_xpos, ypos }, fab->get_name(), NULL, NULL);
+					}
 				}
 				else if(  gb->get_first_tile() == gb  ) {
 					if(  env_t::show_factory_storage_bar == 3  ||  (env_t::show_factory_storage_bar == 2  &&  fab->is_within_players_network( welt->get_active_player() ))  ) {
+						sint16 show_below = get_flag(has_text) ? (LINESPACE*8)/7 : 0;
 						// name of factory
 						const char* text = fab->get_name();
-						const sint16 raster_tile_width = get_tile_raster_width();
-						const sint16 width = proportional_string_width( text )+7;
+						const sint16 raster_tile_width = gfx->get_tile_raster_width();
+						const sint16 width = gfx->calc_text_width(text) + 7;
 						sint16 new_xpos = xpos - (width-raster_tile_width)/2;
-						display_text_label( new_xpos, ypos, text, fab->get_owner(), dirty );
+						if (!show_below  ||  strcmp(text, get_text()) != 0) {
+							display_text_label(new_xpos, ypos + show_below, text, 1 << fab->get_owner()->get_player_nr(), dirty);
+							show_below *= 2;
+						}
 						// ... and status
-						fab->display_status( xpos, ypos );
+						fab->display_status(xpos, ypos + show_below, show_below);
 					}
 				}
 			}
@@ -1754,31 +1819,58 @@ void grund_t::display_overlay(const sint16 xpos, const sint16 ypos)
 	}
 
 	if( schiene_t::show_reservations &&  hat_wege()  ) {
-		if( weg_t* w = get_weg_nr( 0 ) ) {
-			if( w->has_signal() ) {
-				// display arrow here
-				PIXVAL c1 = color_idx_to_rgb( COL_GREEN+2 );
-				PIXVAL c2 = color_idx_to_rgb( COL_GREEN );
+		if( weg_t* w0 = get_weg_nr(0) ) {
+			weg_t* w1 = get_weg_nr(1);
+			signal_t* sig = NULL;
+			weg_t *signal_w = NULL;
 
-				ribi_t::ribi mask = w->get_ribi_maske();
-				if( !mask ) {
-					mask = w->get_ribi_unmasked();
-				}
-
-				if( signal_t* sig = find<signal_t>() ) {
-					if( sig->get_state()==roadsign_t::signalstate::STATE_RED ) {
-						c1 = color_idx_to_rgb( COL_ORANGE+2 );
-						c2 = color_idx_to_rgb( COL_ORANGE );
-					}
-				}
-				display_signal_direction_rgb( xpos, ypos + tile_raster_scale_y( w->get_yoff(), get_current_tile_raster_width() ),
-					w->get_ribi_unmasked(), mask, c1, c2, w->is_diagonal(), get_weg_hang() );
+			if (w0->has_signal()) {
+				sig = this->find<signal_t>();
+				signal_w = w0;
 			}
-			else if( w->get_ribi_maske() ) {
-				PIXVAL c1 = color_idx_to_rgb( COL_BLUE+2 );
-				PIXVAL c2 = color_idx_to_rgb( COL_BLUE );
-				display_signal_direction_rgb( xpos, ypos + tile_raster_scale_y( w->get_yoff(), get_current_tile_raster_width() ),
-					w->get_ribi_unmasked(), w->get_ribi_maske(), c1, c2, w->is_diagonal(), get_weg_hang() );
+			else if (w1 && w1->has_signal()) {
+				sig = this->find<signal_t>();
+				signal_w = w1;
+			}
+
+			if(sig) {
+				// display arrow here
+				PIXVAL c1 = gfx->palette_lookup( COL_GREEN+2 );
+				PIXVAL c2 = gfx->palette_lookup( COL_GREEN );
+
+				ribi_t::ribi signal_mask = signal_w->get_ribi_maske();
+				if( !signal_mask ) {
+					signal_mask = signal_w->get_ribi_unmasked();
+				}
+
+				if (sig->get_two_ways()) {
+					// Display only second arrow always green
+					ribi_t::ribi signal_active_ribi = sig->get_dir();
+					gfx->draw_signal_direction(xpos, ypos + tile_raster_scale_y(signal_w->get_yoff(), gfx->get_current_tile_raster_width()),
+						signal_w->get_ribi_unmasked(), signal_mask&~signal_active_ribi, c1, c2, signal_w->is_diagonal(), get_weg_hang());
+					signal_mask = signal_active_ribi;
+				}
+
+				if (sig->get_state() == roadsign_t::signalstate::STATE_RED) {
+					c1 = gfx->palette_lookup(COL_ORANGE + 2);
+					c2 = gfx->palette_lookup(COL_ORANGE);
+				}
+
+				ribi_t::ribi way_ribi = signal_w->get_ribi_unmasked();
+				gfx->draw_signal_direction(xpos, ypos + tile_raster_scale_y(signal_w->get_yoff(), gfx->get_current_tile_raster_width()),
+					way_ribi, signal_mask, c1, c2, signal_w->is_diagonal(), get_weg_hang());
+			}
+			else if( w0->get_ribi_maske() ) {
+				PIXVAL c1 = gfx->palette_lookup( COL_BLUE+2 );
+				PIXVAL c2 = gfx->palette_lookup( COL_BLUE );
+				gfx->draw_signal_direction( xpos, ypos + tile_raster_scale_y( w0->get_yoff(), gfx->get_current_tile_raster_width() ),
+					w0->get_ribi_unmasked(), w0->get_ribi_maske(), c1, c2, w0->is_diagonal(), get_weg_hang() );
+			}
+			else if (w1  &&  w1->get_ribi_maske()) {
+				PIXVAL c1 = gfx->palette_lookup(COL_BLUE + 2);
+				PIXVAL c2 = gfx->palette_lookup(COL_BLUE);
+				gfx->draw_signal_direction(xpos, ypos + tile_raster_scale_y(w1->get_yoff(), gfx->get_current_tile_raster_width()),
+					w1->get_ribi_unmasked(), w1->get_ribi_maske(), c1, c2, w1->is_diagonal(), get_weg_hang());
 			}
 		}
 	}
@@ -1818,6 +1910,7 @@ bool grund_t::weg_erweitern(waytype_t wegtyp, ribi_t::ribi ribi)
 	if(weg) {
 		weg->ribi_add(ribi);
 		weg->count_sign();
+
 		if(weg->is_electrified()) {
 			wayobj_t *wo = get_wayobj( wegtyp );
 			if( (ribi & wo->get_dir()) == 0 ) {
@@ -1830,17 +1923,21 @@ bool grund_t::weg_erweitern(waytype_t wegtyp, ribi_t::ribi ribi)
 							wayobj_t *wo2 = next_gr->get_wayobj( wegtyp );
 							if( wo2 ) {
 								wo->set_dir( wo->get_dir() | ribi_t::nesw[i] );
+								wo->calc_cached_image();
 								wo2->set_dir( wo2->get_dir() | ribi_t::backward(ribi_t::nesw[i]) );
+								wo2->calc_cached_image();
 							}
 						}
 					}
 				}
 			}
 		}
+
 		calc_image();
 		set_flag(dirty);
 		return true;
 	}
+
 	return false;
 }
 
@@ -1871,6 +1968,8 @@ sint64 grund_t::remove_trees()
 sint64 grund_t::neuen_weg_bauen(weg_t *weg, ribi_t::ribi ribi, player_t *player)
 {
 	sint64 cost=0;
+
+	assert(slope_t::is_way(slope));
 
 	// not already there?
 	const weg_t * alter_weg = get_weg(weg->get_waytype());
@@ -1903,7 +2002,11 @@ sint64 grund_t::neuen_weg_bauen(weg_t *weg, ribi_t::ribi ribi, player_t *player)
 				//crossing needed!
 				waytype_t w2 =  other->get_waytype();
 				const crossing_desc_t *cr_desc = crossing_logic_t::get_crossing( weg->get_waytype(), w2, weg->get_max_speed(), other->get_max_speed(), welt->get_timeline_year_month() );
-				if(cr_desc==0) {
+				if (!cr_desc  &&  w2 == water_wt) {
+					// special permit for water
+					cr_desc = crossing_logic_t::get_crossing(weg->get_waytype(), w2, 25, other->get_max_speed(), welt->get_timeline_year_month());
+				}
+				if (!cr_desc) {
 					dbg->fatal("crossing_t::crossing_t()","requested for waytypes %i and %i but nothing defined!", weg->get_waytype(), w2 );
 				}
 				crossing_t *cr = new crossing_t(obj_bei(0)->get_owner(), pos, cr_desc, ribi_t::is_straight_ns(get_weg(cr_desc->get_waytype(1))->get_ribi_unmasked()) );
@@ -1919,7 +2022,7 @@ sint64 grund_t::neuen_weg_bauen(weg_t *weg, ribi_t::ribi ribi, player_t *player)
 		}
 
 		// may result in a crossing, but the wegebauer will recalc all images anyway
-		weg->calc_image();
+		calc_image();
 	}
 	return cost;
 }
@@ -1931,7 +2034,6 @@ sint32 grund_t::weg_entfernen(waytype_t wegtyp, bool ribi_rem)
 	if(weg!=NULL) {
 
 		weg->mark_image_dirty(get_image(), 0);
-
 		if(ribi_rem) {
 			ribi_t::ribi ribi = weg->get_ribi();
 			grund_t *to;
@@ -2049,30 +2151,9 @@ bool grund_t::remove_everything_from_way(player_t* player, waytype_t wt, ribi_t:
 		const koord here = pos.get_2d();
 
 		// stops
-		if(flags&is_halt_flag  &&  (get_halt()->get_owner()==player  || player==welt->get_public_player())) {
-			bool remove_halt = get_typ()!=boden;
-			// remove only if there is no other way
-			if(get_weg_nr(1)==NULL) {
-				remove_halt = true;
-			}
-			else {
-#ifdef delete_matching_stops
-				// delete halts with the same waytype ... may lead to confusing / unexpected but completely logical results ;)
-				gebaeude_t *gb = find<gebaeude_t>();
-				if (gb) {
-					waytype_t halt_wt = (waytype_t)gb->get_tile()->get_desc()->get_extra();
-					if (halt_wt == wt || (wt==track_wt && halt_wt==tram_wt) || (wt==tram_wt && halt_wt==track_wt)) {
-						remove_halt = true;
-					}
-				}
-#else
-				remove_halt = false;
-#endif
-			}
-			if (remove_halt) {
-				if (!haltestelle_t::remove(player, pos)) {
-					return false;
-				}
+		if (is_halt() && !has_two_ways()) {
+			if (!haltestelle_t::remove(player, pos)) {
+				return false;
 			}
 		}
 		// remove ribi from canals to sea level
@@ -2102,7 +2183,7 @@ bool grund_t::remove_everything_from_way(player_t* player, waytype_t wt, ribi_t:
 				}
 			}
 			else if (signal_t* const signal = obj_cast<signal_t>(obj)) {
-				// signal: not on crossings => remove all
+				// signal: not on crossings => can remove all
 				if (signal->get_desc()->get_wtyp() == wt) {
 					costs -= signal->get_desc()->get_price();
 					delete signal;
@@ -2110,11 +2191,12 @@ bool grund_t::remove_everything_from_way(player_t* player, waytype_t wt, ribi_t:
 			}
 			else if (wayobj_t* const wayobj = obj_cast<wayobj_t>(obj)) {
 				// wayobj: check dir
-				if (add == ribi_t::none && wayobj->get_desc()->get_wtyp() == wt) {
-					uint8 new_dir=wayobj->get_dir()&add;
+				if (wayobj->get_desc()->get_wtyp() == wt) {
+					uint8 new_dir = wayobj->get_dir() & add;
 					if(new_dir) {
 						// just change dir
 						wayobj->set_dir(new_dir);
+						wayobj->calc_image();
 					}
 					else {
 						costs -= wayobj->get_desc()->get_price();

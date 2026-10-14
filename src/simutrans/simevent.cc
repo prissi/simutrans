@@ -22,11 +22,7 @@ static slist_tpl<event_t *> queued_events;
 
 event_t::event_t(event_class_t event_class) :
 	ev_class(event_class),
-	ev_code(0),
-	mouse_pos(0,0),
-	click_pos(0,0),
-	button_state(0),
-	ev_key_mod(SIM_MOD_NONE)
+	ev_code(0)
 {
 }
 
@@ -40,9 +36,7 @@ void event_t::move_origin(scr_coord delta)
 
 int event_get_last_control_shift()
 {
-	// shift = 1
-	// ctrl  = 2
-	return control_shift_state & 0x03;
+	return control_shift_state & (SIM_KEYMOD_SHIFT | SIM_KEYMOD_CTRL);
 }
 
 
@@ -97,7 +91,7 @@ static void fill_event(event_t* const ev)
 	ev->click_pos.y = cy;
 
 	// always put key mod code into event
-	ev->ev_key_mod = sys_event.key_mod;
+	ev->ev_key_mod      = sys_event.key_mod;
 	control_shift_state = sys_event.key_mod;
 
 	switch (sys_event.type) {
@@ -106,7 +100,7 @@ static void fill_event(event_t* const ev)
 			break;
 
 		case SIM_KEYBOARD:
-			ev->ev_class = EVENT_KEYBOARD;
+			ev->ev_class = EVENT_KEYDOWN;
 			ev->ev_code  = sys_event.code;
 			break;
 
@@ -179,6 +173,14 @@ static void fill_event(event_t* const ev)
 					ev->ev_code = MOUSE_MIDBUTTON;
 					pressed_buttons &= ~MOUSE_MIDBUTTON;
 					is_dragging = false;
+					break;
+
+				case SIM_MOUSE_LONGPRESS:
+					// the finger is still down; the press/release pair still follows on lift
+					ev->ev_class = EVENT_LONG_PRESS;
+					ev->ev_code = MOUSE_LEFTBUTTON;
+					ev->click_pos.x = cx = sys_event.mx;
+					ev->click_pos.y = cy = sys_event.my;
 					break;
 			}
 			break;
@@ -256,7 +258,7 @@ static void fill_event(event_t* const ev)
 		repeat_count = 0;
 	}
 
-	ev->button_state = pressed_buttons;
+	ev->mouse_button_state = pressed_buttons;
 	last_mpos = ev->mouse_pos;
 }
 
@@ -288,5 +290,23 @@ void display_poll_event(event_t* const ev)
 
 void queue_event(event_t *events)
 {
+	// A window resize is current state, not history: only the newest client
+	// size is meaningful and an older one must never be applied after it. The
+	// loading screen stores the resizes it consumes and flushes them back here
+	// when destroyed, and the next loading screen consumes and stores them
+	// again, so without this an obsolete size is replayed and can be applied
+	// after the real one, leaving the renderer smaller than the window.
+	if(  events->ev_class == EVENT_SYSTEM  &&  events->ev_code == SYSTEM_RESIZE  ) {
+		for(  slist_tpl<event_t *>::iterator i = queued_events.begin();  i != queued_events.end();  ) {
+			event_t *old_ev = *i;
+			if(  old_ev->ev_class == EVENT_SYSTEM  &&  old_ev->ev_code == SYSTEM_RESIZE  ) {
+				i = queued_events.erase(i);
+				delete old_ev;
+			}
+			else {
+				++i;
+			}
+		}
+	}
 	queued_events.append(events);
 }

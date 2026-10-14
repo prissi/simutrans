@@ -56,7 +56,7 @@ public:
 			bt_whisper_to.add_listener(this);
 			add_component(&bt_whisper_to);
 			buf.printf("%s <%s>", sender.c_str(), p->get_name());
-			new_component<gui_label_t>(buf.get_str(), color_idx_to_rgb(p->get_player_color1() + env_t::gui_player_color_dark));
+			new_component<gui_label_t>(buf.get_str(), gfx->palette_lookup(p->get_player_color1() + env_t::gui_player_color_dark));
 		}
 		else {
 			new_component_span<gui_label_t>(sender.c_str(), 2);
@@ -163,8 +163,10 @@ public:
 		const bool is_dark_theme = (env_t::gui_player_color_dark >= env_t::gui_player_color_bright);
 		const int base_blend_percent = tail_dir == tail_right ? 60 : 80;
 		player_t* player = world()->get_player(player_nr);
-		const PIXVAL base_color = color_idx_to_rgb(player ? player->get_player_color1() + env_t::gui_player_color_bright : COL_GREY4);
-		bgcolor = display_blend_colors(base_color, color_idx_to_rgb(COL_WHITE), is_dark_theme ? (95 - base_blend_percent) : base_blend_percent);
+		const PIXVAL base_color = gfx->palette_lookup(player ? player->get_player_color1() + env_t::gui_player_color_bright : COL_GREY4);
+
+		bgcolor = gfx->blend_colors(base_color, gfx->palette_lookup(COL_WHITE), is_dark_theme ? (95 - base_blend_percent) : base_blend_percent);
+
 		if (msg_time) { // old save messages does not have date
 			update_time_diff(time(NULL));
 			char date[18];
@@ -247,20 +249,21 @@ public:
 		lb_time_diff.set_pos(message.get_pos()+scr_size(bsize.w-D_MARGIN_RIGHT-lb_time_diff.get_size().w-2, message.get_size().h));
 
 		// draw ballon
-		display_filled_roundbox_clip(offset.x + off_w + 1, offset.y + 1, bsize.w, bsize.h, display_blend_colors(bgcolor, SYSCOL_SHADOW, 75), false);
-		display_filled_roundbox_clip(offset.x + off_w, offset.y, bsize.w, bsize.h, bgcolor, false);
+		gfx->draw_rounded_rect_clipped(offset.x + off_w + 1, offset.y + 1, bsize.w, bsize.h, gfx->blend_colors(bgcolor, SYSCOL_SHADOW, 75), false);
+		gfx->draw_rounded_rect_clipped(offset.x + off_w, offset.y, bsize.w, bsize.h, bgcolor, false);
 		if (tail_dir) {
 			scr_coord_val h = LINESPACE / 2;
 			for (scr_coord_val x = 0; x < h; x++) {
 				if (tail_dir == tail_right) {
-					display_vline_wh_clip_rgb(offset.x + off_w + bsize.w + x, offset.y + bsize.h - 10 - h + x, h - x, bgcolor, true);
+					gfx->draw_vline_clipped(offset.x + off_w + bsize.w + x, offset.y + bsize.h - 10 - h + x, h - x, bgcolor, true CLIP_NUM_DEFAULT);
 				}
 				else {
-					display_vline_wh_clip_rgb(offset.x + off_w - x, offset.y + h, h - x, bgcolor, true);
+					gfx->draw_vline_clipped(offset.x + off_w - x,           offset.y + h,                    h - x, bgcolor, true CLIP_NUM_DEFAULT);
 				}
 			}
+
 			if (tail_dir == tail_right) {
-				display_fillbox_wh_clip_rgb(offset.x + off_w + bsize.w, offset.y + bsize.h - 10, h, 1, display_blend_colors(bgcolor, SYSCOL_SHADOW, 75), true);
+				gfx->draw_rect_clipped(offset.x + off_w + bsize.w, offset.y + bsize.h - 10, h, 1, gfx->blend_colors(bgcolor, SYSCOL_SHADOW, 75), true CLIP_NUM_DEFAULT);
 			}
 		}
 		scr_coord_val old_h = message.get_size().h;
@@ -362,7 +365,7 @@ chat_frame_t::chat_frame_t() :
 	set_resizemode(diagonal_resize);
 	reactivate_input = true;
 
-	last_count = 0;
+	last_count = 0x7FFFFFFF;
 	reset_min_windowsize();
 }
 
@@ -387,7 +390,7 @@ void chat_frame_t::fill_list()
 		break;
 	case CH_COMPANY:
 		lb_channel.set_text(current_player->get_name());
-		lb_channel.set_color(color_idx_to_rgb(current_player->get_player_color1() + env_t::gui_player_color_dark));
+		lb_channel.set_color(gfx->palette_lookup(current_player->get_player_color1() + env_t::gui_player_color_dark));
 		env_t::chat_unread_company = 0;
 		break;
 	case CH_WHISPER:
@@ -438,10 +441,7 @@ void chat_frame_t::fill_list()
 			break;
 
 		case CH_WHISPER:
-			if (i->destination == NULL  ||  i->sender == NULL) {
-				continue;
-			}
-			if (i->destination == ""  ||  i->sender == "") {
+			if (!i->destination  ||  !i->sender) {
 				continue;
 			}
 			if (i->destination!=env_t::nickname.c_str()  &&  i->sender!=env_t::nickname.c_str()) {
@@ -459,7 +459,7 @@ void chat_frame_t::fill_list()
 			if (i->channel_nr != -1) {
 				continue; // other company's message
 			}
-			if (i->destination != NULL && i->destination != "") {
+			if (!i->destination) {
 				continue; // direct message
 			}
 			break;
@@ -477,6 +477,10 @@ void chat_frame_t::fill_list()
 		prev_poster = i->sender;
 		prev_company = i->player_nr;
 	}
+	if(cont_chat_log[chat_mode].get_count()==0) {
+		// empty dummy item
+		cont_chat_log[chat_mode].new_component <gui_scrolled_list_t::const_text_scrollitem_t>("",COL_BROWN);
+	}
 
 	cont_chat_log[chat_mode].show_bottom();
 	cont_chat_log[chat_mode].set_maximize(true);
@@ -488,6 +492,11 @@ void chat_frame_t::fill_list()
 bool chat_frame_t::action_triggered(gui_action_creator_t* comp, value_t v)
 {
 	if (comp == &input && ibuf[0] != 0) {
+		// Only send messages when the user actually presses <RETURN>!
+		// The textinput may tell us of other events, so we ignore them.
+		if (v.i != gui_textinput_t::INPUT_FINISHED) {
+			return false;
+		}
 		const sint8 channel = tabs.get_active_tab_index() == CH_COMPANY ? (sint8)world()->get_active_player_nr() : -1;
 		const sint8 sender_company_nr = welt->get_active_player()->is_locked() ? -1 : welt->get_active_player()->get_player_nr();
 		const char *dest = cb_direct_chat_targets.get_selection() > 0 ? cb_direct_chat_targets.get_selected_item()->get_text() : "";
@@ -554,6 +563,9 @@ void chat_frame_t::draw(scr_coord pos, scr_size size)
 			reactivate_input = false;
 		}
 	}
+
+	// only allow sending if general or private message and not a company
+	input.set_enabled(tabs.get_active_tab_index()!=1  ||  !welt->get_active_player()->is_locked());
 
 	gui_frame_t::draw(pos, size);
 }

@@ -25,13 +25,17 @@ std::string env_t::pak_name;
 #ifndef __ANDROID__
 sint16 env_t::menupos = MENU_TOP;
 bool env_t::single_toolbar_mode = false;
+bool env_t::stack_toolbars = true;
 sint16 env_t::dpi_scale = 100;
 bool env_t::single_info = 1;
+bool env_t::show_construction_info = true;
 #else
 sint16 env_t::menupos = MENU_BOTTOM;
 bool env_t::single_toolbar_mode = true;
+bool env_t::stack_toolbars = false;
 sint16 env_t::dpi_scale = -1;
 bool env_t::single_info = 0;
+bool env_t::show_construction_info = false;
 #endif
 sint16 env_t::fullscreen = WINDOWED;
 sint16 env_t::display_scale_percent = 100;
@@ -49,6 +53,9 @@ uint8 env_t::follow_convoi_underground = 2;
 
 bool env_t::random_pedestrians = true;
 bool env_t::stop_pedestrians = true;
+
+char env_t::currency_symbol[16] = "";
+bool env_t::currency_left = false;
 
 plainstring env_t::default_theme;
 const char *env_t::savegame_version_str = SAVEGAME_VER_NR;
@@ -93,7 +100,8 @@ bool env_t::pause_server_no_clients = false;
 std::string env_t::nickname = "";
 
 // this is explicitly and interactively set by user => we do not touch it on init
-const char *env_t::language_iso = "en";
+const char* env_t::language_iso = "en";
+const char* env_t::language_names_iso = NULL;
 sint16 env_t::scroll_multi = -1; // start with same scrool as mouse as nowadays standard
 bool env_t::scroll_infinite = false; // since it fails with touch devices
 uint16 env_t::scroll_threshold = 8;
@@ -103,6 +111,7 @@ sint16 env_t::midi_volume = 127;
 uint16 env_t::specific_volume[MAX_SOUND_TYPES];
 
 std::string env_t::soundfont_filename = "";
+std::string env_t::music_folder = "";
 std::string env_t::pakset_tutorial_dir = "tutorial";
 bool env_t::global_mute_sound = false;
 bool env_t::mute_midi = false;
@@ -132,9 +141,11 @@ bool env_t::hide_trees;
 uint8 env_t::hide_buildings;
 bool env_t::hide_under_cursor;
 uint16 env_t::cursor_hide_range;
+bool env_t::show_single_ways;
 bool env_t::use_transparency_station_coverage;
 uint8 env_t::station_coverage_show;
 sint32 env_t::show_names;
+bool env_t::horizontal_stripe_owner;
 sint32 env_t::message_flags[4];
 uint32 env_t::water_animation;
 uint32 env_t::ground_object_probability;
@@ -242,6 +253,7 @@ void env_t::init()
 	station_coverage_show = 0;
 
 	show_names = 3;
+	horizontal_stripe_owner = true;
 	player_finance_display_account = true;
 
 	water_animation = 250; // 250ms per wave stage
@@ -256,6 +268,7 @@ void env_t::init()
 	townhall_info = false;
 	single_info = true;
 	single_line_gui = false;
+	show_single_ways = false;
 
 	random_pedestrians = true;
 	stop_pedestrians = true;
@@ -300,6 +313,7 @@ void env_t::init()
 
 	sound_distance_scaling = 10;
 
+	show_construction_info = true;
 	show_tooltips = true;
 	tooltip_color_rgb     = { 0x39, 0x64, 0xD0 }; // COL_SOFT_BLUE
 	tooltip_textcolor_rgb = { 0x00, 0x00, 0x00 }; // COL_BLACK
@@ -349,21 +363,25 @@ void env_t::init()
 	listen.append_unique("0.0.0.0");
 	show_money_message = 0;
 
+	language_names_iso = NULL;
+
 #ifndef __ANDROID__
-	env_t::menupos = MENU_TOP;
-	env_t::single_toolbar_mode = false;
-	env_t::dpi_scale = 100;
-	env_t::single_info = 1;
-	env_t::hide_keyboard = false;
+	menupos = MENU_TOP;
+	single_toolbar_mode = false;
+	stack_toolbars = true;
+	dpi_scale = 100;
+	single_info = 1;
+	hide_keyboard = false;
 
 #else
 	// here for Android
-	env_t::menupos = MENU_BOTTOM;
-	env_t::single_toolbar_mode = true;
-	env_t::dpi_scale = -1;
-	env_t::single_info = 0;
+	menupos = MENU_BOTTOM;
+	single_toolbar_mode = true;
+	stack_toolbars = false;
+	dpi_scale = -1;
+	single_info = 0;
 	// autoshow keyboard on textinput
-	env_t::hide_keyboard = true;
+	hide_keyboard = true;
 #endif
 }
 
@@ -418,11 +436,11 @@ void env_t::rdwr(loadsave_t *file)
 	if (  file->is_version_less(120, 5)  ) {
 		uint8 color_idx = COL_SOFT_BLUE;
 		file->rdwr_byte( color_idx );
-		env_t::tooltip_color_rgb = get_color_rgb(color_idx);
+		env_t::tooltip_color_rgb = gfx->get_color_rgb(color_idx);
 
 		color_idx = COL_BLACK;
 		file->rdwr_byte( color_idx );
-		env_t::tooltip_textcolor_rgb = get_color_rgb(color_idx);
+		env_t::tooltip_textcolor_rgb = gfx->get_color_rgb(color_idx);
 	}
 
 	file->rdwr_long( autosave );
@@ -475,6 +493,22 @@ void env_t::rdwr(loadsave_t *file)
 		file->rdwr_str( language_iso );
 	}
 
+	if (file->is_version_atleast(124, 5)) {
+		if (file->is_loading()) {
+			// these three bytes will be lost ...
+			const char* c = NULL;
+			file->rdwr_str(c);
+			language_names_iso = c;
+		}
+		else {
+			file->rdwr_str(language_names_iso);
+		}
+	}
+	else if (file->is_loading()) {
+		// default: same as GUI ...
+		language_names_iso = NULL;
+	}
+
 	file->rdwr_short( global_volume );
 	file->rdwr_short( midi_volume );
 	file->rdwr_bool( global_mute_sound );
@@ -499,13 +533,13 @@ void env_t::rdwr(loadsave_t *file)
 			file->rdwr_byte( color ); // to skip old parameter front_window_bar_color
 
 			file->rdwr_byte( color );
-			env_t::front_window_text_color_rgb = get_color_rgb(color);
+			env_t::front_window_text_color_rgb = gfx->get_color_rgb(color);
 
 			file->rdwr_byte( color ); // to skip old parameter bottom_window_bar_color
 
 			color = 209; // CITY_KI
 			file->rdwr_byte( color );
-			env_t::bottom_window_text_color_rgb = get_color_rgb(color);
+			env_t::bottom_window_text_color_rgb = gfx->get_color_rgb(color);
 		}
 	}
 
@@ -534,7 +568,7 @@ void env_t::rdwr(loadsave_t *file)
 		if(  file->is_version_less(120, 5)  ) {
 			uint8 color = COL_GREY2;
 			file->rdwr_byte( color );
-			env_t::background_color_rgb = get_color_rgb(color);
+			env_t::background_color_rgb = gfx->get_color_rgb(color);
 		}
 		file->rdwr_bool( draw_earth_border );
 		file->rdwr_bool( draw_outside_tile );
@@ -637,6 +671,28 @@ void env_t::rdwr(loadsave_t *file)
 	}
 	if (file->is_version_atleast(124, 2)) {
 		file->rdwr_bool(leftdrag_in_minimap);
+	}
+	if (file->is_version_atleast(124, 3)) {
+		file->rdwr_bool(currency_left);
+		file->rdwr_str(currency_symbol,lengthof(currency_symbol));
+	}
+
+	if (file->is_version_atleast(124, 4)) {
+		file->rdwr_bool(show_single_ways);
+		file->rdwr_bool(stack_toolbars);
+	}
+
+	if (file->is_version_atleast(124, 6)) {
+		file->rdwr_bool(horizontal_stripe_owner);
+		file->rdwr_bool(show_construction_info);
+	}
+
+	if (file->is_version_atleast(125, 6)) {
+		plainstring str = music_folder.c_str();
+		file->rdwr_str(str);
+		if (file->is_loading()) {
+			music_folder = str ? str.c_str() : "";
+		}
 	}
 
 	// server settings are not saved, since they are server specific

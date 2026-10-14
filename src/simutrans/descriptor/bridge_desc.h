@@ -31,15 +31,15 @@ class bridge_desc_t : public obj_desc_transport_infrastructure_t {
 	friend class bridge_reader_t;
 
 private:
-	uint8 pillars_every;     // =0 off
-	bool pillars_asymmetric; // =0 off else leave one off for north/west slopes
-	uint offset;             // flag, because old bridges had their name/copyright at the wrong position
+	uint8  pillars_every      = 0;     // =0 off
+	bool   pillars_asymmetric = false; // =0 off else leave one off for north/west slopes
+	uint32 offset = 0;                 // flag, because old bridges had their name/copyright at the wrong position
 
-	uint8 max_length;        // =0 off, else maximum length
-	uint8 max_height;        // =0 off, else maximum length
+	uint8 max_length = 0;        // =0 off, else maximum length
+	uint8 max_height = 0;        // =0 off, else maximum length
 
-	// number of seasons (0 = none, 1 = no snow/snow
-	sint8 number_of_seasons;
+	sint8 number_of_seasons = 0; // 0 = no seasons
+	bool  clip_below;  // default is true
 
 public:
 	/*
@@ -49,6 +49,9 @@ public:
 		NS_Segment,  OW_Segment,  N_Start,  S_Start,  O_Start,  W_Start,  N_Ramp,  S_Ramp,  O_Ramp,  W_Ramp,  NS_Pillar,  OW_Pillar,
 		NS_Segment2, OW_Segment2, N_Start2, S_Start2, O_Start2, W_Start2, N_Ramp2, S_Ramp2, O_Ramp2, W_Ramp2, NS_Pillar2, OW_Pillar2
 	};
+
+	// in case of only older bridges
+	static img_t single_img[24];
 
 	/*
 	 * Name and Copyright used to be saved only with the Cursor
@@ -61,10 +64,14 @@ public:
 	image_id get_background(img_t img, uint8 season) const {
 		const image_t *image = NULL;
 		if(season && number_of_seasons == 1) {
-			image = get_child<image_list_t>(3 + offset)->get_image(img);
+			if (const image_list_t* il = get_child<image_list_t>(3 + offset)) {
+				image = il->get_image(img);
+			}
 		}
 		if(image == NULL) {
-			image = get_child<image_list_t>(0 + offset)->get_image(img);
+			if (const image_list_t* il = get_child<image_list_t>(0 + offset)) {
+				image = il->get_image(img);
+			}
 		}
 		return image != NULL ? image->get_id() : IMG_EMPTY;
 	}
@@ -72,13 +79,19 @@ public:
 	image_id get_foreground(img_t img, uint8 season) const {
 		const image_t *image = NULL;
 		if(season && number_of_seasons == 1) {
-			image = get_child<image_list_t>(4 + offset)->get_image(img);
+			if (const image_list_t* il = get_child<image_list_t>(4 + offset)) {
+				image = il->get_image(img);
+			}
 		}
 		if(image == NULL) {
-			image = get_child<image_list_t>(1 + offset)->get_image(img);
+			if (const image_list_t* il = get_child<image_list_t>(1 + offset)) {
+				image = il->get_image(img);
+			}
 		}
 		return image != NULL ? image->get_id() : IMG_EMPTY;
 	}
+
+	bool is_clip_below() const { return clip_below; }
 
 	img_t get_straight(ribi_t::ribi ribi, uint8 height) const;
 	img_t get_start(slope_t::type slope) const;

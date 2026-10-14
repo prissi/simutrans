@@ -79,6 +79,10 @@ void vehicle_t::set_convoi(convoi_t *c)
 			c.finish_rd(welt);
 		}
 	}
+	else {
+		// out of a convoi there is nothing left to demand catenary for
+		needs_electric = false;
+	}
 }
 
 
@@ -241,7 +245,7 @@ void vehicle_t::remove_stale_cargo()
 			if(  tmp.get_via_halt().is_bound()  ) {
 				// the original halt exists, but does we still go there?
 				for(schedule_entry_t const& i : cnv->get_schedule()->entries) {
-					if(  haltestelle_t::get_halt( i.pos, cnv->get_owner()) == tmp.get_via_halt()  ) {
+					if(  haltestelle_t::get_halt( i.pos, cnv->get_owner(), get_waytype()==water_wt) == tmp.get_via_halt()  ) {
 						found = true;
 						break;
 					}
@@ -253,7 +257,7 @@ void vehicle_t::remove_stale_cargo()
 				const int max_count = cnv->get_schedule()->entries.get_count();
 				for(  int i=0;  i<max_count;  i++  ) {
 					// try to unload on next stop
-					halthandle_t halt = haltestelle_t::get_halt( cnv->get_schedule()->entries[ (i+offset)%max_count ].pos, cnv->get_owner() );
+					halthandle_t halt = haltestelle_t::get_halt( cnv->get_schedule()->entries[ (i+offset)%max_count ].pos, cnv->get_owner(), get_waytype() == water_wt);
 					if(  halt.is_bound()  ) {
 						if(  halt->is_enabled(tmp.get_index())  ) {
 							// ok, lets change here, since goods are accepted here
@@ -375,6 +379,7 @@ vehicle_t::vehicle_t(koord3d pos, const vehicle_desc_t* desc, player_t* player) 
 	check_for_finish = false;
 	use_calc_height = true;
 	has_driven = false;
+	needs_electric = false;
 
 	previous_direction = direction = ribi_t::none;
 	target_halt = halthandle_t();
@@ -397,6 +402,7 @@ vehicle_t::vehicle_t() :
 	leading = last = false;
 	check_for_finish = false;
 	use_calc_height = true;
+	needs_electric = false;
 
 	previous_direction = direction = ribi_t::none;
 }
@@ -970,7 +976,6 @@ DBG_MESSAGE("vehicle_t::rdwr_from_convoi()","bought at %i/%i.",(purchase_time%12
 		}
 		if(desc==NULL) {
 			pakset_manager_t::add_missing_paks( s, MISSING_VEHICLE );
-			dbg->warning("vehicle_t::rdwr_from_convoi()","no vehicle pak for '%s' search for something similar", s);
 		}
 	}
 
@@ -1119,15 +1124,9 @@ vehicle_t::~vehicle_t()
 }
 
 
-#ifdef MULTI_THREAD
 void vehicle_t::display_overlay(int xpos, int ypos) const
 {
 	if(  cnv  &&  leading  ) {
-#else
-void vehicle_t::display_after(int xpos, int ypos, bool is_global) const
-{
-	if(  is_global  &&  cnv  &&  leading  ) {
-#endif
 		PIXVAL color = 0; // not used, but stop compiler warning about uninitialized
 		char tooltip_text[1024];
 		tooltip_text[0] = 0;
@@ -1165,7 +1164,7 @@ void vehicle_t::display_after(int xpos, int ypos, bool is_global) const
 			case convoi_t::CAN_START_ONE_MONTH:
 				if(  state>=3  ) {
 					snprintf( tooltip_text, lengthof(tooltip_text), "%s (%s)", translator::translate("Waiting for clearance!"), cnv->get_schedule()->get_current_entry().pos.get_str() );
-					color = color_idx_to_rgb(COL_YELLOW);
+					color = gfx->palette_lookup(COL_YELLOW);
 				}
 				break;
 
@@ -1184,7 +1183,7 @@ void vehicle_t::display_after(int xpos, int ypos, bool is_global) const
 					else {
 						sprintf( tooltip_text, translator::translate( "Loading (%i->%i%%)!" ), cnv->get_loading_level(), cnv->get_loading_limit() );
 					}
-					color = color_idx_to_rgb(COL_YELLOW);
+					color = gfx->palette_lookup(COL_YELLOW);
 				}
 				break;
 
@@ -1192,7 +1191,7 @@ void vehicle_t::display_after(int xpos, int ypos, bool is_global) const
 //			case convoi_t::ROUTING_1:
 				if(  state>=3  ) {
 					tstrncpy( tooltip_text, translator::translate("Schedule changing!"), lengthof(tooltip_text) );
-					color = color_idx_to_rgb(COL_YELLOW);
+					color = gfx->palette_lookup(COL_YELLOW);
 				}
 				break;
 
@@ -1201,11 +1200,11 @@ void vehicle_t::display_after(int xpos, int ypos, bool is_global) const
 					grund_t const* const gr = welt->lookup(cnv->get_route()->back());
 					if(  gr  &&  gr->get_depot()  ) {
 						tstrncpy( tooltip_text, translator::translate("go home"), lengthof(tooltip_text) );
-						color = color_idx_to_rgb(COL_GREEN);
+						color = gfx->palette_lookup(COL_GREEN);
 					}
 					else if(  cnv->get_no_load()  ) {
 						tstrncpy( tooltip_text, translator::translate("no load"), lengthof(tooltip_text) );
-						color = color_idx_to_rgb(COL_GREEN);
+						color = gfx->palette_lookup(COL_GREEN);
 					}
 				}
 				break;
@@ -1213,25 +1212,25 @@ void vehicle_t::display_after(int xpos, int ypos, bool is_global) const
 			case convoi_t::LEAVING_DEPOT:
 				if(  state>=2  ) {
 					tstrncpy( tooltip_text, translator::translate("Leaving depot!"), lengthof(tooltip_text) );
-					color = color_idx_to_rgb(COL_GREEN);
+					color = gfx->palette_lookup(COL_GREEN);
 				}
 				break;
 
 			case convoi_t::WAITING_FOR_CLEARANCE_TWO_MONTHS:
 			case convoi_t::CAN_START_TWO_MONTHS:
 				snprintf( tooltip_text, lengthof(tooltip_text), "%s (%s)", translator::translate("clf_chk_stucked"), cnv->get_schedule()->get_current_entry().pos.get_str() );
-				color = color_idx_to_rgb(COL_ORANGE);
+				color = gfx->palette_lookup(COL_ORANGE);
 				break;
 
 			case convoi_t::NO_ROUTE:
 				tstrncpy( tooltip_text, translator::translate("clf_chk_noroute"), lengthof(tooltip_text) );
-				color = color_idx_to_rgb(COL_RED);
+				color = gfx->palette_lookup(COL_RED);
 				break;
 		}
 
-		if(  env_t::show_vehicle_states == 2  &&  !tooltip_text[ 0 ]  ) {
+		if (env_t::show_vehicle_states >= 2 && !tooltip_text[0]) {
 			// show line name or simply convoi name
-			color = color_idx_to_rgb( cnv->get_owner()->get_player_color1() + 7 );
+			color = gfx->palette_lookup( cnv->get_owner()->get_player_color1() + 7 );
 			if(  cnv->get_line().is_bound()  ) {
 				snprintf( tooltip_text, lengthof( tooltip_text ), "%s - %s", cnv->get_line()->get_name(), cnv->get_name() );
 			}
@@ -1242,12 +1241,13 @@ void vehicle_t::display_after(int xpos, int ypos, bool is_global) const
 
 		// something to show?
 		if(  tooltip_text[0]  ) {
-			const int raster_width = get_current_tile_raster_width();
+			const int raster_width = gfx->get_current_tile_raster_width();
 			get_screen_offset( xpos, ypos, raster_width );
 			xpos += tile_raster_scale_x(get_xoff(), raster_width);
 			ypos += tile_raster_scale_y(get_yoff(), raster_width)+14;
-			if(ypos>LINESPACE+32  &&  ypos+LINESPACE<display_get_clip_wh().yy) {
-				display_ddd_proportional_clip( xpos, ypos, color, color_idx_to_rgb(COL_BLACK), tooltip_text, true );
+
+			if(ypos>LINESPACE+32  &&  ypos+LINESPACE < gfx->get_clip_rect(CLIP_NUM_DEFAULT_VALUE).yy) {
+				gfx->draw_textbox3d_clipped( xpos, ypos, color, gfx->palette_lookup(COL_BLACK), tooltip_text, true CLIP_NUM_DEFAULT);
 			}
 		}
 	}

@@ -6,7 +6,6 @@
 #ifndef SIMVERSION_H
 #define SIMVERSION_H
 
-
 #ifndef REVISION
 // include external generated revision file
 #include "revision.h"
@@ -16,18 +15,19 @@
 #define SIM_BUILD_RELEASE_CANDIDATE 1
 #define SIM_BUILD_RELEASE           2
 
-#define SIM_VERSION_MAJOR 124
-#define SIM_VERSION_MINOR   3
-#define SIM_VERSION_PATCH   1
+#define SIM_VERSION_MAJOR 125
+#define SIM_VERSION_MINOR   0
+#define SIM_VERSION_PATCH   2
 #define SIM_VERSION_BUILD SIM_BUILD_NIGHTLY
 
 // Beware: SAVEGAME minor is often ahead of version minor when there were patches.
 // ==> These have no direct connection at all!
-#define SIM_SAVE_MINOR      2
-#define SIM_SERVER_MINOR    2
+#define SIM_SAVE_MINOR      6
+#define SIM_SERVER_MINOR    6
 // NOTE: increment before next release to enable save/load of new features
 
-#define MAKEOBJ_VERSION "60.7"
+/* for next release 125.0 */
+#define MAKEOBJ_VERSION "60.12"
 
 #ifndef QUOTEME
 #	define QUOTEME_(x) #x

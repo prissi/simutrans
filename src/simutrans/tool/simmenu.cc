@@ -153,10 +153,12 @@ const char* tool_t::id_to_string(uint16 id)
 			CASE_TO_STRING(TOOL_CHANGE_CONVOI);
 			CASE_TO_STRING(TOOL_CHANGE_LINE);
 			CASE_TO_STRING(TOOL_CHANGE_DEPOT);
+			CASE_TO_STRING(UNUSED_WKZ_PWDHASH_TOOL);
 			CASE_TO_STRING(TOOL_CHANGE_PLAYER);
 			CASE_TO_STRING(TOOL_CHANGE_TRAFFIC_LIGHT);
 			CASE_TO_STRING(TOOL_CHANGE_CITY);
 			CASE_TO_STRING(TOOL_RENAME);
+			CASE_TO_STRING(UNUSED_TOOL_ADD_MESSAGE);
 			CASE_TO_STRING(TOOL_TOGGLE_RESERVATION);
 			CASE_TO_STRING(TOOL_VIEW_OWNER);
 			CASE_TO_STRING(TOOL_HIDE_UNDER_CURSOR);
@@ -167,8 +169,8 @@ const char* tool_t::id_to_string(uint16 id)
 			CASE_TO_STRING(TOOL_TOGGLE_CONTROL);
 			CASE_TO_STRING(TOOL_LOAD_SCENARIO);
 			CASE_TO_STRING(TOOL_DAY_NIGHT_TOGGLE);
-			CASE_TO_STRING(UNUSED_TOOL_ADD_MESSAGE);
-			CASE_TO_STRING(UNUSED_WKZ_PWDHASH_TOOL);
+			CASE_TO_STRING(TOOL_WORK_WORLD);
+			CASE_TO_STRING(TOOL_HALT_PERMISSION);
 		}
 	}
 	else if (id & DIALOGE_TOOL) {
@@ -338,7 +340,10 @@ tool_t* create_simple_tool(int toolnr)
 	case TOOL_SHOW_FACTORY_STORAGE: tool = new tool_show_factory_storage_t(); break;
 	case TOOL_TOGGLE_CONTROL:       tool = new tool_toggle_control_t();       break;
 	case TOOL_LOAD_SCENARIO:        tool = new tool_load_scenario_t();        break;
-	case TOOL_DAY_NIGHT_TOGGLE:     tool = new tool_day_night_toggle_t();    break;
+	case TOOL_DAY_NIGHT_TOGGLE:     tool = new tool_day_night_toggle_t();     break;
+	case TOOL_SINGLE_WAY_TOOGLE:    tool = new tool_show_single_ways_t();     break;
+	case TOOL_WORK_WORLD:           tool = new tool_work_world_t();           break;
+	case TOOL_HALT_PERMISSION:      tool = new tool_change_permission_t();    break;
 	case UNUSED_TOOL_ADD_MESSAGE: // fall-through - intended!!!111elf
 	case UNUSED_WKZ_PWDHASH_TOOL:
 		dbg->warning("create_simple_tool()", "Deprecated tool [%i] requested", toolnr);
@@ -395,6 +400,7 @@ tool_t* create_dialog_tool(int toolnr)
 	case DIALOG_EDIT_GROUNDOBJ:  tool = new dialog_edit_groundobj_t();  break;
 	case DIALOG_CHAT:            tool = new dialog_chat_t();            break;
 	case DIALOG_PLAYER_RANKING:  tool = new dialog_player_ranking_t();  break;
+	case DIALOG_WAY_BUILDER:     tool = new dialog_way_builder_t();     break;
 	default:
 		dbg->error("create_dialog_tool()", "cannot satisfy request for dialog_tool[%i]!", toolnr);
 		return NULL;
@@ -558,7 +564,7 @@ static utf32 str_to_key(const char* str, uint8* modifier)
 		if (str[0] == 'F') {
 			uint8 function = atoi(str + 1);
 			if (function > 0) {
-				return SIM_KEY_F1 + function - 1;
+				return SIM_KEYCODE_F1 + function - 1;
 			}
 		}
 		// COMMA
@@ -567,44 +573,44 @@ static utf32 str_to_key(const char* str, uint8* modifier)
 		}
 		// Scroll lock
 		if (strstart(str, "SCROLLLOCK")) {
-			return SIM_KEY_SCROLLLOCK;
+			return SIM_KEYCODE_SCROLLLOCK;
 		}
 		// break/pause key
 		if (strstart(str, "PAUSE")) {
-			return SIM_KEY_PAUSE;
+			return SIM_KEYCODE_PAUSE;
 		}
 		// HOME
 		if (strstart(str, "HOME")) {
-			return SIM_KEY_HOME;
+			return SIM_KEYCODE_HOME;
 		}
 		// END
 		if (strstart(str, "END")) {
-			return SIM_KEY_END;
+			return SIM_KEYCODE_END;
 		}
 		// SPACE
 		if (strstart(str, "SPACE")) {
-			return SIM_KEY_SPACE;
+			return SIM_KEYCODE_SPACE;
 		}
 		// ENTER
 		//if (strstart(str, "ENTER")) {
-		//	return SIM_KEY_ENTER
+		//	return SIM_KEYCODE_ENTER
 		//}
 		// ESC
 		if (strstart(str, "ESC")) {
 			// but currently fixed binding!
-			return SIM_KEY_ESCAPE;
+			return SIM_KEYCODE_ESCAPE;
 		}
 		if (strstart(str, "DELETE")) {
 			// but currently fixed binding!
-			return SIM_KEY_DELETE;
+			return SIM_KEYCODE_DELETE;
 		}
 		if (strstart(str, "BACKSPACE")) {
 			// but currently fixed binding!
-			return SIM_KEY_BACKSPACE;
+			return SIM_KEYCODE_BACKSPACE;
 		}
 		// NUMPAD
 		if (const char* c = strstart(str, "NUM_")) {
-			return SIM_KEY_NUMPAD_BASE + atoi(c);
+			return SIM_KEYCODE_NUMPAD_BASE + atoi(c);
 		}
 	}
 	// invalid key
@@ -1018,7 +1024,7 @@ void tool_t::draw_after(scr_coord pos, bool dirty) const
 	// default action: grey corner if selected
 	image_id id = get_icon(welt->get_active_player());
 	if (id != IMG_EMPTY && is_selected()) {
-		display_img_blend(id, pos.x, pos.y, TRANSPARENT50_FLAG | OUTLINE_FLAG | color_idx_to_rgb(COL_BLACK), false, dirty);
+		gfx->draw_img_blend(id, pos.x, pos.y, TRANSPARENT50_FLAG | OUTLINE_FLAG | gfx->palette_lookup(COL_BLACK), false, dirty);
 	}
 }
 
@@ -1032,6 +1038,19 @@ const char* tool_t::check_pos(player_t*, koord3d pos)
 	grund_t* gr = welt->lookup(pos);
 	return (gr && !gr->is_visible()) ? "" : NULL;
 }
+
+
+const char *tool_t::work(player_t *, koord3d)
+{
+	return NULL;
+}
+
+
+const char *tool_t::move(player_t *, uint16_t, koord3d)
+{
+	return "";
+}
+
 
 bool tool_t::check_valid_pos(koord k) const
 {
@@ -1214,9 +1233,11 @@ bool toolbar_t::init(player_t* player)
 				}
 			}
 			// open toolbar centered at top or bottom position (bottom, when menubar at bottom)
-			scr_coord_val w = display_get_width() - (env_t::menupos == MENU_LEFT ? env_t::iconsize.w : 0) - (env_t::menupos == MENU_RIGHT ? env_t::iconsize.w : 0);
+			const scr_size screen = gfx->get_screen_size();
+
+			scr_coord_val w = screen.w - (env_t::menupos == MENU_LEFT ? env_t::iconsize.w : 0) - (env_t::menupos == MENU_RIGHT ? env_t::iconsize.w : 0);
 			scr_coord_val x = (w - tool_selector->get_windowsize().w) / 2 + (env_t::menupos == MENU_LEFT ? env_t::iconsize.w : 0);
-			scr_coord_val y = (env_t::menupos == MENU_BOTTOM ? display_get_height() - tool_selector->get_windowsize().h - env_t::iconsize.h : 0);
+			scr_coord_val y = (env_t::menupos == MENU_BOTTOM ? screen.h - tool_selector->get_windowsize().h - env_t::iconsize.h : 0);
 			create_win({ x, y }, tool_selector, w_do_not_delete, magic_toolbar + toolbar_tool.index_of(this));
 		}
 		else {
@@ -1263,7 +1284,7 @@ void toolbar_last_used_t::clear()
 // currently only needed for last used tools
 void toolbar_last_used_t::append(tool_t* t, player_t* sp)
 {
-	static int exclude_from_adding[8] = {
+	static int exclude_from_adding[9] = {
 		TOOL_SCHEDULE_ADD | GENERAL_TOOL,
 		TOOL_SCHEDULE_INS | GENERAL_TOOL,
 		TOOL_CHANGE_CONVOI | SIMPLE_TOOL,
@@ -1271,7 +1292,8 @@ void toolbar_last_used_t::append(tool_t* t, player_t* sp)
 		TOOL_CHANGE_DEPOT | SIMPLE_TOOL,
 		UNUSED_WKZ_PWDHASH_TOOL | SIMPLE_TOOL,
 		TOOL_CHANGE_PLAYER | SIMPLE_TOOL,
-		TOOL_RENAME | SIMPLE_TOOL
+		TOOL_RENAME | SIMPLE_TOOL,
+		TOOL_HALT_PERMISSION | SIMPLE_TOOL
 	};
 
 	if (!sp || t->get_icon(sp) == IMG_EMPTY) {
@@ -1441,11 +1463,12 @@ const char* two_click_tool_t::move(player_t* player, uint16 buttonstate, koord3d
 			return error;
 		}
 		if (value & 2) {
-			display_show_load_pointer(true);
+			gfx->set_show_load_cursor(true);
 			mark_tiles(player, start, pos);
-			display_show_load_pointer(false);
+			gfx->set_show_load_cursor(false);
 		}
 	}
+
 	return "";
 }
 
@@ -1490,8 +1513,15 @@ void two_click_tool_t::cleanup(bool delete_start_marker)
 			assert(!welt->lookup(pos));
 		}
 	}
+
 	// delete tooltip.
 	win_set_static_tooltip(NULL);
+
+	// The preview this estimate described has just been torn down, so the
+	// estimate goes with it. cleanup() runs before every mark_tiles() and from
+	// init()/exit(), which covers cancelling, switching tools, finishing a drag
+	// and being reset by the network layer.
+	win_clear_tool_estimate();
 }
 
 

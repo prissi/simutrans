@@ -27,6 +27,7 @@
 #include "../dataobj/translator.h"
 #include "../dataobj/loadsave.h"
 
+#include "../player/finance.h"
 #include "../player/simplay.h"
 
 #include "../vehicle/vehicle.h"
@@ -89,10 +90,13 @@ public:
 
 button_t gui_departure_board_t::absolute_times;
 
-
 // all connections
-class gui_halt_detail_t : public gui_aligned_container_t
+class gui_halt_detail_t : public gui_aligned_container_t, action_listener_t
 {
+	halthandle_t halt;
+	uint16 halt_permissions;
+	button_t connected_players[MAX_PLAYER_COUNT], all, none;
+
 	/**
 	 * Button to open line window
 	 */
@@ -105,6 +109,7 @@ class gui_halt_detail_t : public gui_aligned_container_t
 		{
 			this->line = line;
 			init(button_t::posbutton, NULL);
+			this->set_targetpos(koord::invalid);
 			add_listener(this);
 		}
 
@@ -175,10 +180,44 @@ public:
 
 	gui_halt_detail_t(halthandle_t h) : gui_aligned_container_t()
 	{
+		halt_permissions = 0;
+		all.add_listener(this);
+		none.add_listener(this);
+		for (uint16 i = 0; i < MAX_PLAYER_COUNT; i++) {
+			connected_players[i].pressed = 0;
+			connected_players[i].add_listener(this);
+		}
 		destination_counter = 0xFF;
 		cached_line_count = 0xFFFFFFFFul;
 		cached_convoy_count = 0xFFFFFFFFul;
 		update_connections(h);
+	}
+
+	bool action_triggered(gui_action_creator_t* b, value_t state) OVERRIDE
+	{
+		if (b == &all  &&  state.i == 1) {
+			halt_permissions = 0xFFFF;
+		}
+		else if (b == &none  &&  state.i == 1) {
+			halt_permissions = 0;
+		}
+		else {
+			// change permissions here
+			halt_permissions = 0;
+			for (uint16 i = 0; i < MAX_PLAYER_COUNT; i++) {
+				if (connected_players[i].pressed) {
+					halt_permissions |= 1 << i;
+				}
+			}
+		}
+		if (halt.is_bound()) {
+			// can be only triggered when current owner is visbile ...
+			cbuffer_t param;
+			param.printf("%u,%u", halt.get_id(), halt_permissions);
+			tool_t::simple_tool[TOOL_HALT_PERMISSION]->set_default_param(param);
+			world()->set_tool(tool_t::simple_tool[TOOL_HALT_PERMISSION], world()->get_active_player());
+		}
+		return false;
 	}
 
 	// will update if schedule or connection changed
@@ -189,14 +228,6 @@ public:
 
 karte_ptr_t gui_departure_board_t::welt;
 karte_ptr_t gui_halt_detail_t::gui_line_button_t::welt;
-
-
-static const char *sort_text[4] = {
-	"Zielort",
-	"via",
-	"via Menge",
-	"Menge"
-};
 
 const char cost_type[MAX_HALT_COST][64] =
 {
@@ -263,8 +294,7 @@ gui_halt_type_images_t::gui_halt_type_images_t(halthandle_t h)
 	for(uint i=0; i < lengthof(symbols); i++) {
 		if ( *symbols[i].desc ) {
 			add_component(img_transport + i);
-			img_transport[i].set_image( (*symbols[i].desc)->get_image_id(0));
-			img_transport[i].enable_offset_removal(true);
+			img_transport[i].set_image( (*symbols[i].desc)->get_image_id(0), true);
 			img_transport[i].set_visible( (halttype & symbols[i].type) != 0);
 		}
 	}
@@ -288,7 +318,7 @@ halt_info_t::halt_info_t(halthandle_t halt) :
 		scrolly_freight(&container_freight, true, true),
 		scrolly_departure(departure_board, true, true),
 		scrolly_details(halt_detail, true, true),
-		view(koord3d::invalid, scr_size(max(64, get_base_tile_raster_width()), max(56, get_base_tile_raster_width() * 7 / 8)))
+		view(koord3d::invalid, scr_size(max(64, gfx->get_base_tile_raster_width()), max(56, gfx->get_base_tile_raster_width() * 7 / 8)))
 {
 	if (halt.is_bound()) {
 		init(halt);
@@ -299,9 +329,12 @@ void halt_info_t::init(halthandle_t halt)
 {
 	this->halt = halt;
 	set_name(halt->get_name());
-	set_owner(halt->get_owner() );
-
-	halt->set_sortby( env_t::default_sortmode );
+	if ((1 << welt->get_active_player_nr()) & halt->get_owners()) {
+		set_owner(welt->get_active_player());
+	}
+	else {
+		set_owner(halt->get_first_owner());
+	}
 
 	set_table_layout(1,0);
 
@@ -323,13 +356,12 @@ void halt_info_t::init(halthandle_t halt)
 			{
 				add_component(&indicator_color);
 				// indicator for enabled freight type
-				img_enable[0].set_image(skinverwaltung_t::passengers->get_image_id(0));
-				img_enable[1].set_image(skinverwaltung_t::mail->get_image_id(0));
-				img_enable[2].set_image(skinverwaltung_t::goods->get_image_id(0));
+				img_enable[0].set_image(skinverwaltung_t::passengers->get_image_id(0),true);
+				img_enable[1].set_image(skinverwaltung_t::mail->get_image_id(0), true);
+				img_enable[2].set_image(skinverwaltung_t::goods->get_image_id(0), true);
 
 				for(uint i=0; i<3; i++) {
 					add_component(img_enable + i);
-					img_enable[i].enable_offset_removal(true);
 				}
 				img_types = new_component<gui_halt_type_images_t>(halt);
 			}
@@ -378,17 +410,17 @@ void halt_info_t::init(halthandle_t halt)
 	// list of waiting cargo
 	// sort mode
 	container_freight.set_table_layout(1,0);
-	container_freight.add_table(2,1);
-	container_freight.new_component<gui_label_t>("Sort waiting list by");
 
-	// added sort_button
-	sort_button.init(button_t::roundbox, sort_text[env_t::default_sortmode]);
-	sort_button.set_tooltip("Sort waiting list by");
-	sort_button.add_listener(this);
-	container_freight.add_component(&sort_button);
+	container_freight.add_table(2, 1);
+	{
+		container_freight.new_component<gui_label_t>("Sort waiting list by");
+		sort_mode_button.init(button_t::roundbox, freight_list_sorter_t::get_sort_mode_string(env_t::default_sortmode, halt));
+		sort_mode_button.set_tooltip("Sort waiting list by");
+		sort_mode_button.add_listener(this);
+		container_freight.add_component(&sort_mode_button);
+	}
 	container_freight.end_table();
-
-	container_freight.add_component(&text_freight);
+	container_freight.add_component(&text_freight,2);
 
 	// departure board
 	switch_mode.add_tab(&scrolly_departure, translator::translate("Departure board"));
@@ -410,15 +442,16 @@ void halt_info_t::init(halthandle_t halt)
 	chart.set_background(SYSCOL_CHART_BACKGROUND);
 	container_chart.add_component(&chart, D_BUTTONS_PER_ROW);
 	for (int cost = 0; cost<MAX_HALT_COST; cost++) {
-		uint16 curve = chart.add_curve(color_idx_to_rgb(cost_type_color[cost]), halt->get_finance_history(), MAX_HALT_COST, index_of_haltinfo[cost], MAX_MONTHS, 0, false, true, 0);
+		uint16 curve = chart.add_curve(gfx->palette_lookup(cost_type_color[cost]), halt->get_finance_history(), MAX_HALT_COST, index_of_haltinfo[cost], MAX_MONTHS, 0, false, true, 0);
 
 		button_t *b = container_chart.new_component<button_t>();
 		b->init(button_t::box_state_automatic | button_t::flexible, cost_type[cost]);
-		b->background_color = color_idx_to_rgb(cost_type_color[cost]);
+		b->background_color = gfx->palette_lookup(cost_type_color[cost]);
 		b->pressed = false;
 		button_to_chart.append(b, &chart, curve);
 	}
 
+	halt->reset_freight_info();
 	update_components();
 	set_resizemode(diagonal_resize);
 	reset_min_windowsize();
@@ -434,7 +467,7 @@ halt_info_t::~halt_info_t()
 		buf.printf( "h%u,%s", halt.get_id(), edit_name );
 		tool_t *tool = create_tool( TOOL_RENAME | SIMPLE_TOOL );
 		tool->set_default_param( buf );
-		welt->set_tool( tool, halt->get_owner() );
+		welt->set_tool( tool, welt->get_active_player() );
 		// since init always returns false, it is safe to delete immediately
 		delete tool;
 	}
@@ -475,13 +508,13 @@ void halt_info_t::update_components()
 		lb_happy[2].update();
 	}
 	else {
-		if(  has_character( 0x263A )  ) {
+		if(  gfx->font_has_character( 0x263A )  ) {
 			utf8 happy[4], unhappy[4];
 			happy[ utf16_to_utf8( 0x263A, happy ) ] = 0;
 			unhappy[ utf16_to_utf8( 0x2639, unhappy ) ] = 0;
 			lb_happy[0].buf().printf(translator::translate("Passengers %d %s, %d %s, %d no route"), halt->get_pax_happy(), happy, halt->get_pax_unhappy(), unhappy, halt->get_pax_no_route());
 		}
-		else if(  has_character( 30 )  ) {
+		else if(  gfx->font_has_character( 30 )  ) {
 			lb_happy[0].buf().printf(translator::translate("Passengers %d %c, %d %c, %d no route"), halt->get_pax_happy(), 30, halt->get_pax_unhappy(), 31, halt->get_pax_no_route());
 		}
 		else {
@@ -495,18 +528,20 @@ void halt_info_t::update_components()
 	img_enable[2].set_visible(halt->get_ware_enabled());
 	container_top->set_size( container_top->get_size());
 
-	// buffer update now only when needed by halt itself => dedicated buffer for this
-	int old_len = freight_info.len();
-	halt->get_freight_info(freight_info);
-	if(  old_len != freight_info.len()  ) {
-		text_freight.recalc_size();
-		container_freight.set_size(container_freight.get_min_size());
+	if (switch_mode.get_aktives_tab() == &scrolly_freight) {
+		sort_mode_button.set_text(freight_list_sorter_t::get_sort_mode_string(env_t::default_sortmode, halt));
+		// buffer update now only when needed by halt itself => dedicated buffer for this
+		int old_len = freight_info.len();
+		halt->get_freight_info(freight_info);
+		if (old_len != freight_info.len()) {
+			text_freight.recalc_size();
+			container_freight.set_size(container_freight.get_min_size());
+		}
 	}
-
-	if (switch_mode.get_aktives_tab() == &scrolly_departure) {
+	else if (switch_mode.get_aktives_tab() == &scrolly_departure) {
 		departure_board->update_departures(halt);
 	}
-	if (switch_mode.get_aktives_tab() == &scrolly_details) {
+	else if (switch_mode.get_aktives_tab() == &scrolly_details) {
 		halt_detail->update_connections(halt);
 	}
 	set_dirty();
@@ -530,13 +565,23 @@ void halt_info_t::draw(scr_coord pos, scr_size size)
 
 void gui_halt_detail_t::update_connections( halthandle_t halt )
 {
+	this->halt = halt;
 	if(  !halt.is_bound()  ) {
 		// first call, or invalid handle
 		remove_all();
 		return;
 	}
 
-	if(  halt->get_reconnect_counter()==destination_counter  &&
+	// which can be changed?
+	uint16 allow_change = (1 << world()->get_active_player_nr()) & halt->get_owners() ? ~halt->get_owners() : 0;
+	if (world()->get_active_player()->is_public_service()) {
+		allow_change = 0xFFFF;
+	}
+	for (uint16 i = 0; i < MAX_PLAYER_COUNT; i++) {
+		connected_players[i].enable((1 << i) & allow_change);
+	}
+
+	if(  halt->get_permissions()==halt_permissions  &&  halt->get_reconnect_counter()==destination_counter  &&
 		 halt->registered_lines.get_count()==cached_line_count  &&  halt->registered_convoys.get_count()==cached_convoy_count  ) {
 		// all current, so do nothing
 		return;
@@ -544,11 +589,50 @@ void gui_halt_detail_t::update_connections( halthandle_t halt )
 
 	// update connections from here
 	remove_all();
+	set_table_layout(2, 0);
+
+	if (halt->get_owners() != (1 << PLAYER_PUBLIC_NR)) { // not only owned by public service => can be changed
+		gui_aligned_container_t* t = new gui_aligned_container_t(2, 0);
+		t->new_component_span<gui_label_t>("Stopping permissions", 2);
+		int how_many = 0;
+		halt_permissions = halt->get_permissions();
+
+		all.init(button_t::square_automatic, "All");
+		all.pressed = halt_permissions == 0xFFFFu || halt_permissions == 0xFFFDu; // since public player cannot own convois, it does not need permissions
+		t->add_component(&all);
+
+		none.init(button_t::square_automatic, "Owner only");
+		none.pressed = halt_permissions == halt->get_owners();
+		t->add_component(&none);
+
+		for (uint16 i = 0; i < MAX_PLAYER_COUNT; i++) {
+			if (player_t* pl = world()->get_player(i)) {
+				if (pl->is_public_service() && !pl->get_finance()->has_convoi()) {
+					// only show public service when it owns convois ...
+					continue;
+				}
+				if ((1 << i) & halt->get_owners()) {
+					// do not add this button
+					continue;
+				}
+				connected_players[i].init(button_t::square_automatic, pl->get_name());
+				connected_players[i].text_color = PLAYER_FLAG | gfx->palette_lookup(pl->get_player_color1() + env_t::gui_player_color_dark);
+				t->add_component(connected_players + i);
+				how_many++;
+			}
+			connected_players[i].pressed = halt_permissions & (1 << i);
+		}
+		if (how_many > 0) {
+			take_component(t, 2);
+		}
+		else {
+			delete t;
+		}
+	}
 
 	const slist_tpl<fabrik_t *> & fab_list = halt->get_fab_list();
 	slist_tpl<const goods_desc_t *> nimmt_an;
 
-	set_table_layout(2,0);
 	new_component_span<gui_label_t>("Fabrikanschluss", 2);
 
 	if (!fab_list.empty()) {
@@ -619,7 +703,7 @@ void gui_halt_detail_t::update_connections( halthandle_t halt )
 			new_component<gui_line_button_t>(line);
 
 			// Line labels with color of player
-			gui_label_buf_t *lb = new_component<gui_label_buf_t>(PLAYER_FLAG | color_idx_to_rgb(line->get_owner()->get_player_color1()+env_t::gui_player_color_dark) );
+			gui_label_buf_t *lb = new_component<gui_label_buf_t>(PLAYER_FLAG | gfx->palette_lookup(line->get_owner()->get_player_color1()+env_t::gui_player_color_dark) );
 			lb->buf().append( line->get_name() );
 			lb->update();
 		}
@@ -639,7 +723,7 @@ void gui_halt_detail_t::update_connections( halthandle_t halt )
 			new_component<gui_convoi_button_t>(cnv);
 
 			// Line labels with color of player
-			gui_label_buf_t *lb = new_component<gui_label_buf_t>(PLAYER_FLAG | color_idx_to_rgb(cnv->get_owner()->get_player_color1()+env_t::gui_player_color_dark) );
+			gui_label_buf_t *lb = new_component<gui_label_buf_t>(PLAYER_FLAG | gfx->palette_lookup(cnv->get_owner()->get_player_color1()+env_t::gui_player_color_dark) );
 			lb->buf().append( cnv->get_name() );
 			lb->update();
 		}
@@ -805,7 +889,7 @@ void gui_departure_board_t::update_departures(halthandle_t halt)
 		for(  uint j = 0;  j < line->count_convoys();  j++  ) {
 			convoihandle_t cnv = line->get_convoy(j);
 			if(  cnv.is_bound()  &&  ( cnv->get_state() == convoi_t::DRIVING  ||  cnv->is_waiting() )  &&  haltestelle_t::get_halt( cnv->get_schedule()->get_current_entry().pos, cnv->get_owner() ) == halt  ) {
-				halthandle_t prev_halt = haltestelle_t::get_halt( cnv->front()->last_stop_pos, cnv->get_owner() );
+				halthandle_t prev_halt = haltestelle_t::get_halt( cnv->front()->last_stop_pos, cnv->get_owner(), true );
 				sint32 delta_t = calc_ticks_until_arrival( cnv );
 				if(  prev_halt.is_bound()  ) {
 					dest_info_t prev( prev_halt, delta_t, cnv );
@@ -839,8 +923,8 @@ void gui_departure_board_t::update_departures(halthandle_t halt)
 	}
 
 	for(convoihandle_t cnv : halt->registered_convoys ) {
-		if(  cnv.is_bound()  &&  ( cnv->get_state() == convoi_t::DRIVING  ||  cnv->is_waiting() )  &&  haltestelle_t::get_halt( cnv->get_schedule()->get_current_entry().pos, cnv->get_owner() ) == halt  ) {
-			halthandle_t prev_halt = haltestelle_t::get_halt( cnv->front()->last_stop_pos, cnv->get_owner() );
+		if(  cnv.is_bound()  &&  ( cnv->get_state() == convoi_t::DRIVING  ||  cnv->is_waiting() )  &&  haltestelle_t::get_halt( cnv->get_schedule()->get_current_entry().pos, cnv->get_owner(), true ) == halt  ) {
+			halthandle_t prev_halt = haltestelle_t::get_halt( cnv->front()->last_stop_pos, cnv->get_owner(), true );
 			sint32 delta_t = cur_ticks + calc_ticks_until_arrival( cnv );
 			if(  prev_halt.is_bound()  ) {
 				dest_info_t prev( prev_halt, delta_t, cnv );
@@ -870,7 +954,7 @@ void gui_departure_board_t::update_departures(halthandle_t halt)
 		new_component_span<gui_label_t>("Departures to\n", 3);
 
 		for(dest_info_t hi : destinations ) {
-			if(  freight_list_sorter_t::by_via_sum != env_t::default_sortmode  ||  !exclude.is_contained( hi.halt )  ) {
+			if(  freight_list_sorter_t::by_via > env_t::default_sortmode  ||  !exclude.is_contained( hi.halt )  ) {
 				gui_label_buf_t *lb = new_component<gui_label_buf_t>(SYSCOL_TEXT, gui_label_t::right);
 				if( hi.delta_ticks == 0 ) {
 					lb->buf().append( translator::translate( "now" ) );
@@ -963,12 +1047,11 @@ void gui_departure_board_t::insert_image(convoihandle_t cnv)
 /**
  * This method is called if an action is triggered
  */
-bool halt_info_t::action_triggered( gui_action_creator_t *comp,value_t /* */)
+bool halt_info_t::action_triggered( gui_action_creator_t *comp, value_t )
 {
-	if (comp == &sort_button) {
-		env_t::default_sortmode = ((int)(halt->get_sortby())+1)%4;
-		halt->set_sortby((freight_list_sorter_t::sort_mode_t) env_t::default_sortmode);
-		sort_button.set_text(sort_text[env_t::default_sortmode]);
+	if (comp == &sort_mode_button) {
+		env_t::default_sortmode = ((int)(env_t::default_sortmode + 1) % (int)freight_list_sorter_t::SORT_MODES);
+		halt->reset_freight_info();
 	}
 	else if(  comp == &input  ) {
 		if (strcmp(halt->get_name(), edit_name)) {
@@ -977,7 +1060,7 @@ bool halt_info_t::action_triggered( gui_action_creator_t *comp,value_t /* */)
 			buf.printf( "h%u,%s", halt.get_id(), edit_name );
 			tool_t *tool = create_tool( TOOL_RENAME | SIMPLE_TOOL );
 			tool->set_default_param( buf );
-			welt->set_tool( tool, halt->get_owner() );
+			welt->set_tool( tool, welt->get_active_player() );
 			// since init always returns false, it is safe to delete immediately
 			delete tool;
 		}
@@ -1016,8 +1099,7 @@ void halt_info_t::rdwr(loadsave_t *file)
 			set_windowsize(size);
 		}
 	}
-	// sort
-	file->rdwr_byte( env_t::default_sortmode );
+	// sort mode is global ... no need to safe
 
 	scrolly_freight.rdwr(file);
 	scrolly_departure.rdwr(file);

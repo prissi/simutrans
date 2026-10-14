@@ -4,6 +4,7 @@
  */
 
 #include "factorylist_frame.h"
+#include "factorylist_stats.h"
 #include "gui_theme.h"
 #include "../dataobj/translator.h"
 #include "../player/simplay.h"
@@ -26,13 +27,17 @@ const char *factorylist_frame_t::sort_text[factorylist::SORT_MODES] = {
 class playername_const_scroll_item_t : public gui_scrolled_list_t::const_text_scrollitem_t {
 public:
 	const uint8 player_nr;
-	playername_const_scroll_item_t( player_t *pl ) : gui_scrolled_list_t::const_text_scrollitem_t( pl->get_name(), color_idx_to_rgb(pl->get_player_color1()+env_t::gui_player_color_dark) ), player_nr(pl->get_player_nr()) { }
+	playername_const_scroll_item_t( player_t *pl )
+		: gui_scrolled_list_t::const_text_scrollitem_t( pl->get_name(), gfx->palette_lookup(pl->get_player_color1()+env_t::gui_player_color_dark) )
+		, player_nr(pl->get_player_nr())
+	{ }
 };
 
 factorylist_frame_t::factorylist_frame_t() :
 	gui_frame_t( translator::translate("fl_title") ),
 	scrolly(gui_scrolled_list_t::windowskin, factorylist_stats_t::compare)
 {
+	factorylist_stats_t::halt_lang_id = welt->get_settings().get_name_language_id();
 	scrolly.set_checkered(true);
 
 	set_table_layout(3,4);

@@ -6,7 +6,7 @@
 #include "./utils/simstring.h"
 
 #ifdef STEAM_BUILT
-#include "../steam/steam.h"
+#include "../steam/steam_iface.h"
 #endif
 
 void simachievements_t::check_pakset_ach() {
@@ -51,7 +51,7 @@ void simachievements_t::check_state_ach(karte_t* world) {
 	pak_name.erase(pak_name.length() - 1);
 	for ( fabrik_t* fab : world->get_fab_list() ) {
 		if ( STRICMP(pak_name.c_str(), "pak192.comic") == 0 ) {
-			if ( check_yearly_production(fab, "squid", 0) ) {
+			if ( check_yearly_production(fab, "Mr. Kraken", 0) ) {
 				set_achievement(ACH_PROD_INK);
 			}
 		}
@@ -61,6 +61,6 @@ void simachievements_t::check_state_ach(karte_t* world) {
 void simachievements_t::set_achievement(simachievements_enum ach) {
 	dbg->message("simachievements_t::set_achievement()", "Unlocking achievement %d", ach);
 #ifdef STEAM_BUILT
-	steam_t::get_instance()->get_achievements()->set_achievement(ach);
+	steam_set_achievement(ach);
 #endif
 }

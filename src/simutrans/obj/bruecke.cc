@@ -25,27 +25,22 @@ bruecke_t::bruecke_t(loadsave_t* const file) : obj_no_info_t()
 }
 
 
+bool bruecke_t::is_clipping_below_needed() const
+{
+	// elevated no clip?
+	return desc->is_clip_below();
+}
+
+
 bruecke_t::bruecke_t(koord3d pos, player_t *player, const bridge_desc_t *desc, bridge_desc_t::img_t img) :
  obj_no_info_t(pos)
 {
 	this->desc = desc;
+	assert(img >= bridge_desc_t::NS_Segment && img <= bridge_desc_t::OW_Pillar2);
 	this->img = img;
 	set_owner( player );
 	player_t::book_construction_costs( get_owner(), -desc->get_price(), get_pos().get_2d(), desc->get_waytype());
 }
-
-
-// single height segments
-static bridge_desc_t::img_t single_img[24]= {
-	bridge_desc_t::NS_Segment, bridge_desc_t::OW_Segment,
-	bridge_desc_t::N_Start, bridge_desc_t::S_Start, bridge_desc_t::O_Start, bridge_desc_t::W_Start,
-	bridge_desc_t::N_Ramp, bridge_desc_t::S_Ramp, bridge_desc_t::O_Ramp, bridge_desc_t::W_Ramp,
-	bridge_desc_t::NS_Pillar, bridge_desc_t::OW_Pillar,
-	bridge_desc_t::NS_Segment, bridge_desc_t::OW_Segment,
-	bridge_desc_t::N_Start, bridge_desc_t::S_Start, bridge_desc_t::O_Start, bridge_desc_t::W_Start,
-	bridge_desc_t::N_Ramp, bridge_desc_t::S_Ramp, bridge_desc_t::O_Ramp, bridge_desc_t::W_Ramp,
-	bridge_desc_t::NS_Pillar, bridge_desc_t::OW_Pillar
-};
 
 void bruecke_t::calc_image()
 {
@@ -63,7 +58,7 @@ void bruecke_t::calc_image()
 			// handle cases where old bridges don't have correct images
 			image_id display_image=desc->get_background( img, is_snow );
 			if(  display_image==IMG_EMPTY && desc->get_foreground( img, is_snow )==IMG_EMPTY  ) {
-				display_image=desc->get_background( single_img[img], is_snow );
+				display_image=desc->get_background( bridge_desc_t::single_img[img], is_snow );
 			}
 			weg0->set_image( display_image );
 
@@ -103,7 +98,7 @@ image_id bruecke_t::get_front_image() const
 	// handle cases where old bridges don't have correct images
 	image_id display_image=desc->get_foreground( img, is_snow );
 	if(  display_image==IMG_EMPTY && desc->get_background( img, is_snow )==IMG_EMPTY  ) {
-		display_image=desc->get_foreground( single_img[img], is_snow );
+		display_image=desc->get_foreground( bridge_desc_t::single_img[img], is_snow );
 	}
 	return display_image;
 }
@@ -125,7 +120,7 @@ void bruecke_t::rdwr(loadsave_t *file)
 
 	if(file->is_loading()) {
 		if (!s) {
-			dbg->fatal("bruecke_t::rdwr", "No bridge name for bridge at (%s)", get_pos().get_str());
+			dbg->fatal("bruecke_t::rdwr", "No bridge name for bridge");
 		}
 
 		desc = bridge_builder_t::get_desc(s);
@@ -133,8 +128,7 @@ void bruecke_t::rdwr(loadsave_t *file)
 			desc = bridge_builder_t::get_desc(translator::compatibility_name(s));
 		}
 		if(desc==NULL) {
-			dbg->warning( "bruecke_t::rdwr", "Unknown bridge \"%s\" at (%s) will be replaced with best match!", s, get_pos().get_str() );
-			pakset_manager_t::add_missing_paks( s, MISSING_BRIDGE );
+			pakset_manager_t::add_missing_paks(s, MISSING_BRIDGE);
 		}
 		free(const_cast<char *>(s));
 
@@ -155,12 +149,14 @@ void bruecke_t::rdwr(loadsave_t *file)
 				default: break;
 			}
 		}
+		assert(img >= bridge_desc_t::NS_Segment && img <= bridge_desc_t::OW_Pillar2);
+
 	}
 }
 
 
 // correct speed and maintenance
-void bruecke_t::finish_rd()
+bool bruecke_t::finish_rd()
 {
 	grund_t *gr = welt->lookup(get_pos());
 	if(desc==NULL) {
@@ -171,6 +167,7 @@ void bruecke_t::finish_rd()
 			}
 			if(desc==NULL) {
 				dbg->fatal("bruecke_t::finish_rd()", "Unknown bridge for type %x at (%s)", weg->get_waytype(), get_pos().get_str() );
+				return true;
 			}
 		}
 		else {
@@ -181,6 +178,7 @@ void bruecke_t::finish_rd()
 			}
 			if(desc==NULL) {
 				dbg->fatal("bruecke_t::finish_rd()", "No powerline bridge to build bridge type at (%s)", get_pos().get_str() );
+				return true;
 			}
 		}
 	}
@@ -192,30 +190,23 @@ void bruecke_t::finish_rd()
 		if(weg==NULL) {
 			dbg->error("bruecke_t::finish_rd()","Bridge without way at(%s)!", gr->get_pos().get_str() );
 			weg = weg_t::alloc( desc->get_waytype() );
-			gr->neuen_weg_bauen( weg, 0, welt->get_public_player() );
+			gr->neuen_weg_bauen( weg, 0, NULL );
+			weg->set_owner(player);
 		}
 		weg->set_max_speed(desc->get_topspeed());
 		// take ownership of way
-		player_t::add_maintenance( weg->get_owner(), -weg->get_desc()->get_maintenance(), desc->get_finance_waytype());
 		weg->set_owner(player);
 	}
-	player_t::add_maintenance( player,  desc->get_maintenance(), desc->get_finance_waytype());
+	player_t::add_maintenance(player, desc->get_maintenance(), desc->get_finance_waytype());
 
 	// with double heights may need to correct image on load (not all desc have double images)
 	// at present only start images have 2 height variants, others to follow...
-	if(  !gr->ist_karten_boden()  ) {
-		if(  desc->get_waytype() != powerline_wt  ) {
-			//img = desc->get_simple( gr->get_weg_ribi_unmasked( desc->get_waytype() ) );
-		}
-	}
-	else {
-		if(  gr->get_grund_hang() == slope_t::flat  ) {
-			//img = desc->get_ramp( gr->get_weg_hang() );
-		}
-		else {
+	if(  gr->ist_karten_boden()  ) {
+		if(  gr->get_grund_hang() != slope_t::flat  ) {
 			img = desc->get_start( gr->get_grund_hang() );
 		}
 	}
+	return false;
 }
 
 
@@ -227,7 +218,6 @@ void bruecke_t::cleanup( player_t *player2 )
 	if(  const grund_t *gr = welt->lookup(get_pos())  ) {
 		if(  weg_t *weg0 = gr->get_weg( desc->get_waytype() )  ) {
 			weg0->set_max_speed( weg0->get_desc()->get_topspeed() );
-			player_t::add_maintenance( player,  weg0->get_desc()->get_maintenance(), weg0->get_desc()->get_finance_waytype());
 			// reset offsets
 			weg0->set_xoff(0);
 			weg0->set_yoff(0);

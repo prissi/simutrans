@@ -7,7 +7,11 @@
 #include <string.h>
 #include "../../simcolor.h"
 #include "../../simevent.h"
+#include "../../simskin.h"
+#include "../../descriptor/skin_desc.h"
+#include "../../descriptor/skin_desc.h"
 #include "../../display/simgraph.h"
+#include "../../display/simimg.h"
 #include "../../utils/simstring.h"
 #include "../../utils/unicode.h"
 #include "../gui_theme.h"
@@ -71,6 +75,7 @@ private:
 		ATT_EM_START,     ATT_EM_END,
 		ATT_IT_START,     ATT_IT_END,
 		ATT_STRONG_START, ATT_STRONG_END,
+		ATT_IMG_START,    ATT_IMG_END,
 		ATT_UNKNOWN
 	};
 
@@ -94,8 +99,20 @@ private:
 		std::string  param;
 	};
 
+	/**
+	* Image position container
+	* @author Hayden Read
+	*/
+	struct image_t
+	{
+		// may show have aling paramters?
+		image_t(const image_id id_) :id(id_) {}
+		image_id id;
+	};
+
 	slist_tpl<node_t>      nodes;
 	slist_tpl<hyperlink_t> links;
+	slist_tpl<image_t>     images;
 	char title[128];
 
 	bool dirty;
@@ -119,6 +136,7 @@ void gui_flowtext_intern_t::set_text(const char *text)
 	// purge all old texts
 	nodes.clear();
 	links.clear();
+	images.clear();
 
 	// danger here, longest word in text must not exceed stoarge space!
 	char word[512];
@@ -167,6 +185,7 @@ void gui_flowtext_intern_t::set_text(const char *text)
 						// skip ",=, and ' '
 						while(*start == '"'  ||  *start == ' '  ||  *start == '='  ||  *start == '\'') start++;
 						char *end = start;
+
 						// find first ',", terminate string there
 						while(*end  &&  *end != '"'  &&  *end != '\'') end++;
 						*end = 0;
@@ -189,6 +208,50 @@ void gui_flowtext_intern_t::set_text(const char *text)
 					}
 				}
 			}
+
+			else if (word[0] == 'i' && word[1] == 'm' && word[2] == 'g') {
+				char* start = word + 3;
+				if (!endtag) {
+					att = ATT_IMG_START;
+					// search for src attributes
+					// .. ignore any number of spaces
+					// .. accept link string enclosed by " and '
+					// skip a and ' '
+					while (*start == ' ') start++;
+					start = const_cast<char*>( strstart(start, "src") );
+					if (start) {
+						// skip ",=, and ' '
+						while(*start == '"'  ||  *start == ' '  ||  *start == '='  ||  *start == '\'') start++;
+						char *end = start;
+
+						// find first ',", terminate string there
+						while(*end  &&  *end != '"'  &&  *end != '\'') end++;
+						*end = 0;
+						param = start;
+					}
+					else {
+						param = "";
+					}
+					if (start &&  start[0]) {
+						// now determine what is is
+						if (param[0] != '#') {
+							// full file name => unsupported for now
+						}
+						else switch (tolower(start[1])) {
+							// Tag starting with # have a second letter to determine which tool/gadget image to display
+							case 'w': images.append(image_t(skinverwaltung_t::gadget->get_image_id(atoi(start + 2)))); break;
+							case 'g': images.append(image_t(skinverwaltung_t::tool_icons_general->get_image_id(atoi(start + 2)))); break;
+							case 's': images.append(image_t(skinverwaltung_t::tool_icons_simple->get_image_id(atoi(start + 2)))); break;
+							case 'd': images.append(image_t(skinverwaltung_t::tool_icons_dialoge->get_image_id(atoi(start + 2)))); break;
+							case 't': images.append(image_t(skinverwaltung_t::tool_icons_toolbars->get_image_id(atoi(start + 2)))); break;
+						}
+					}
+				}
+				else {
+					att = ATT_IMG_END;
+				}
+			}
+
 			else if (word[0] == 'h' && word[1] == '1') {
 				att = endtag ? ATT_H1_END : ATT_H1_START;
 			}
@@ -201,6 +264,7 @@ void gui_flowtext_intern_t::set_text(const char *text)
 			else if (word[0] == 's' && word[1] == 't') {
 				att = endtag ? ATT_STRONG_END : ATT_STRONG_START;
 			}
+
 			else if (!endtag && strcmp(word, "title") == 0) {
 				// title tag
 				const unsigned char* title_start = lead;
@@ -359,6 +423,7 @@ scr_size gui_flowtext_intern_t::output(scr_coord offset, bool doit, bool return_
 	const int width = size.w-D_MARGIN_LEFT-D_MARGIN_RIGHT;
 
 	slist_tpl<hyperlink_t>::iterator link = links.begin();
+	slist_tpl<image_t>::iterator image = images.begin();
 
 	int xpos            = 0;
 	int ypos            = 0;
@@ -367,16 +432,18 @@ scr_size gui_flowtext_intern_t::output(scr_coord offset, bool doit, bool return_
 	bool double_it      = false;
 	bool link_it        = false; // true, if currently underlining for a link
 	int extra_pixel     = 0;     // extra pixel before next line
+	int extra_pixels    = 0;     // extra pixels for image display
+	int extra_x_pixels  = 0;     // extra pixels in x dimension for image display
 	int last_link_x     = 0;     // at this position ye need to continue underline drawing
 	int max_width    = width;
 	int text_width   = width;
-	const int space_width = proportional_string_width(" ");
+	const int space_width = gfx->calc_text_width(" ");
 
 	for(node_t const& i : nodes) {
 		switch (i.att) {
 			case ATT_NONE:
 			case ATT_NO_SPACE: {
-				int nxpos = xpos + proportional_string_width(i.text.c_str());
+				int nxpos = xpos + gfx->calc_text_width(i.text.c_str());
 
 				if (nxpos >= text_width) {
 					text_width = nxpos;
@@ -393,12 +460,25 @@ scr_size gui_flowtext_intern_t::output(scr_coord offset, bool doit, bool return_
 						if(  xpos!=last_link_x  &&  link_it  ) {
 							if(  doit  ) {
 								// close the link
-								display_fillbox_wh_clip_rgb( offset.x + last_link_x + D_MARGIN_LEFT, ypos + offset.y + LINESPACE-1, xpos-last_link_x, 1, color, false);
+								gfx->draw_rect_clipped( offset.x + last_link_x + D_MARGIN_LEFT, ypos + offset.y + LINESPACE-1, xpos-last_link_x, 1, color, false CLIP_NUM_DEFAULT);
 							}
 							extra_pixel = 1;
 						}
-						xpos = 0;
-						last_link_x = 0;
+						if ( (extra_x_pixels + nxpos) > max_width ) {
+							ypos += extra_pixels;
+							extra_pixels = 0;
+							extra_x_pixels = 0;
+						}
+						if ( extra_pixels > 0 ) {
+							xpos = extra_x_pixels;
+							nxpos += extra_x_pixels;
+							extra_pixels -= LINESPACE+extra_pixel;
+						}
+						else {
+							xpos = 0;
+							extra_pixels = 0;
+						}
+						last_link_x = extra_x_pixels;
 						ypos += LINESPACE+extra_pixel;
 						extra_pixel = 0;
 					}
@@ -410,12 +490,12 @@ scr_size gui_flowtext_intern_t::output(scr_coord offset, bool doit, bool return_
 
 				if (doit) {
 					if (double_it) {
-						display_proportional_clip_rgb(offset.x + xpos + 1 + D_MARGIN_LEFT, offset.y + ypos + 1, i.text.c_str(), 0, double_color, false);
+						gfx->draw_text_clipped(offset.x + xpos + 1 + D_MARGIN_LEFT, offset.y + ypos + 1, i.text.c_str(), 0, double_color, false);
 						extra_pixel |= 1;
 					}
-					scr_coord_val width = display_proportional_clip_rgb(offset.x + xpos + D_MARGIN_LEFT, offset.y + ypos, i.text.c_str(), 0, color, false);
+					scr_coord_val width = gfx->draw_text_clipped(offset.x + xpos + D_MARGIN_LEFT, offset.y + ypos, i.text.c_str(), 0, color, false);
 					if(  link_it  ) {
-						display_fillbox_wh_clip_rgb( offset.x + last_link_x + D_MARGIN_LEFT, ypos + offset.y + LINESPACE-1, (xpos+width)-last_link_x, 1, color, false);
+						gfx->draw_rect_clipped( offset.x + last_link_x + D_MARGIN_LEFT, ypos + offset.y + LINESPACE-1, (xpos+width)-last_link_x, 1, color, false CLIP_NUM_DEFAULT);
 						last_link_x = xpos+width;
 					}
 				}
@@ -431,11 +511,13 @@ scr_size gui_flowtext_intern_t::output(scr_coord offset, bool doit, bool return_
 				if(  last_link_x<xpos  &&  link_it  ) {
 					if(  doit  ) {
 						// close the link
-						display_fillbox_wh_clip_rgb( offset.x + last_link_x + D_MARGIN_LEFT, ypos + offset.y + LINESPACE-1, xpos-last_link_x, 1, color, false);
+						gfx->draw_rect_clipped( offset.x + last_link_x + D_MARGIN_LEFT, ypos + offset.y + LINESPACE-1, xpos-last_link_x, 1, color, false CLIP_NUM_DEFAULT);
 					}
 					extra_pixel = 1;
 				}
-				ypos += LINESPACE+extra_pixel;
+				ypos += LINESPACE + extra_pixel + extra_pixels;
+				extra_x_pixels=0;
+				extra_pixels=0;
 				last_link_x = 0;
 				extra_pixel = 0;
 				break;
@@ -467,8 +549,8 @@ scr_size gui_flowtext_intern_t::output(scr_coord offset, bool doit, bool return_
 			case ATT_H1_END:
 				double_it = false;
 				if(doit) {
-					display_fillbox_wh_clip_rgb(offset.x + 1 + D_MARGIN_LEFT, offset.y + ypos + LINESPACE,   xpos, 1, color,        false);
-					display_fillbox_wh_clip_rgb(offset.x + D_MARGIN_LEFT,     offset.y + ypos + LINESPACE-1, xpos, 1, double_color, false);
+					gfx->draw_rect_clipped(offset.x + 1 + D_MARGIN_LEFT, offset.y + ypos + LINESPACE,   xpos, 1, color,        false CLIP_NUM_DEFAULT);
+					gfx->draw_rect_clipped(offset.x +     D_MARGIN_LEFT, offset.y + ypos + LINESPACE-1, xpos, 1, double_color, false CLIP_NUM_DEFAULT);
 				}
 				xpos = 0;
 				extra_pixel = 0;
@@ -506,12 +588,45 @@ scr_size gui_flowtext_intern_t::output(scr_coord offset, bool doit, bool return_
 				}
 				break;
 
+			case ATT_IMG_START:
+				if (image != images.end()) {
+					//display image
+					const scr_rect area = gfx->get_base_image_offset(image->id);
+
+					if (  xpos + area.w > max_width  &&  xpos != 0  ) {
+						// New Line if image is too large to fit on line (unless already at new line)
+						xpos=0;
+						ypos += LINESPACE + extra_pixel + extra_pixels;
+						extra_pixel = 0;
+						extra_pixels = 0;
+						extra_x_pixels = 0;
+					}
+
+					if ( doit ) {
+						// display_base_img calls display_color_img if zoom level is 1:1;
+						// this will display the scaled tool image, not the original one
+						// and therefore causes graphical glitches when zooming in/out.
+						// Force displaying non-scaled tool image instead.
+						gfx->fit_img_to_width(image->id, area.w);
+
+						gfx->draw_base_img(image->id, offset.x + xpos + 1 - area.x + D_MARGIN_LEFT, offset.y + ypos + area.y, 0, false, false CLIP_NUM_DEFAULT);
+					}
+					xpos += area.w+2;
+					if ( extra_pixels < area.h - LINESPACE ) {
+						extra_pixels = area.h - LINESPACE;	// Set extra pixels for new line based on height of image.
+					}
+					image++;
+				}
+				break;
+			case ATT_IMG_END:
+				break;
+
 			default: break;
 		}
 	}
 	ypos += LINESPACE;
 	if(dirty) {
-		mark_rect_dirty_wc( offset.x + D_MARGIN_LEFT, offset.y, offset.x+max_width + D_MARGIN_LEFT, offset.y+ypos );
+		gfx->mark_rect_dirty_wc( offset.x + D_MARGIN_LEFT, offset.y, offset.x+max_width + D_MARGIN_LEFT, offset.y+ypos );
 		dirty = false;
 	}
 	return scr_size( (return_max_width ? max_width : text_width)+D_MARGIN_LEFT+D_MARGIN_RIGHT, ypos);

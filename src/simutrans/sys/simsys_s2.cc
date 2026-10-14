@@ -44,6 +44,26 @@ extern char **__argv;
 #else
 #endif
 
+// a finger held this long without moving is a long press (Android's own default)
+#define LONGPRESS_MS (500)
+
+// how far it may still wander and count as held; a resting finger is never quite still
+#define LONGPRESS_SLOP (16)
+
+/* A finger held down stays held, so the state is re-announced while it lasts.
+ * This is insurance, not a fix for a known loss: during development one long
+ * press was seen to be announced and never arrive, and the cause was never
+ * established. Repeating costs two extra events per gesture and nothing else,
+ * because the announcement is idempotent by contract - a consumer that has
+ * already acted on it must ignore the next one, which is what the text field
+ * does. Set LONGPRESS_REPEAT_UNTIL_MS to LONGPRESS_MS to switch it off. */
+#define LONGPRESS_REPEAT_MS (250)
+
+// and it stops: in_finger_handling is cleared by SDL_FINGERUP alone, so a touch
+// sequence that ends without one would otherwise repeat for as long as the app
+// lives. Bounded, it can never become a stream.
+#define LONGPRESS_REPEAT_UNTIL_MS (LONGPRESS_MS + 1000)
+
 // threshold for zooming in/out with multitouch
 #define DELTA_PINCH (0.033)
 
@@ -310,6 +330,7 @@ bool dr_os_init(const int* parameter)
 	SDL_EventState( SDL_MULTIGESTURE, SDL_ENABLE );
 	SDL_EventState( SDL_CLIPBOARDUPDATE, SDL_DISABLE );
 	SDL_EventState( SDL_DROPFILE, SDL_DISABLE );
+//	SDL_SetHint(SDL_HINT_ANDROID_TRAP_BACK_BUTTON, "1");
 
 	// termination event: save current map and settings
 	SDL_SetEventFilter(my_event_filter, 0);
@@ -318,9 +339,10 @@ bool dr_os_init(const int* parameter)
 	if (has_soft_keyboard  &&  !env_t::hide_keyboard) {
 		env_t::hide_keyboard = true;
 	}
-	if (!env_t::hide_keyboard) {
+// we always enable it
+//	if (!env_t::hide_keyboard) {
 		SDL_EventState(SDL_TEXTINPUT, SDL_ENABLE);
-	}
+//	}
 
 	sync_blit = parameter[0];  // hijack SDL1 -async flag for SDL2 vsync
 	use_dirty_tiles = !parameter[1]; // hijack SDL1 -use_hw flag to turn off dirty tile updates (force fullscreen updates)
@@ -478,8 +500,8 @@ int dr_os_open(const scr_size window_size, sint16 fs)
 	assert(tex_h <= screen->h);
 	assert(tex_w <= tex_pitch);
 
-	display_set_actual_width( tex_w );
-	display_set_height( tex_h );
+	gfx->set_screen_actual_width( tex_w );
+	gfx->set_screen_height( tex_h );
 	return tex_pitch;
 }
 
@@ -528,7 +550,7 @@ int dr_textur_resize(unsigned short** const textur, int tex_w, int const tex_h)
 	assert(tex_h <= screen->h);
 	assert(tex_w <= tex_pitch);
 
-	display_set_actual_width( tex_w );
+	gfx->set_screen_actual_width( tex_w );
 	return tex_pitch;
 }
 
@@ -566,12 +588,13 @@ void dr_prepare_flush()
 
 void dr_flush()
 {
-	display_flush_buffer();
+	gfx->flush_framebuffer();
 	if(  !use_dirty_tiles  ) {
 		SDL_UpdateTexture( screen_tx, NULL, screen->pixels, screen->pitch );
 	}
 
-	SDL_Rect rSrc  = { 0, 0, display_get_width(), display_get_height()  };
+	const scr_rect screen = gfx->get_screen_size();
+	SDL_Rect rSrc  = { 0, 0, screen.w, screen.h  };
 	SDL_RenderCopy( renderer, screen_tx, &rSrc, NULL );
 
 	SDL_RenderPresent( renderer );
@@ -619,13 +642,44 @@ static inline unsigned int ModifierKeys()
 	const SDL_Keymod mod = SDL_GetModState();
 
 	return
-		  ((mod & KMOD_SHIFT) ? SIM_MOD_SHIFT : SIM_MOD_NONE)
-		| ((mod & KMOD_CTRL)  ? SIM_MOD_CTRL  : SIM_MOD_NONE)
+		  ((mod & KMOD_SHIFT) ? SIM_KEYMOD_SHIFT : SIM_KEYMOD_NONE)
+		| ((mod & KMOD_CTRL)  ? SIM_KEYMOD_CTRL  : SIM_KEYMOD_NONE)
 #ifdef __APPLE__
 		// Treat the Command key as a control key.
-		| ((mod & KMOD_GUI)   ? SIM_MOD_CTRL  : SIM_MOD_NONE)
+		| ((mod & KMOD_GUI)   ? SIM_KEYMOD_CTRL  : SIM_KEYMOD_NONE)
 #endif
 		;
+}
+
+
+/**
+ * A finger resting in place is a long press, the one touch gesture Simutrans
+ * did not use yet. It has to be recognised here: SDL_FINGERDOWN carries no
+ * event of its own, and a held finger sends nothing else to go by. The caller
+ * has already established that the finger has not wandered off.
+ */
+static bool emit_longpress_if_due(uint32 down_time, bool &already_sent, uint32 &last_sent, sint32 mx, sint32 my)
+{
+	const uint32 now = dr_time();
+	if(  now - down_time >= LONGPRESS_REPEAT_UNTIL_MS  ) {
+		// said often enough; whoever wanted it has had it
+		return false;
+	}
+	if(  already_sent  ?  now - last_sent < LONGPRESS_REPEAT_MS  :  now - down_time < LONGPRESS_MS  ) {
+		return false;
+	}
+	if(  !already_sent  ) {
+		DBG_MESSAGE("SDL_FINGERDOWN", "SIM_MOUSE_LONGPRESS at %i,%i", mx, my);
+	}
+	already_sent      = true;
+	last_sent         = now;
+	sys_event.type    = SIM_MOUSE_BUTTONS;
+	sys_event.code    = SIM_MOUSE_LONGPRESS;
+	sys_event.mb      = 0;
+	sys_event.mx      = mx;
+	sys_event.my      = my;
+	sys_event.key_mod = ModifierKeys();
+	return true;
 }
 
 
@@ -651,6 +705,15 @@ static void internal_GetEvents()
 	static bool has_queued_finger_release = false;
 	static bool has_queued_zero_mouse_move = false;
 	static sint32 last_mx, last_my; // last finger down pos
+
+	// A long press is the one touch gesture Simutrans did not use yet, and the
+	// only deliberate one a bare tap cannot be mistaken for. SDL_FINGERDOWN
+	// delivers nothing by itself (the press is synthesised from motion or from
+	// the lift), so the hold has to be timed here instead.
+	static uint32 finger_down_time = 0;
+	static sint32 finger_down_mx = 0, finger_down_my = 0;
+	static bool longpress_sent = false;
+	static uint32 longpress_last_sent = 0;
 
 	if (has_queued_finger_release) {
 		// we need to send a finger release, which was not done yet
@@ -681,6 +744,11 @@ static void internal_GetEvents()
 	SDL_Event event;
 	event.type = 1;
 	if (SDL_PollEvent(&event) == 0) {
+		// An idle queue is one of the two moments a hold can be noticed; a single
+		// finger that has not become a drag or a pinch is still resting.
+		if(  in_finger_handling  &&  !previous_multifinger_touch  &&  dLastDist == 0.0  ) {
+			emit_longpress_if_due( finger_down_time, longpress_sent, longpress_last_sent, finger_down_mx, finger_down_my );
+		}
 		return;
 	}
 
@@ -747,9 +815,13 @@ static void internal_GetEvents()
 			break;
 
 		case SDL_MOUSEWHEEL:
-			sys_event.type    = SIM_MOUSE_BUTTONS;
-			sys_event.code    = event.wheel.y > 0 ? SIM_MOUSE_WHEELUP : SIM_MOUSE_WHEELDOWN;
-			sys_event.key_mod = ModifierKeys();
+			if (event.wheel.y != 0) {
+				const bool is_up = (event.wheel.y > 0) ^ (event.wheel.direction == SDL_MOUSEWHEEL_FLIPPED);
+
+				sys_event.type    = SIM_MOUSE_BUTTONS;
+				sys_event.code    = is_up ? SIM_MOUSE_WHEELUP : SIM_MOUSE_WHEELDOWN;
+				sys_event.key_mod = ModifierKeys();
+			}
 			break;
 
 		case SDL_MOUSEMOTION:
@@ -775,6 +847,14 @@ static void internal_GetEvents()
 				DBG_MESSAGE("SDL_FINGERDOWN", "FirstfingerID=%x", FirstFingerId);
 				in_finger_handling = true;
 				previous_multifinger_touch = 0;
+				// remember when and where, to be able to recognise a hold later
+				if(  screen  ) {
+					const scr_size screen_size = gfx->get_screen_size();
+					finger_down_mx = event.tfinger.x * screen_size.w;
+					finger_down_my = event.tfinger.y * screen_size.h;
+				}
+				finger_down_time = dr_time();
+				longpress_sent = false;
 			}
 			else if (FirstFingerId != event.tfinger.fingerId) {
 				previous_multifinger_touch = 2;
@@ -784,13 +864,28 @@ static void internal_GetEvents()
 		case SDL_FINGERMOTION:
 			// move whatever
 			if(  screen  &&  previous_multifinger_touch==0  &&  FirstFingerId==event.tfinger.fingerId) {
+				const scr_size screen_size = gfx->get_screen_size();
+				const sint32 mx = event.tfinger.x * screen_size.w;
+				const sint32 my = event.tfinger.y * screen_size.h;
+
+				if(  dLastDist == 0.0  &&  abs(mx - finger_down_mx) + abs(my - finger_down_my) <= LONGPRESS_SLOP  ) {
+					/* Still resting, not dragging. Reporting a press here would
+					 * clear the selection a long press is about to copy, and the
+					 * hold would never be recognised because these events keep
+					 * the queue busy. The press still follows from the lift. */
+					in_finger_handling = true;
+					emit_longpress_if_due( finger_down_time, longpress_sent, longpress_last_sent, finger_down_mx, finger_down_my );
+					break;
+				}
+
 				if (dLastDist == 0.0) {
 					// not yet a finger down event before => we send one
 					dLastDist = 1e-99;
 					sys_event.type = SIM_MOUSE_BUTTONS;
 					sys_event.code = SIM_MOUSE_LEFTBUTTON;
-					sys_event.mx = event.tfinger.x * display_get_width();
-					sys_event.my = event.tfinger.y * display_get_height();
+					// anchor it where the finger landed, not where it has got to
+					sys_event.mx = finger_down_mx;
+					sys_event.my = finger_down_my;
 					previous_multifinger_touch = 0;
 	DBG_MESSAGE("SDL_FINGERMOTION", "SIM_MOUSE_LEFTBUTTON at %i,%i", sys_event.mx, sys_event.my);
 				}
@@ -798,8 +893,8 @@ static void internal_GetEvents()
 
 					sys_event.type = SIM_MOUSE_MOVE;
 					sys_event.code = SIM_MOUSE_MOVED;
-					sys_event.mx = event.tfinger.x * display_get_width();
-					sys_event.my = event.tfinger.y * display_get_height();
+					sys_event.mx = mx;
+					sys_event.my = my;
 	DBG_MESSAGE("SDL_FINGERMOTION", "SIM_MOUSE_MOVED at %i,%i", sys_event.mx, sys_event.my);
 				}
 				sys_event.mb = MOUSE_LEFTBUTTON;
@@ -811,6 +906,8 @@ static void internal_GetEvents()
 		case SDL_FINGERUP:
 			if (screen  &&  in_finger_handling) {
 				if (FirstFingerId==event.tfinger.fingerId  ||  SDL_GetNumTouchFingers(event.tfinger.touchId)==0) {
+					const scr_size screen_size = gfx->get_screen_size();
+
 					if(!previous_multifinger_touch) {
 						if (dLastDist == 0.0) {
 							dLastDist = 1e-99;
@@ -819,8 +916,9 @@ static void internal_GetEvents()
 							sys_event.code = SIM_MOUSE_LEFTBUTTON;
 							sys_event.mb = MOUSE_LEFTBUTTON;
 							sys_event.key_mod = ModifierKeys();
-							last_mx = sys_event.mx = event.tfinger.x * display_get_width();
-							last_my = sys_event.my = event.tfinger.y * display_get_height();
+							last_mx = sys_event.mx = event.tfinger.x * screen_size.w;
+							last_my = sys_event.my = event.tfinger.y * screen_size.h;
+
 							// not yet moved -> set click origin or click will be at last position ...
 							set_click_xy(sys_event.mx, sys_event.my);
 
@@ -831,8 +929,8 @@ static void internal_GetEvents()
 							sys_event.type = SIM_MOUSE_BUTTONS;
 							sys_event.code = SIM_MOUSE_LEFTUP;
 							sys_event.mb = 0;
-							sys_event.mx = (event.tfinger.x + event.tfinger.dx) * display_get_width();
-							sys_event.my = (event.tfinger.y + event.tfinger.dy) * display_get_height();
+							sys_event.mx = (event.tfinger.x + event.tfinger.dx) * screen_size.w;
+							sys_event.my = (event.tfinger.y + event.tfinger.dy) * screen_size.h;
 							sys_event.key_mod = ModifierKeys();
 		DBG_MESSAGE("SDL_FINGERUP", "SIM_MOUSE_LEFTUP at %i,%i", sys_event.mx, sys_event.my);
 						}
@@ -925,51 +1023,51 @@ static void internal_GetEvents()
 			bool np = false; // to indicate we converted a numpad key
 
 			switch(  sym  ) {
-				case SDLK_BACKSPACE:  code = SIM_KEY_BACKSPACE;             break;
-				case SDLK_TAB:        code = SIM_KEY_TAB;                   break;
-				case SDLK_RETURN:     code = SIM_KEY_ENTER;                 break;
-				case SDLK_ESCAPE:     code = SIM_KEY_ESCAPE;                break;
-				case SDLK_AC_BACK:
-				case SDLK_DELETE:     code = SIM_KEY_DELETE;                break;
-				case SDLK_DOWN:       code = SIM_KEY_DOWN;                  break;
-				case SDLK_END:        code = SIM_KEY_END;                   break;
-				case SDLK_HOME:       code = SIM_KEY_HOME;                  break;
-				case SDLK_F1:         code = SIM_KEY_F1;                    break;
-				case SDLK_F2:         code = SIM_KEY_F2;                    break;
-				case SDLK_F3:         code = SIM_KEY_F3;                    break;
-				case SDLK_F4:         code = SIM_KEY_F4;                    break;
-				case SDLK_F5:         code = SIM_KEY_F5;                    break;
-				case SDLK_F6:         code = SIM_KEY_F6;                    break;
-				case SDLK_F7:         code = SIM_KEY_F7;                    break;
-				case SDLK_F8:         code = SIM_KEY_F8;                    break;
-				case SDLK_F9:         code = SIM_KEY_F9;                    break;
-				case SDLK_F10:        code = SIM_KEY_F10;                   break;
-				case SDLK_F11:        code = SIM_KEY_F11;                   break;
-				case SDLK_F12:        code = SIM_KEY_F12;                   break;
-				case SDLK_F13:        code = SIM_KEY_F13;                   break;
-				case SDLK_F14:        code = SIM_KEY_F14;                   break;
-				case SDLK_F15:        code = SIM_KEY_F15;                   break;
-				case SDLK_KP_0:       np = true; code = (numlock ? '0' : (unsigned long)SIM_KEY_NUMPAD_BASE); break;
-				case SDLK_KP_1:       np = true; code = (numlock ? '1' : (unsigned long)SIM_KEY_DOWNLEFT); break;
-				case SDLK_KP_2:       np = true; code = (numlock ? '2' : (unsigned long)SIM_KEY_DOWN); break;
-				case SDLK_KP_3:       np = true; code = (numlock ? '3' : (unsigned long)SIM_KEY_DOWNRIGHT); break;
-				case SDLK_KP_4:       np = true; code = (numlock ? '4' : (unsigned long)SIM_KEY_LEFT); break;
-				case SDLK_KP_5:       np = true; code = (numlock ? '5' : (unsigned long)SIM_KEY_CENTER); break;
-				case SDLK_KP_6:       np = true; code = (numlock ? '6' : (unsigned long)SIM_KEY_RIGHT); break;
-				case SDLK_KP_7:       np = true; code = (numlock ? '7' : (unsigned long)SIM_KEY_UPLEFT); break;
-				case SDLK_KP_8:       np = true; code = (numlock ? '8' : (unsigned long)SIM_KEY_UP); break;
-				case SDLK_KP_9:       np = true; code = (numlock ? '9' : (unsigned long)SIM_KEY_UPRIGHT); break;
-				case SDLK_KP_ENTER:   code = SIM_KEY_ENTER;                 break;
-				case SDLK_LEFT:       code = SIM_KEY_LEFT;                  break;
+				case SDLK_BACKSPACE:  code = SIM_KEYCODE_BACKSPACE;             break;
+				case SDLK_TAB:        code = SIM_KEYCODE_TAB;                   break;
+				case SDLK_RETURN:     code = SIM_KEYCODE_ENTER;                 break;
+				case SDLK_AC_BACK: // to avoid deleting text on Android instead closing windows
+				case SDLK_ESCAPE:     code = SIM_KEYCODE_ESCAPE;                break;
+				case SDLK_DELETE:     code = SIM_KEYCODE_DELETE;                break;
+				case SDLK_DOWN:       code = SIM_KEYCODE_DOWN;                  break;
+				case SDLK_END:        code = SIM_KEYCODE_END;                   break;
+				case SDLK_HOME:       code = SIM_KEYCODE_HOME;                  break;
+				case SDLK_F1:         code = SIM_KEYCODE_F1;                    break;
+				case SDLK_F2:         code = SIM_KEYCODE_F2;                    break;
+				case SDLK_F3:         code = SIM_KEYCODE_F3;                    break;
+				case SDLK_F4:         code = SIM_KEYCODE_F4;                    break;
+				case SDLK_F5:         code = SIM_KEYCODE_F5;                    break;
+				case SDLK_F6:         code = SIM_KEYCODE_F6;                    break;
+				case SDLK_F7:         code = SIM_KEYCODE_F7;                    break;
+				case SDLK_F8:         code = SIM_KEYCODE_F8;                    break;
+				case SDLK_F9:         code = SIM_KEYCODE_F9;                    break;
+				case SDLK_F10:        code = SIM_KEYCODE_F10;                   break;
+				case SDLK_F11:        code = SIM_KEYCODE_F11;                   break;
+				case SDLK_F12:        code = SIM_KEYCODE_F12;                   break;
+				case SDLK_F13:        code = SIM_KEYCODE_F13;                   break;
+				case SDLK_F14:        code = SIM_KEYCODE_F14;                   break;
+				case SDLK_F15:        code = SIM_KEYCODE_F15;                   break;
+				case SDLK_KP_0:       np = true; code = (numlock ? '0' : (unsigned long)SIM_KEYCODE_NUMPAD_BASE); break;
+				case SDLK_KP_1:       np = true; code = (numlock ? '1' : (unsigned long)SIM_KEYCODE_DOWNLEFT); break;
+				case SDLK_KP_2:       np = true; code = (numlock ? '2' : (unsigned long)SIM_KEYCODE_DOWN); break;
+				case SDLK_KP_3:       np = true; code = (numlock ? '3' : (unsigned long)SIM_KEYCODE_DOWNRIGHT); break;
+				case SDLK_KP_4:       np = true; code = (numlock ? '4' : (unsigned long)SIM_KEYCODE_LEFT); break;
+				case SDLK_KP_5:       np = true; code = (numlock ? '5' : (unsigned long)SIM_KEYCODE_CENTER); break;
+				case SDLK_KP_6:       np = true; code = (numlock ? '6' : (unsigned long)SIM_KEYCODE_RIGHT); break;
+				case SDLK_KP_7:       np = true; code = (numlock ? '7' : (unsigned long)SIM_KEYCODE_UPLEFT); break;
+				case SDLK_KP_8:       np = true; code = (numlock ? '8' : (unsigned long)SIM_KEYCODE_UP); break;
+				case SDLK_KP_9:       np = true; code = (numlock ? '9' : (unsigned long)SIM_KEYCODE_UPRIGHT); break;
+				case SDLK_KP_ENTER:   code = SIM_KEYCODE_ENTER;                 break;
+				case SDLK_LEFT:       code = SIM_KEYCODE_LEFT;                  break;
 				case SDLK_PAGEDOWN:   code = '<';                           break;
 				case SDLK_PAGEUP:     code = '>';                           break;
-				case SDLK_RIGHT:      code = SIM_KEY_RIGHT;                 break;
-				case SDLK_UP:         code = SIM_KEY_UP;                    break;
-				case SDLK_PAUSE:      code = SIM_KEY_PAUSE;                 break;
-				case SDLK_SCROLLLOCK: code = SIM_KEY_SCROLLLOCK;            break;
+				case SDLK_RIGHT:      code = SIM_KEYCODE_RIGHT;                 break;
+				case SDLK_UP:         code = SIM_KEYCODE_UP;                    break;
+				case SDLK_PAUSE:      code = SIM_KEYCODE_PAUSE;                 break;
+				case SDLK_SCROLLLOCK: code = SIM_KEYCODE_SCROLLLOCK;            break;
 				default: {
 					// Handle CTRL-keys. SDL_TEXTINPUT event handles regular input
-					if(  (sys_event.key_mod & SIM_MOD_CTRL)  &&  SDLK_a <= sym  &&  sym <= SDLK_z  ) {
+					if(  (sys_event.key_mod & SIM_KEYMOD_CTRL)  &&  SDLK_a <= sym  &&  sym <= SDLK_z  ) {
 						code = event.key.keysym.sym & 31;
 					}
 					else {
@@ -1035,6 +1133,8 @@ static void internal_GetEvents()
 		case SDL_KEYUP: {
 			sys_event.type = SIM_KEYBOARD;
 			sys_event.code = 0;
+			// key_mod is not reset between events, so a released modifier would otherwise stay set
+			sys_event.key_mod = ModifierKeys();
 			break;
 		}
 		case SDL_QUIT: {
@@ -1083,21 +1183,16 @@ void dr_sleep(uint32 usec)
 
 void dr_start_textinput()
 {
-	if(  env_t::hide_keyboard  ) {
-	    SDL_StartTextInput();
-		DBG_MESSAGE("SDL_StartTextInput", "");
-	}
+	SDL_StartTextInput();
+	DBG_MESSAGE("SDL_StartTextInput", "");
 }
 
 
 void dr_stop_textinput()
 {
-	if(  env_t::hide_keyboard  ) {
-	    SDL_StopTextInput();
-		DBG_MESSAGE("SDL_StoptTextInput", "");
-	}
-	else {
-		SDL_EventState(SDL_TEXTINPUT, SDL_ENABLE);
+	if (env_t::hide_keyboard) {
+		SDL_StopTextInput();
+		DBG_MESSAGE("SDL_StopTextInput", "");
 	}
 }
 

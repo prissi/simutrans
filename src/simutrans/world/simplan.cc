@@ -38,10 +38,11 @@ void swap(planquadrat_t& a, planquadrat_t& b)
 {
 	// since sim::swap down not work for bitfields, we brute force copy memory
 	char tmp[sizeof(planquadrat_t)];
-	memcpy(tmp, &a, sizeof(planquadrat_t));
-	memcpy(&a, &b, sizeof(planquadrat_t));
-	memcpy(&b, tmp, sizeof(planquadrat_t));
+	memcpy(tmp,        (void *)&a, sizeof(planquadrat_t));
+	memcpy((void *)&a, (void *)&b, sizeof(planquadrat_t));
+	memcpy((void *)&b, tmp,        sizeof(planquadrat_t));
 }
+
 
 // deletes also all grounds in this array!
 planquadrat_t::~planquadrat_t()
@@ -83,6 +84,20 @@ grund_t *planquadrat_t::get_boden_von_obj(obj_t *obj) const
 		}
 	}
 	return NULL;
+}
+
+
+sint16 planquadrat_t::get_overhead_clearance() const
+{
+	sint16 clearance = 127;
+	const sint8 base_h = get_kartenboden()->get_hoehe();
+	for(  unsigned b = 1;  b < get_boden_count();  b++  ) {
+		const sint8 diff_h = get_boden_bei(b)->get_hoehe() - base_h;
+		if(  diff_h > 0  &&  diff_h < clearance  ) {
+			clearance = diff_h;
+		}
+	}
+	return clearance;
 }
 
 
@@ -228,7 +243,9 @@ void planquadrat_t::boden_ersetzen(grund_t *alt, grund_t *neu)
 		}
 		// transfer all objects
 		while(  alt->obj_count()>0  ) {
-			neu->obj_add( alt->obj_remove_top() );
+			obj_t* obj = alt->obj_remove_top();
+			obj->set_pos(neu->get_pos());
+			neu->obj_add(obj);
 		}
 		// transfer way flags
 		if(alt->get_flag(grund_t::has_way1)) {
@@ -480,32 +497,96 @@ void planquadrat_t::display_obj(const sint16 xpos, const sint16 ypos, const sint
 	else {
 		// clip everything at the next tile above
 		if(  i < ground_size  ) {
+			// there are grounds above => check height of height object below
+			// How far the objects on this tile rise above its ground, in HEIGHT
+			// LEVELS - which is the unit (htop - hmin) is measured in below.
+			sint16 max_height = 0;
+			// get_image_offset() returns the zoomed offsets, so take the raster
+			// width zoomed too; the quotient is the same count either way.
+			const sint16 rw = gfx->get_tile_raster_width();
+			const sint16 level_h = max((sint16)1, (sint16)tile_raster_scale_y(TILE_HEIGHT_STEP, rw));
 
-			clip_dimension p_cr = display_get_clip_wh( CLIP_NUM_VAR );
-
-			for(  uint8 j = i;  j < ground_size;  j++  ) {
-				const sint8 h = data.some[j]->get_hoehe();
-				const sint8 htop = h + slope_t::max_diff(data.some[j]->get_grund_hang());
-				// still underground
-				if(  h < h0  ) {
-					continue;
+			for (uint8 i = 0; i < gr0->obj_count(); i++) {
+				obj_t* o = gr0->obj_bei(i);
+				// This is a hot loop - the draw path runs it for every tile.
+				// get_typ() + static_cast, never dynamic_cast, and a single
+				// cached height off the desc, never a per-tile computation:
+				// almost every tile is a cache miss).
+				if (o->get_typ() == obj_t::gebaeude) {
+					const gebaeude_t *gb = static_cast<const gebaeude_t *>(o);
+					// the building's get_image() is its ground row alone, so
+					// measuring that image would call a tower one storey tall;
+					// the height was computed once at load.
+					max_height = max(max_height, (sint16)gb->get_tile()->get_desc()->get_height_clearance());
 				}
-				// too high?
-				if(  h > hmax  ) {
-					break;
-				}
-				// not too low?
-				if(  htop >= hmin  ) {
-					// something on top: clip horizontally to prevent trees etc shining trough bridges
-					const sint16 yh = ypos - tile_raster_scale_y( (h + corner_nw(data.some[j]->get_grund_hang()) - h0) * TILE_HEIGHT_STEP, raster_tile_width ) + ((3 * raster_tile_width) >> 2);
-					if(  yh >= p_cr.y  ) {
-						display_push_clip_wh(p_cr.x, yh, p_cr.w, p_cr.h + p_cr.y - yh  CLIP_NUM_PAR  );
+				else if (o->get_typ() == obj_t::baum) {
+					image_id img = o->get_image();
+					if (img != IMG_EMPTY) {
+						const scr_rect area = gfx->get_image_offset(img);
+						// The ground line is at half the cell and image
+						// coordinates run from the top left, so the artwork
+						// reaches (rw/2 - y) above it. What stood here,
+						// (area.h - area.y), subtracted an offset from a size:
+						// negative for 144 of pak128's 550 tree images.
+						// A tree also carries a per-instance offset (baum_t::
+						// calc_off): a negative yoff lifts it toward the top
+						// corner, so its real screen-top rises higher than the
+						// sprite box alone. Fold in the same scaled yoff the draw
+						// path applies (simobj.cc: ypos += scale(get_yoff())), or
+						// a top-corner tree slips through the gate below
+						const sint16 yoff = tile_raster_scale_y(o->get_yoff(), rw);
+						max_height = max(max_height, max((sint16)0, (sint16)(rw / 2 - area.y - yoff)) / level_h);
 					}
-					break;
 				}
 			}
-			gr0->display_obj_all( xpos, ypos, raster_tile_width, is_global  CLIP_NUM_PAR );
-			display_pop_clip_wh(CLIP_NUM_VAR);
+
+			if (max_height == 0) {
+				// display without clipping
+				gr0->display_obj_all(xpos, ypos, raster_tile_width, is_global  CLIP_NUM_PAR);
+			}
+			else {
+				// may still need clipping
+				clip_dimension p_cr = gfx->get_clip_rect( CLIP_NUM_VAR );
+				bool must_pop_clip = false;
+
+				for(  uint8 j = i;  j < ground_size;  j++  ) {
+					const sint8 h = data.some[j]->get_hoehe();
+					const sint8 htop = h + slope_t::max_diff(data.some[j]->get_grund_hang());
+					// still underground
+					if(  h < h0  ) {
+						continue;
+					}
+					// too high?
+					if(  h > hmax  ) {
+						break;
+					}
+					// not too low?
+					if(  htop >= hmin) {
+						// something on top: clip horizontally to prevent trees etc shining trough bridges
+						// but not for powerlines or thin elevated ways
+						if (obj_t *o = data.some[j]->obj_bei(0)) {
+							if (!o->is_clipping_below_needed()) {
+								continue;
+							}
+						}
+						if (htop - hmin > max_height) {
+							// lower than max height difference=> stop checking
+							break;
+						}
+						// this needs clipping below
+						must_pop_clip = true;
+						const sint16 yh = ypos - tile_raster_scale_y( (h + corner_nw(data.some[j]->get_grund_hang()) - h0) * TILE_HEIGHT_STEP, raster_tile_width ) + ((3 * raster_tile_width) >> 2);
+						if(  yh >= p_cr.y  ) {
+							gfx->push_clip_rect(p_cr.x, yh, p_cr.w, p_cr.h + p_cr.y - yh  CLIP_NUM_PAR);
+						}
+						break;
+					}
+				}
+				gr0->display_obj_all( xpos, ypos, raster_tile_width, is_global  CLIP_NUM_PAR );
+				if (must_pop_clip) {
+					gfx->pop_clip_rect(CLIP_NUM_VAR);
+				}
+			}
 		}
 		else {
 			gr0->display_obj_all( xpos, ypos, raster_tile_width, is_global  CLIP_NUM_PAR );
@@ -583,22 +664,22 @@ void planquadrat_t::display_overlay(const sint16 xpos, const sint16 ypos) const
 		if(gb) {
 			fabrik_t* fab=gb->get_fabrik();
 			if(fab) {
-				FLAGGED_PIXVAL status = color_idx_to_rgb(COL_RED);
+				FLAGGED_PIXVAL status = gfx->palette_lookup(COL_RED);
 				if(fab->get_desc()->is_electricity_producer()) {
-					status = color_idx_to_rgb(COL_LIGHT_BLUE);
+					status = gfx->palette_lookup(COL_LIGHT_BLUE);
 					if(fab->is_transformer_connected()) {
-						status = color_idx_to_rgb(COL_LIGHT_TURQUOISE);
+						status = gfx->palette_lookup(COL_LIGHT_TURQUOISE);
 					}
 				}
 				else {
 					if(fab->is_transformer_connected()) {
-						status = color_idx_to_rgb(COL_ORANGE);
+						status = gfx->palette_lookup(COL_ORANGE);
 					}
 					if(fab->get_prodfactor_electric()>0) {
-						status = color_idx_to_rgb(COL_GREEN);
+						status = gfx->palette_lookup(COL_GREEN);
 					}
 				}
-				display_img_blend( overlay_img(gr), xpos, ypos, status | OUTLINE_FLAG | TRANSPARENT50_FLAG, 0, true);
+				gfx->draw_img_blend( overlay_img(gr), xpos, ypos, status | OUTLINE_FLAG | TRANSPARENT50_FLAG, 0, true);
 			}
 		}
 	}
@@ -612,8 +693,8 @@ void planquadrat_t::display_overlay(const sint16 xpos, const sint16 ypos) const
 			image_id img = overlay_img(gr);
 
 			for(int halt_count = 0; halt_count < halt_list_count; halt_count++) {
-				const FLAGGED_PIXVAL transparent = PLAYER_FLAG | OUTLINE_FLAG | color_idx_to_rgb(halt_list[halt_count]->get_owner()->get_player_color1() + 4);
-				display_img_blend( img, xpos, ypos, transparent | TRANSPARENT25_FLAG, 0, 0);
+				const FLAGGED_PIXVAL transparent = PLAYER_FLAG | OUTLINE_FLAG | gfx->palette_lookup(halt_list[halt_count]->get_player_color() + 4);
+				gfx->draw_img_blend( img, xpos, ypos, transparent | TRANSPARENT25_FLAG, 0, 0);
 			}
 /*
 // unfortunately, too expensive for display
@@ -621,7 +702,7 @@ void planquadrat_t::display_overlay(const sint16 xpos, const sint16 ypos) const
 			// doesn't affect the colour displayed [since blend(col1,blend(col2,screen)) != blend(col2,blend(col1,screen))]
 			for(int player_count = 0; player_count<MAX_PLAYER_COUNT; player_count++) {
 				player_t *display_player = welt->get_player(player_count);
-				const FLAGGED_PIXVAL transparent = PLAYER_FLAG | OUTLINE_FLAG | color_idx_to_rgb(display_player->get_player_color1() * 4 + 4);
+				const FLAGGED_PIXVAL transparent = PLAYER_FLAG | OUTLINE_FLAG | gfx->palette_lookup(display_player->get_player_color1() * 4 + 4);
 				for(int halt_count = 0; halt_count < halt_list_count; halt_count++) {
 					if(halt_list[halt_count]->get_owner() == display_player) {
 						display_img_blend( img, xpos, ypos, transparent | TRANSPARENT25_FLAG, 0, 0);
@@ -631,7 +712,7 @@ void planquadrat_t::display_overlay(const sint16 xpos, const sint16 ypos) const
 	*/
 		}
 		else {
-			const sint16 raster_tile_width = get_tile_raster_width();
+			const sint16 raster_tile_width = gfx->get_tile_raster_width();
 			// opaque boxes (
 			const sint16 r=raster_tile_width/8;
 			const sint16 x=xpos+raster_tile_width/2-r;
@@ -640,14 +721,15 @@ void planquadrat_t::display_overlay(const sint16 xpos, const sint16 ypos) const
 			const sint16 off = (raster_tile_width>>5);
 			// suitable start search
 			for (size_t h = halt_list_count; h-- != 0;) {
-				display_fillbox_wh_clip_rgb(x - h * off, y + h * off, r, r, PLAYER_FLAG | color_idx_to_rgb(halt_list[h]->get_owner()->get_player_color1() + 4), kartenboden_dirty);
+				// ### MULTI COLOR BOX ###
+				gfx->draw_rect_clipped(x - h * off, y + h * off, r, r, PLAYER_FLAG | gfx->palette_lookup(halt_list[h]->get_player_color() + 4), kartenboden_dirty CLIP_NUM_DEFAULT);
 			}
 		}
 	}
 
 	gr->display_overlay( xpos, ypos );
 	if(  ground_size > 1  ) {
-		const sint16 raster_tile_width = get_tile_raster_width();
+		const sint16 raster_tile_width = gfx->get_tile_raster_width();
 		const sint8 h0 = gr->get_disp_height();
 		for(  uint8 i = 1;  i < ground_size;  i++  ) {
 			grund_t* gr = data.some[i];
@@ -666,7 +748,7 @@ halthandle_t planquadrat_t::get_halt(player_t *player) const
 {
 	for(  uint8 i=0;  i < get_boden_count();  i++  ) {
 		halthandle_t my_halt = get_boden_bei(i)->get_halt();
-		if(  my_halt.is_bound()  &&  (player == NULL  ||  player == my_halt->get_owner())  ) {
+		if(  my_halt.is_bound()  &&  (player == NULL  ||  my_halt->can_use_halt(player))  ) {
 			return my_halt;
 		}
 	}

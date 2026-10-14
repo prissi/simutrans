@@ -1,3 +1,4 @@
+
 /*
  * This file is part of the Simutrans project under the Artistic License.
  * (see LICENSE.txt)
@@ -57,6 +58,13 @@ const slist_tpl <weg_t*> &weg_t::get_alle_wege()
 }
 
 
+bool weg_t::is_clipping_below_needed() const
+{
+	// elevated no clip?
+	return desc->is_clip_below();
+}
+
+
 void weg_t::set_cityroad_speedlimit(uint16 new_limit)
 {
 	if (cityroad_speed != new_limit) {
@@ -64,9 +72,10 @@ void weg_t::set_cityroad_speedlimit(uint16 new_limit)
 		for(weg_t *w : alle_wege) {
 			if(  w->hat_gehweg()  &&  w->get_waytype() == road_wt  ) {
 				if (const way_desc_t* desc = w->get_desc()) {
-					w->set_max_speed(max(desc->get_topspeed(), cityroad_speed));
+					w->set_max_speed(min(desc->get_topspeed(), cityroad_speed));
 				}
 				else {
+					// should never occur ???
 					w->set_max_speed(cityroad_speed);
 				}
 			}
@@ -168,7 +177,16 @@ void weg_t::init()
 	desc = 0;
 	init_statistics();
 	alle_wege.insert(this);
-	flags = 0;
+	close_diagonal_state = 0;
+	diagonal_flag = 0;
+	switch_state = 0;
+	show_flag = 0;
+	sidewalk_flag = 0;
+	electrified_flag = 0;
+	sign_flag = 0;
+	signal_flag = 0;
+	wayobj_flag = 0;
+	crossing_flag = 0;
 	image = IMG_EMPTY;
 	foreground_image = IMG_EMPTY;
 }
@@ -236,7 +254,11 @@ void weg_t::rdwr(loadsave_t *file)
 	file->rdwr_byte(dummy8);
 	if(  file->is_loading()  ) {
 		ribi = dummy8 & 15; // before: high bits was maske
-		ribi_maske = 0; // maske will be restored by signal/roadsing
+		ribi_maske = 0; // maske will be restored by signal/roadsign
+		if (ribi == ribi_t::all) {
+			// will be recaluclated later but may be needed for loading convois
+			close_diagonal_state = 1;
+		}
 	}
 
 	uint16 dummy16=max_speed;
@@ -244,11 +266,11 @@ void weg_t::rdwr(loadsave_t *file)
 	max_speed=dummy16;
 
 	if(  file->is_version_atleast(89, 0)  ) {
-		dummy8 = flags;
+		dummy8 = sidewalk_flag;
 		file->rdwr_byte(dummy8);
 		if(  file->is_loading()  ) {
 			// all other flags are restored afterwards
-			flags = dummy8 & HAS_SIDEWALK;
+			sidewalk_flag = dummy8 & 1;
 		}
 	}
 
@@ -268,8 +290,8 @@ void weg_t::info(cbuffer_t & buf) const
 	obj_t::info(buf);
 
 	buf.printf("%s %u%s", translator::translate("Max. speed:"), max_speed, translator::translate("km/h\n"));
-	buf.printf("%s%u",    translator::translate("\nRibi (unmasked)"), get_ribi_unmasked());
-	buf.printf("%s%u\n",  translator::translate("\nRibi (masked)"),   get_ribi());
+	buf.printf("%s%s",    translator::translate("\nRibi (unmasked)"), ribi_t::names[get_ribi_unmasked()]);
+	buf.printf("%s%s\n",  translator::translate("\nRibi (masked)"),   ribi_t::names[get_ribi()]);
 
 	if(has_sign()) {
 		buf.append(translator::translate("\nwith sign/signal\n"));
@@ -310,6 +332,9 @@ void weg_t::rotate90()
 	obj_t::rotate90();
 	ribi = ribi_t::rotate90( ribi );
 	ribi_maske = ribi_t::rotate90( ribi_maske );
+	if (close_diagonal_state) {
+		close_diagonal_state ^= 3;
+	}
 }
 
 
@@ -320,14 +345,14 @@ void weg_t::rotate90()
 void weg_t::count_sign()
 {
 	// Either only sign or signal please ...
-	flags &= ~(HAS_SIGN|HAS_SIGNAL|HAS_CROSSING);
+	sign_flag = signal_flag = crossing_flag = 0;
 	const grund_t *gr=welt->lookup(get_pos());
 	if(gr) {
 		uint8 i = 1;
 		// if there is a crossing, the start index is at least three ...
 		if(const crossing_t* cr = gr->get_crossing()) {
 			max_speed = desc->get_topspeed(); // reset max_speed
-			flags |= HAS_CROSSING;
+			crossing_flag = 1;
 			i = 3;
 			const sint32 top_speed = cr->get_desc()->get_maxspeed( cr->get_desc()->get_waytype(0)==get_waytype() ? 0 : 1);
 			max_speed = min(max_speed, top_speed);
@@ -339,14 +364,14 @@ void weg_t::count_sign()
 			if(  roadsign_t const* const sign = obj_cast<roadsign_t>(obj)  ) {
 				if(  sign->get_desc()->get_wtyp() == get_desc()->get_wtyp()  ) {
 					// here is a sign ...
-					flags |= HAS_SIGN;
+					sign_flag = 1;
 					return;
 				}
 			}
 			if(  signal_t const* const signal = obj_cast<signal_t>(obj)  ) {
 				if(  signal->get_desc()->get_wtyp() == get_desc()->get_wtyp()  ) {
 					// here is a signal ...
-					flags |= HAS_SIGNAL;
+					signal_flag = 1;
 					return;
 				}
 			}
@@ -355,7 +380,7 @@ void weg_t::count_sign()
 }
 
 
-void weg_t::set_images(image_type typ, uint8 ribi, bool snow, bool switch_nw)
+void weg_t::set_images(image_type typ, uint8 ribi, bool snow, uint8 switch_nw)
 {
 	switch(typ) {
 		case image_flat:
@@ -368,12 +393,25 @@ void weg_t::set_images(image_type typ, uint8 ribi, bool snow, bool switch_nw)
 			set_foreground_image( desc->get_slope_image_id( (slope_t::type)ribi, snow, true ) );
 			break;
 		case image_switch:
-			set_image( desc->get_switch_image_id(ribi, snow, switch_nw) );
-			set_foreground_image( desc->get_switch_image_id(ribi, snow, switch_nw, true) );
+			if (!switch_nw) {
+				// still undecided: use default image
+				set_image(desc->get_image_id(ribi, snow));
+				set_foreground_image(desc->get_image_id(ribi, snow, true));
+				if (image != IMG_EMPTY || foreground_image != IMG_EMPTY) {
+					break;
+				}
+				switch_nw = 1; // no default???
+			}
+			set_image( desc->get_switch_image_id(ribi, snow, switch_nw-1) );
+			set_foreground_image( desc->get_switch_image_id(ribi, snow, switch_nw-1, true) );
 			break;
 		case image_diagonal:
-			set_image( desc->get_diagonal_image_id(ribi, snow) );
-			set_foreground_image( desc->get_diagonal_image_id(ribi, snow, true) );
+			set_image(desc->get_diagonal_image_id(ribi, snow));
+			set_foreground_image(desc->get_diagonal_image_id(ribi, snow, true));
+			break;
+		case image_close_diagonal:
+			set_image(desc->get_close_diagonal_image_id(ribi-1, snow));
+			set_foreground_image(desc->get_close_diagonal_image_id(ribi-1, snow, true));
 			break;
 	}
 }
@@ -399,17 +437,12 @@ bool weg_t::check_season(const bool calc_only_season_change)
 
 	// use snow image if above snowline and above ground
 	bool snow = (gr->ist_karten_boden()  ||  !gr->ist_tunnel())  &&  (get_pos().z  + gr->get_weg_yoff()/TILE_HEIGHT_STEP >= welt->get_snowline()  ||  welt->get_climate( get_pos().get_2d() ) == arctic_climate);
-	bool old_snow = (flags&IS_SNOW) != 0;
-	if(  !(snow ^ old_snow)  ) {
+	if(  !(snow ^ show_flag)  ) {
 		// season is not changing ...
 		return true;
 	}
-
-	// set snow flake
-	flags &= ~IS_SNOW;
-	if(  snow  ) {
-		flags |= IS_SNOW;
-	}
+	// set new snow state
+	show_flag = snow;
 
 	slope_t::type hang = gr->get_weg_hang();
 	if(  hang != slope_t::flat  ) {
@@ -417,11 +450,20 @@ bool weg_t::check_season(const bool calc_only_season_change)
 		return true;
 	}
 
-	if(  is_diagonal()  ) {
+	if(  is_close_diagonal()  ) {
+		// double diagonals
+		if (desc->has_close_diagonal_image()) {
+			set_images(image_close_diagonal, is_close_diagonal(), snow);
+		}
+		else {
+			set_images(image_diagonal, is_close_diagonal() == 1 ? ribi_t::southeast : ribi_t::northeast, snow);
+		}
+	}
+	else if(  is_diagonal()  ) {
 		set_images( image_diagonal, ribi, snow );
 	}
 	else if(  ribi_t::is_threeway( ribi )  &&  desc->get_waytype()!=road_wt  ) {
-		set_images(image_switch, ribi, snow, has_switched());
+		set_images(image_switch, ribi, snow, get_switched());
 	}
 	else {
 		// level track
@@ -472,6 +514,9 @@ void weg_t::calc_image()
 	grund_t *to;
 	image_id old_image = image;
 
+	close_diagonal_state = 0;
+	diagonal_flag = 0;
+
 	if(  from==NULL  ||  desc==NULL  ) {
 		// no ground, in tunnel
 		set_image(IMG_EMPTY);
@@ -499,10 +544,7 @@ void weg_t::calc_image()
 	else {
 		// use snow image if above snowline and above ground
 		bool snow = (from->ist_karten_boden()  ||  !from->ist_tunnel())  &&  (get_pos().z + from->get_weg_yoff()/TILE_HEIGHT_STEP >= welt->get_snowline() || welt->get_climate( get_pos().get_2d() ) == arctic_climate  );
-		flags &= ~IS_SNOW;
-		if(  snow  ) {
-			flags |= IS_SNOW;
-		}
+		show_flag = snow;
 
 		slope_t::type hang = from->get_weg_hang();
 		if(hang != slope_t::flat) {
@@ -510,11 +552,25 @@ void weg_t::calc_image()
 			set_images(image_slope, hang, snow);
 		}
 		else if (ribi_t::is_threeway(ribi)) {
-			set_images(image_switch, ribi, snow, has_switched());
+			if (ribi_t::all == ribi && desc->has_diagonal_image()) {
+				check_diagonal();
+			}
+			if (!is_close_diagonal()) {
+				set_images(image_switch, ribi, snow, get_switched());
+			}
+			else {
+				if (desc->has_close_diagonal_image()) {
+					set_images(image_close_diagonal, is_close_diagonal(), snow);
+				}
+				else {
+					set_images(image_diagonal, is_close_diagonal() == 1 ? ribi_t::southeast : ribi_t::northeast, snow);
+				}
+			}
 		}
 		else if (!ribi_t::is_twoway(ribi)) {
+			// essentiall end tiles ... and no ribi tiles
 			set_images(image_flat, ribi, snow);
-			// nide foreground in stations and depots
+			// nice foreground in stations and depots
 			if (foreground_image != IMG_EMPTY) {
 				if (from->is_halt()) {
 					// no foreground in stations
@@ -603,11 +659,11 @@ void weg_t::calc_image()
 void weg_t::check_diagonal()
 {
 	bool diagonal = false;
-	flags &= ~IS_DIAGONAL;
+	diagonal_flag = close_diagonal_state = 0;
 
 	const ribi_t::ribi ribi = get_ribi_unmasked();
-	if(  !ribi_t::is_bend(ribi)  ) {
-		// This is not a curve, it can't be a diagonal
+	if (!ribi_t::is_bend(ribi)  &&  ribi_t::all != ribi) {
+		// every second tile on a close diagonal is a fourway tile
 		return;
 	}
 
@@ -616,6 +672,44 @@ void weg_t::check_diagonal()
 
 	ribi_t::ribi r1 = ribi_t::none;
 	ribi_t::ribi r2 = ribi_t::none;
+
+	if (ribi_t::all == ribi) {
+		// fourway ribi => could be close diagonals
+		ribi_t::ribi r[4];
+		uint8 non_bent = 0;
+		for (uint8 i = 0; i < 4; i++) {
+			if (!from->get_neighbour(to, get_waytype(), ribi_t::nesw[i])) {
+				// only happend during construction of ways
+				dbg->warning("weg_t::is_diagonal", "4way ribi not connected at %s", get_pos().get_fullstr());
+				return;
+			}
+			r[i] = to->get_weg_ribi_unmasked(get_waytype());
+			if (!ribi_t::is_bend(r[i])) {
+				// only one entry point
+				if (non_bent++) {
+					return;
+				}
+			}
+		}
+		if (r[0] == r[1] || r[2] == r[3]) {
+			if (r[0] + r[2] != ribi_t::all  &&  r[1] + r[3] != ribi_t::all) {
+				// entry and exist not parallel => crossing
+				return;
+			}
+			close_diagonal_state = 2;
+		}
+		else {
+			if (r[0] + r[1] != ribi_t::all  &&  r[2] + r[3] != ribi_t::all) {
+				// entry and exist not parallel => crossing
+				return;
+			}
+			close_diagonal_state = 1;
+		}
+		return;
+	}
+
+	// from now bends:
+	ribi_t::ribi rback = ribi_t::backward(ribi);
 
 	// get the ribis of the ways that connect to us
 	// r1 will be 45 degree clockwise ribi (eg northeast->east), r2 will be anticlockwise ribi (eg northeast->north)
@@ -627,12 +721,13 @@ void weg_t::check_diagonal()
 		r2 = to->get_weg_ribi_unmasked(get_waytype());
 	}
 
-	// diagonal if r1 or r2 are our reverse and neither one is 90 degree rotation of us
-	diagonal = (r1 == ribi_t::backward(ribi) || r2 == ribi_t::backward(ribi)) && r1 != ribi_t::rotate90l(ribi) && r2 != ribi_t::rotate90(ribi);
-
-	if(  diagonal  ) {
-		flags |= IS_DIAGONAL;
+	diagonal = (r1 == rback || ribi_t::is_threeway(r1)) && (r2 == rback || ribi_t::is_threeway(r2));
+	if ((ribi_t::is_straight(r1) && r2 == rback) || (ribi_t::is_straight(r2) && r1 == rback)) {
+		// start and end tile handling
+		diagonal = true;
 	}
+
+	diagonal_flag = diagonal;
 }
 
 
@@ -651,12 +746,13 @@ void weg_t::new_month()
 
 
 // correct speed and maintenance
-void weg_t::finish_rd()
+bool weg_t::finish_rd()
 {
 	player_t *player = get_owner();
 	if(  player  &&  desc  ) {
 		player_t::add_maintenance( player,  desc->get_maintenance(), desc->get_finance_waytype() );
 	}
+	return desc==NULL;
 }
 
 
@@ -668,4 +764,42 @@ const char *weg_t::get_removal_error(const player_t *player)
 		return NULL;
 	}
 	return obj_t::get_removal_error(player);
+}
+
+
+FLAGGED_PIXVAL weg_t::get_outline_colour() const
+{
+	if (env_t::show_single_ways  &&  ribi_t::is_single(ribi)) {
+		return TRANSPARENT75_FLAG | OUTLINE_FLAG | gfx->palette_lookup(COL_RED);
+	}
+
+	return 0;
+}
+
+void weg_t::display(int xpos, int ypos CLIP_NUM_DEF) const
+{
+	if (is_close_diagonal() && !desc->has_close_diagonal_image()) {
+		image_id image = get_desc()->get_diagonal_image_id(is_close_diagonal() == 1 ? ribi_t::northwest : ribi_t::southwest, is_snow());
+		if (get_owner_nr() != PLAYER_UNOWNED) {
+			if (obj_t::show_owner) {
+				gfx->draw_blend(image, xpos, ypos, get_owner_nr(), gfx->palette_lookup(get_owner()->get_player_color1() + 2) | OUTLINE_FLAG | TRANSPARENT75_FLAG, 0, get_flag(dirty)  CLIP_NUM_PAR);
+			}
+			else {
+				gfx->draw_color(image, xpos, ypos, get_owner_nr(), true, get_flag(dirty)  CLIP_NUM_PAR);
+			}
+		}
+		else {
+			gfx->draw_normal(image, xpos, ypos, 0, true, get_flag(dirty)  CLIP_NUM_PAR);
+		}
+
+		const FLAGGED_PIXVAL transparent = get_outline_colour();
+		if (transparent) {
+			// transparency?
+			if (TRANSPARENT_FLAGS & transparent) {
+				// only transparent outline
+				gfx->draw_blend(image, xpos, ypos, get_owner_nr(), transparent, 0, get_flag(dirty)  CLIP_NUM_PAR);
+			}
+		}
+	}
+	obj_t::display(xpos, ypos CLIP_NUM_PAR);
 }

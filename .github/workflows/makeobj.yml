@@ -5,7 +5,7 @@ on: [push]
 jobs:
   makeobj_windows-nightly:
     name: makeobj Windows
-    runs-on: windows-2022
+    runs-on: windows-latest
 
     steps:
       - name: Setup Mingw
@@ -16,7 +16,7 @@ jobs:
           install: base-devel mingw-w64-i686-toolchain mingw-w64-i686-gcc mingw-w64-i686-libpng
 
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: build
         shell: msys2 {0}
@@ -43,11 +43,11 @@ jobs:
 
   makeobj_linux-x64-nightly:
     name: makeobj Linux x64
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: install_dependencies
         run: |
@@ -87,7 +87,7 @@ jobs:
     runs-on: macos-latest
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
     - name: install_dependencies
       run: |

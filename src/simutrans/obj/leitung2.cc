@@ -183,17 +183,36 @@ void leitung_t::rotate90()
  */
 void leitung_t::replace(powernet_t* new_net)
 {
-	if (get_net() != new_net) {
-		// convert myself ...
-//DBG_MESSAGE("leitung_t::replace()","My net %p by %p at (%i,%i)",new_net,current,base_pos.x,base_pos.y);
-		set_net(new_net);
+	if (get_net() == new_net) {
+		return;
 	}
 
-	leitung_t * conn[4];
-	if(gimme_neighbours(conn)>0) {
-		for(int i=0; i<4; i++) {
-			if(conn[i] && conn[i]->get_net()!=new_net) {
-				conn[i]->replace(new_net);
+	// Use an explicit stack to handle the traversal iteratively to avoid stack overflow on larger maps
+	vector_tpl<leitung_t*>todo_stack;
+	todo_stack.reserve(256); // Small optimization to avoid frequent reallocations
+
+	todo_stack.append(this);
+
+	while (!todo_stack.empty()) {
+		leitung_t* current = todo_stack.back();
+		todo_stack.pop_back();
+
+		// lready processed => next
+		if (current->get_net() == new_net) {
+			continue;
+		}
+
+		// Update the network for the current segment
+		current->set_net(new_net);
+
+		// Check and gather neighbors
+		leitung_t* conn[4];
+		if (current->gimme_neighbours(conn) > 0) {
+			for (int i = 0; i < 4; i++) {
+				// Only add neighbors that actually need updating
+				if (conn[i] && conn[i]->get_net() != new_net) {
+					todo_stack.append(conn[i]);
+				}
 			}
 		}
 	}
@@ -338,11 +357,11 @@ void leitung_t::info(cbuffer_t & buf) const
 	buf.printf("\n");
 	buf.printf(translator::translate("Generation: %.0f MW"), (double)(net->get_supply() >> POWER_TO_MW));
 	buf.printf("\n");
-	buf.printf(translator::translate("Usage: %.0f %%"), (double)((100 * net->get_normal_demand()) >> powernet_t::FRACTION_PRECISION));
+	buf.printf(translator::translate("Usage: %.0f %%"), net->get_usage_percent());
 }
 
 
-void leitung_t::finish_rd()
+bool leitung_t::finish_rd()
 {
 #ifdef MULTI_THREAD
 	pthread_mutex_lock( &verbinde_mutex );
@@ -360,6 +379,7 @@ void leitung_t::finish_rd()
 	assert(gr); (void)gr;
 
 	player_t::add_maintenance(get_owner(), get_maintenance(), powerline_wt);
+	return false;
 }
 
 void leitung_t::rdwr(loadsave_t *file)
@@ -396,12 +416,10 @@ void leitung_t::rdwr(loadsave_t *file)
 					if(desc==NULL) {
 						pakset_manager_t::add_missing_paks( bname, MISSING_WAY );
 						desc = way_builder_t::leitung_desc;
-
 						if (!desc) {
 							dbg->fatal("leitung_t::rdwr", "Trying to load powerline but pakset has none!");
 						}
 					}
-					dbg->warning("leitung_t::rdwr()", "Unknown powerline %s replaced by %s", bname, desc->get_name() );
 				}
 				set_desc(desc);
 			}
@@ -418,10 +436,14 @@ void leitung_t::rdwr(loadsave_t *file)
 // players can remove public owned powerlines
 const char *leitung_t::get_removal_error(const player_t *player)
 {
-	if(  get_owner_nr()==PLAYER_PUBLIC_NR  &&  player  ) {
+	if(  this->get_owner_nr()==PLAYER_PUBLIC_NR) {
 		return NULL;
 	}
-	return obj_t::get_removal_error(player);
+	else if (player && (player->get_player_nr() == this->get_owner_nr()  ||  player->is_public_service())) {
+		return NULL;
+	}
+
+	return "Der Besitzer erlaubt das Entfernen nicht";
 }
 
 
@@ -521,12 +543,6 @@ void pumpe_t::set_power_supply(uint32 newsupply)
 	power_supply = newsupply;
 }
 
-sint32 pumpe_t::get_power_consumption() const
-{
-	powernet_t const *const p = get_net();
-	return p->get_normal_demand();
-}
-
 void pumpe_t::rdwr(loadsave_t * file)
 {
 	xml_tag_t d( file, "pumpe_t" );
@@ -540,7 +556,7 @@ void pumpe_t::rdwr(loadsave_t * file)
 }
 
 
-void pumpe_t::finish_rd()
+bool pumpe_t::finish_rd()
 {
 	leitung_t::finish_rd();
 
@@ -555,10 +571,11 @@ void pumpe_t::finish_rd()
 			// underground, check directly above
 			fab = fabrik_t::get_fab(get_pos().get_2d());
 		}
-		if(  fab  ) {
-			// only add when factory there
-			fab->add_transformer_connected(this);
+		if (!fab) {
+			dbg->error("senke_t::finish_rd()", "No factory near transformer at %s.", get_pos().get_fullstr());
+			return true;
 		}
+		fab->add_transformer_connected(this);
 	}
 
 #ifdef MULTI_THREAD
@@ -570,6 +587,7 @@ void pumpe_t::finish_rd()
 	set_image(skinverwaltung_t::pumpe->get_image_id(0));
 	is_crossing = false;
 #endif
+	return false;
 }
 
 
@@ -583,7 +601,7 @@ void pumpe_t::info(cbuffer_t & buf) const
 	buf.printf("\n");
 	buf.printf(translator::translate("Generation: %.0f MW"), (double)(power_supply >> POWER_TO_MW));
 	buf.printf("\n");
-	buf.printf(translator::translate("Usage: %.0f %%"), (double)((100 * get_net()->get_normal_demand()) >> powernet_t::FRACTION_PRECISION));
+	buf.printf(translator::translate("Usage: %.0f %%"), get_net()->get_usage_percent());
 	buf.printf("\n"); // pad for consistent dialog size
 }
 
@@ -664,7 +682,7 @@ senke_t::~senke_t()
 void senke_t::pay_revenue()
 {
 	// megajoules (megawatt seconds) per cent
-	const uint64 mjpc = (1 << POWER_TO_MW) / CREDIT_PER_MWS; // should be tied to game setting
+	const uint64 mjpc = (1 << (POWER_TO_MW-10)) * welt->get_settings().cst_kw_per_credit;
 
 	// calculate payment in cent
 	const sint64 payment = (sint64)(energy_acc / mjpc);
@@ -703,12 +721,6 @@ void senke_t::set_power_demand(uint32 newdemand)
 	}
 
 	power_demand = newdemand;
-}
-
-sint32 senke_t::get_power_satisfaction() const
-{
-	powernet_t const *const p = get_net();
-	return p->get_normal_supply();
 }
 
 sync_result senke_t::sync_step(uint32 delta_t)
@@ -802,7 +814,7 @@ void senke_t::rdwr(loadsave_t *file)
 	}
 }
 
-void senke_t::finish_rd()
+bool senke_t::finish_rd()
 {
 	leitung_t::finish_rd();
 
@@ -817,9 +829,11 @@ void senke_t::finish_rd()
 			// underground, check directly above
 			fab = fabrik_t::get_fab(get_pos().get_2d());
 		}
-		if(  fab  ) {
-			fab->add_transformer_connected(this);
+		if (!fab) {
+			dbg->error("senke_t::finish_rd()", "No factory near transformer at %s.", get_pos().get_fullstr());
+			return true;
 		}
+		fab->add_transformer_connected(this);
 	}
 
 #ifdef MULTI_THREAD
@@ -830,6 +844,7 @@ void senke_t::finish_rd()
 #ifdef MULTI_THREAD
 	pthread_mutex_unlock( &calc_image_mutex );
 #endif
+	return false;
 }
 
 void senke_t::info(cbuffer_t & buf) const

@@ -58,7 +58,16 @@ private:
 	sint8 number_of_seasons;
 
 	/// if true front_images lists exists as nodes
-	bool front_images;
+	bool front_image_lists : 1;
+	bool front_images : 1;
+
+	bool clip_below : 1; // only relevant for elevated ways
+
+	// cached to not travese the list for each of those
+	bool diagonals : 1;
+	bool close_diagonals : 1;
+	bool double_slopes : 1;
+	bool switches : 1;
 
 	/**
 	 * calculates index of image list for flat ways
@@ -68,7 +77,7 @@ private:
 	uint16 image_list_base_index(bool snow, bool front) const
 	{
 		if (number_of_seasons == 0  ||  !snow) {
-			if (front  &&  front_images) {
+			if (front  &&  front_image_lists) {
 				return (number_of_seasons == 0) ? 6 : 9;
 			}
 			else {
@@ -76,7 +85,7 @@ private:
 			}
 		}
 		else { // winter images
-			if (front  &&  front_images) {
+			if (front  &&  front_image_lists) {
 				return 12;
 			}
 			else {
@@ -100,6 +109,8 @@ public:
 
 	bool is_tram() const { return wtyp == track_wt  &&  styp == type_tram; }
 
+	bool is_clip_below() const { return clip_below; }
+
 	image_id get_image_id(ribi_t::ribi ribi, uint8 season, bool front = false) const
 	{
 		if (front  &&  !front_images) {
@@ -117,7 +128,7 @@ public:
 		const uint16 n = image_list_base_index(season, front);
 		image_list_t const* const imglist = get_child<image_list_t>(n);
 		// only do this if extended switches are there
-		if(  imglist->get_count()>16  ) {
+		if(switches) {
 			static uint8 ribi_to_extra[16] = {
 				255, 255, 255, 255, 255, 255, 255, 0,
 				255, 255, 255, 1, 255, 2, 3, 4
@@ -163,13 +174,11 @@ public:
 			default:
 				return IMG_EMPTY;
 		}
-		image_id slope_img = get_child<image_list_t>(n)->get_image_id(nr);
-		if(  nr > 3  &&  slope_img == IMG_EMPTY  &&  get_child<image_list_t>(n)->get_count()<=4  ) {
+		if (!double_slopes) {
 			// hack for old ways without double height images to use single slope images for both
-			nr -= 4;
-			slope_img = get_child<image_list_t>(n)->get_image_id(nr);
+			nr &= 3;
 		}
-		return slope_img;
+		return get_child<image_list_t>(n)->get_image_id(nr);
 	}
 
 	image_id get_diagonal_image_id(ribi_t::ribi ribi, uint8 season, bool front = false) const
@@ -177,24 +186,25 @@ public:
 		if (front  &&  !front_images) {
 			return IMG_EMPTY;
 		}
+		assert(ribi_t::is_bend(ribi));
 		const uint16 n = image_list_base_index(season, front) + 2;
 		return get_child<image_list_t>(n)->get_image_id(ribi / 3 - 1);
 	}
 
-	bool has_double_slopes() const {
-		return get_child<image_list_t>(3)->get_count() > 4
-		||     get_child<image_list_t>(image_list_base_index(false, true) + 1)->get_count() > 4;
+	image_id get_close_diagonal_image_id(uint8 nr, uint8 season, bool front = false) const
+	{
+		if (front && !front_images) {
+			return IMG_EMPTY;
+		}
+		const uint16 n = image_list_base_index(season, front) + 2;
+		return get_child<image_list_t>(n)->get_image_id(4+nr);
 	}
 
-	bool has_diagonal_image() const {
-		return get_child<image_list_t>(4)->get_image_id(0) != IMG_EMPTY
-		||     get_child<image_list_t>(image_list_base_index(false, true)+2)->get_image_id(0) != IMG_EMPTY;
-	}
-
-	bool has_switch_image() const {
-		return get_child<image_list_t>(2)->get_count() > 16
-		||     get_child<image_list_t>(image_list_base_index(false, true))->get_count() > 16;
-	}
+	// quick query functions
+	bool has_double_slopes() const { return double_slopes; 	}
+	bool has_diagonal_image() const { return diagonals; }
+	bool has_close_diagonal_image() const { return close_diagonals; }
+	bool has_switch_image() const {	return switches; }
 
 	/* true, if this tile is to be drawn as a normal thing */
 	bool is_draw_as_obj() const { return draw_as_obj; }

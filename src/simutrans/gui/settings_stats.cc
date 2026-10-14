@@ -450,6 +450,7 @@ void settings_costs_stats_t::init(settings_t const* const sets)
 	INIT_COST( "cost_remove_tree", -sets->cst_remove_tree, 1, 100000000, 10, false );
 	INIT_COST( "cost_multiply_remove_haus", -sets->cst_multiply_remove_haus, 1, 100000000, 10, false );
 	INIT_COST( "cost_multiply_remove_field", -sets->cst_multiply_remove_field, 1, 100000000, 10, false );
+	INIT_NUM( "cost_kw_per_credit", sets->cst_kw_per_credit, 1, (1<<24), gui_numberinput_t::POWER2, false);
 	INIT_COST( "cost_transformer", -sets->cst_transformer, 1, 100000000, 10, false );
 	INIT_COST( "cost_maintain_transformer", -sets->cst_maintain_transformer, 1, 100000000, 10, false );
 	INIT_NUM("cost_make_public_months", sets->cst_make_public_months, 0, 36000, gui_numberinput_t::AUTOLINEAR, false );
@@ -481,7 +482,8 @@ void settings_costs_stats_t::read(settings_t* const sets)
 	READ_COST_VALUE( sets->cst_remove_tree )*(-1);
 	READ_COST_VALUE( sets->cst_multiply_remove_haus )*(-1);
 	READ_COST_VALUE( sets->cst_multiply_remove_field )*(-1);
-	READ_COST_VALUE( sets->cst_transformer )*(-1);
+	READ_NUM_VALUE(sets->cst_kw_per_credit);
+	READ_COST_VALUE(sets->cst_transformer)* (-1);
 	READ_COST_VALUE( sets->cst_maintain_transformer )*(-1);
 	READ_NUM_VALUE(sets->cst_make_public_months);
 }
@@ -513,7 +515,7 @@ void settings_climates_stats_t::init(settings_t* const sets)
 	SEPERATOR
 	INIT_NUM_NEW( "Water level", sets->get_groundwater(), -20*(ground_desc_t::double_grounds?2:1), 20, gui_numberinput_t::AUTOLINEAR, false );
 	INIT_NUM_NEW( "Mountain height", mountain_height_start, 0, min(1000,100*(11-mountain_roughness_start)), 10, false );
-	INIT_NUM_NEW( "Map roughness", mountain_roughness_start, 0, min(10, 11-((mountain_height_start+99)/100)), gui_numberinput_t::AUTOLINEAR, false );
+	INIT_NUM_NEW( "Map roughness", mountain_roughness_start, 0, 2+min(10, 11-((mountain_height_start+99)/100)), gui_numberinput_t::AUTOLINEAR, false );
 
 	SEPERATOR
 	INIT_NUM_NEW( "Wind direction", sets->wind_direction, 0, 3, 1, true );

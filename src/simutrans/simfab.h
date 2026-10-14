@@ -616,6 +616,9 @@ public:
 	// infostring on targets/sources
 	void info_conn(cbuffer_t& buf) const;
 
+	// infostring on electricity output; only meaningful for is_electricity_producer()
+	void info_power(cbuffer_t& buf) const;
+
 	void rdwr(loadsave_t *file);
 
 	/*
@@ -692,7 +695,7 @@ public:
 	/**
 	 * Draws some nice colored bars giving some status information
 	 */
-	void display_status(sint16 xpos, sint16 ypos);
+	void display_status(sint16 xpos, sint16 ypos, bool show_below);
 
 	/**
 	 * Crossconnects all factories
@@ -729,6 +732,9 @@ public:
 	 * returns: Work rate in fixed point form.
 	 */
 	static sint32 calculate_work_rate_ramp(sint32 const amount, sint32 const minimum, sint32 const maximum, uint32 const precision = WORK_BITS);
+
+private:
+	bool can_build_field_on_ground(const grund_t *gr, climate cl) const;
 };
 
 #endif

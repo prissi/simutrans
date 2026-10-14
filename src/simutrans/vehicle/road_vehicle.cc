@@ -92,9 +92,7 @@ bool road_vehicle_t::calc_route(koord3d start, koord3d ziel, sint32 max_speed, r
 	// free target reservation
 	if(leading   &&  previous_direction!=ribi_t::none  &&  cnv  &&  target_halt.is_bound() ) {
 		// now reserve our choice (beware: might be longer than one tile!)
-		for(  uint32 length=0;  length<cnv->get_tile_length()  &&  length+1<cnv->get_route()->get_count();  length++  ) {
-			target_halt->unreserve_position( welt->lookup( cnv->get_route()->at( cnv->get_route()->get_count()-length-1) ), cnv->self );
-		}
+		target_halt->unreserve_position( NULL, cnv->self );
 	}
 	target_halt = halthandle_t(); // no block reserved
 	route_t::route_result_t r = route->calc_route(welt, start, ziel, this, max_speed, cnv->get_tile_length() );
@@ -113,8 +111,7 @@ bool road_vehicle_t::check_next_tile(const grund_t *bd) const
 	if(str==NULL  ||  str->get_max_speed()==0) {
 		return false;
 	}
-	bool electric = cnv!=NULL  ?  cnv->needs_electrification() : desc->get_engine_type()==vehicle_desc_t::electric;
-	if(electric  &&  !str->is_electrified()) {
+	if(needs_electrification()  &&  !str->is_electrified()) {
 		return false;
 	}
 	// check for signs
@@ -234,9 +231,21 @@ bool road_vehicle_t::choose_route(sint32 &restart_speed, ribi_t::ribi start_dire
 		return true;
 	}
 
+	// find if there is an end_of?choose on the route and continue if yes
+	for (uint32 ri = route_index + 1; ri < cnv->get_route()->get_count(); ri++) {
+		if (grund_t* gr = welt->lookup(cnv->get_route()->at(ri))) {
+			if (roadsign_t* rs = gr->find<roadsign_t>()) {
+				if (rs->get_desc()->is_end_choose_signal()) {
+					// ignore choose_sign if end_of_choose sign is on the route 
+					return true;
+				}
+			}
+		}
+	}
+
 	// are we heading to a target?
 	route_t *rt = cnv->access_route();
-	target_halt = haltestelle_t::get_halt( rt->back(), get_owner() );
+	target_halt = haltestelle_t::get_halt( rt->back(), get_owner(), false );
 	if(  target_halt.is_bound()  ) {
 
 		// since convois can long than one tile, check is more difficult
@@ -331,7 +340,7 @@ bool road_vehicle_t::can_enter_tile(const grund_t *gr, sint32 &restart_speed, ui
 		// first: check roadsigns
 		const roadsign_t* rs = NULL;
 		if(  str->has_sign()  ) {
-			if(rs = gr->find<roadsign_t>(1)) {
+			if((rs = gr->find<roadsign_t>(1)) != NULL) {
 				route_t const& r = *cnv->get_route();
 
 				if(  route_index + 1u < r.get_count()  ) {
@@ -554,7 +563,7 @@ void road_vehicle_t::set_convoi(convoi_t *c)
 		if(target  &&  leading  &&  c->get_route()->empty()) {
 			// reinitialize the target halt
 			const route_t *rt = cnv->get_route();
-			target_halt = haltestelle_t::get_halt( rt->back(), get_owner() );
+			target_halt = haltestelle_t::get_halt( rt->back(), get_owner(), false );
 			if(  target_halt.is_bound()  ) {
 				for(  uint32 i=0;  i<c->get_tile_length()  &&  i+1<rt->get_count();  i++  ) {
 					target_halt->reserve_position( welt->lookup( rt->at(rt->get_count()-i-1) ), cnv->self );

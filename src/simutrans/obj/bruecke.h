@@ -36,7 +36,10 @@ public:
 	 */
 	waytype_t get_waytype() const OVERRIDE { return desc ? desc->get_waytype() : invalid_wt; }
 
+	void set_desc(const bridge_desc_t *b) { desc = b; }
 	const bridge_desc_t *get_desc() const { return desc; }
+
+	virtual bool is_clipping_below_needed() const OVERRIDE;
 
 	// we will always replace first way image
 	image_id get_image() const OVERRIDE { return IMG_EMPTY; }
@@ -51,7 +54,7 @@ public:
 	 */
 	bool check_season(const bool calc_only_season_change) OVERRIDE { if(  !calc_only_season_change  ) { calc_image(); } return true; }  // depends on snowline only
 
-	void finish_rd() OVERRIDE;
+	bool finish_rd() OVERRIDE;
 
 	void cleanup(player_t *player) OVERRIDE;
 

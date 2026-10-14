@@ -89,6 +89,9 @@ roadsign_t::roadsign_t(player_t *player, koord3d pos, ribi_t::ribi dir, const ro
 			ticks_offset = 1 << player->get_player_nr();
 		}
 	}
+	if(  desc->is_signal_type()  ) {
+		set_two_ways(false);
+	}
 	/* if more than one state, we will switch direction and phase for traffic lights
 	 * however also gate signs need indications
 	 */
@@ -104,9 +107,13 @@ roadsign_t::~roadsign_t()
 {
 	if(  desc  ) {
 		const grund_t *gr = welt->lookup(get_pos());
+		waytype_t finance_waytype = desc->get_waytype();
+
 		if(gr) {
 			weg_t *weg = gr->get_weg(desc->get_wtyp()!=tram_wt ? desc->get_wtyp() : track_wt);
-			if(weg) {
+			if (weg) {
+				finance_waytype = weg->get_waytype();
+
 				if (!preview) {
 					if (desc->is_single_way()  ||  desc->is_signal_type()) {
 						// signal removed, remove direction mask
@@ -119,8 +126,11 @@ roadsign_t::~roadsign_t()
 				dbg->error("roadsign_t::~roadsign_t()","roadsign_t %p was deleted but ground has no way of type %d!", this, desc->get_wtyp() );
 			}
 		}
+
+		player_t::add_maintenance( this->get_owner(), -desc->get_maintenance(), finance_waytype);
 	}
-	if(automatic) {
+
+	if (automatic) {
 		welt->sync_roadsigns.remove(this);
 	}
 }
@@ -133,14 +143,22 @@ void roadsign_t::set_dir(ribi_t::ribi dir)
 	this->dir = dir;
 	if (!preview) {
 		weg_t *weg = welt->lookup(get_pos())->get_weg(desc->get_wtyp()!=tram_wt ? desc->get_wtyp() : track_wt);
-		if(  desc->get_wtyp()!=track_wt  &&  desc->get_wtyp()!=monorail_wt  &&  desc->get_wtyp()!=maglev_wt  &&  desc->get_wtyp()!=narrowgauge_wt  ) {
-			weg->count_sign();
-		}
-		if(desc->is_single_way()  ||  desc->is_signal_type()) {
-			// set mask, if it is a single way ...
-			weg->count_sign();
-			weg->set_ribi_maske(calc_mask());
-DBG_MESSAGE("roadsign_t::set_dir()","ribi %i",dir);
+		if(desc->is_single_way()  ||  (desc->is_signal_type() && !get_two_ways())) {
+			if (!ribi_t::is_threeway(weg->get_ribi_unmasked())) {
+				// set mask, if it is a single way ...
+				weg->set_ribi_maske(calc_mask());
+			}
+			else {
+				weg->set_ribi_maske(ribi_t::none);
+				if (desc->is_signal_type()) {
+					dbg->warning("roadsign_t::set_dir()", "Signal on threeway at %s. Will not mask directions!", get_pos().get_fullstr());
+				}
+				else {
+					dbg->error("roadsign_t::set_dir()", "Single way sign %s on crossroad at %s wll be removed!", get_name(), get_pos().get_fullstr());
+					desc = NULL;
+					return;
+				}
+			}
 		}
 	}
 
@@ -156,8 +174,23 @@ DBG_MESSAGE("roadsign_t::set_dir()","ribi %i",dir);
 	foreground_image = IMG_EMPTY;
 	calc_image();
 
-	if (preview)
+	if (preview) {
 		this->dir = olddir;
+	}
+}
+
+
+void roadsign_t::set_two_ways(bool yesno)
+{
+	 ticks_ns = yesno ? 1 : 0;
+	 if(desc->is_signal_type() && !preview) {
+		 // Mask needs a change
+		 weg_t *weg = welt->lookup(get_pos())->get_weg(desc->get_wtyp()!=tram_wt ? desc->get_wtyp() : track_wt);
+		 if (weg) {
+			 weg->count_sign();
+			 weg->set_ribi_maske(yesno ? (ribi_t::ribi)ribi_t::none : calc_mask());
+		 }
+	 }
 }
 
 
@@ -186,7 +219,7 @@ void roadsign_t::info(cbuffer_t & buf) const
 		if(desc->get_min_speed()!=0) {
 			buf.printf("%s%d", translator::translate("\nminimum speed:"), speed_to_kmh(desc->get_min_speed()));
 		}
-		buf.printf("%s%u\n", translator::translate("\ndirection:"), dir);
+		buf.printf("%s%s\n", translator::translate("\ndirection:"), ribi_t::names[dir]);
 
 		if(  automatic  ) {
 			buf.append(translator::translate("\nSet phases:"));
@@ -203,6 +236,21 @@ void roadsign_t::info(cbuffer_t & buf) const
 }
 
 
+void roadsign_t::calc_diagonal_index(uint16 idx[4], ribi_t::ribi way_ribi, uint16 base)
+{
+	// the image list is ordered north, south, west, east
+	static const ribi_t::ribi order[4] = { ribi_t::north, ribi_t::south, ribi_t::west, ribi_t::east };
+	assert(ribi_t::is_bend(way_ribi));
+	// the lower ribi of the bend takes the first of its two images, and the bends are
+	// numbered with ribi/3-1, the same way the ways number their diagonals
+	const ribi_t::ribi low = way_ribi & (~way_ribi + 1);
+	const uint16 bend = base + 2*(way_ribi/3 - 1);
+	for(  uint8 i = 0;  i < 4;  i++  ) {
+		idx[i] = (way_ribi & order[i]) ? bend + (order[i]==low ? 0 : 1) : roadsign_desc_t::NO_DIAGONAL;
+	}
+}
+
+
 // could be still better aligned for drive_left settings ...
 void roadsign_t::calc_image()
 {
@@ -210,18 +258,32 @@ void roadsign_t::calc_image()
 
 	// vertical offset of the signal positions
 	const grund_t *gr=welt->lookup(get_pos());
-	if(gr==NULL) {
+	if(gr==NULL  ||  desc==NULL) {
 		return;
+	}
+
+	// signs on a bend use the diagonal images. The bend comes from the unmasked ribi:
+	// a one way sign masks a direction away, and a single direction is not a bend
+	uint16 diag[4] = { roadsign_desc_t::NO_DIAGONAL, roadsign_desc_t::NO_DIAGONAL, roadsign_desc_t::NO_DIAGONAL, roadsign_desc_t::NO_DIAGONAL };
+	const weg_t *w = gr->get_weg(desc->get_wtyp()!=tram_wt ? desc->get_wtyp() : track_wt);
+	if(  w != NULL  &&  w->is_diagonal()  &&  desc->has_diagonal_image()  ) {
+		calc_diagonal_index( diag, w->get_ribi_unmasked(), 0 );
 	}
 
 	after_xoffset = 0;
 	after_yoffset = 0;
 	sint8 xoff = 0, yoff = 0;
-	// left offsets defined, and image-on-the-left activated
-	const bool left_offsets = desc->get_offset_left()  &&
+	// image-on-the-left activated for this sign's waytype
+	const bool traffic_left =
 	    (     (desc->get_wtyp()==road_wt  &&  welt->get_settings().is_drive_left()  )
 	      ||  (desc->get_wtyp()!=air_wt  &&  desc->get_wtyp()!=road_wt  &&  welt->get_settings().is_signals_left())
 	    );
+	// left offsets defined, and image-on-the-left activated
+	const bool left_offsets = desc->get_offset_left()  &&  traffic_left;
+	// use the drive-on-left variant lists when the pak has them: both variants
+	// live in the pak, because a pak is loaded before the savegame says which
+	// side its world drives on
+	const bool left_variant = traffic_left  &&  desc->has_left_images();
 
 	const slope_t::type full_hang = gr->get_weg_hang();
 	const sint8 hang_diff = slope_t::max_diff(full_hang);
@@ -288,38 +350,38 @@ void roadsign_t::calc_image()
 			const sint16 YOFF = desc->get_offset_left();
 
 			if(temp_dir&ribi_t::east) {
-				tmp_image = desc->get_image_id(3);
+				tmp_image = desc->get_image_id(3, diag[3], left_variant);
 				xoff += XOFF;
 				yoff += -YOFF;
 			}
 
 			if(temp_dir&ribi_t::north) {
 				if(tmp_image!=IMG_EMPTY) {
-					foreground_image = desc->get_image_id(0);
+					foreground_image = desc->get_image_id(0, diag[0], left_variant);
 					after_xoffset += -XOFF;
 					after_yoffset += -YOFF;
 				}
 				else {
-					tmp_image = desc->get_image_id(0);
+					tmp_image = desc->get_image_id(0, diag[0], left_variant);
 					xoff += -XOFF;
 					yoff += -YOFF;
 				}
 			}
 
 			if(temp_dir&ribi_t::west) {
-				foreground_image = desc->get_image_id(2);
+				foreground_image = desc->get_image_id(2, diag[2], left_variant);
 				after_xoffset += -XOFF;
 				after_yoffset += YOFF;
 			}
 
 			if(temp_dir&ribi_t::south) {
 				if(foreground_image!=IMG_EMPTY) {
-					tmp_image = desc->get_image_id(1);
+					tmp_image = desc->get_image_id(1, diag[1], left_variant);
 					xoff += XOFF;
 					yoff += YOFF;
 				}
 				else {
-					foreground_image = desc->get_image_id(1);
+					foreground_image = desc->get_image_id(1, diag[1], left_variant);
 					after_xoffset += XOFF;
 					after_yoffset += YOFF;
 				}
@@ -328,30 +390,40 @@ void roadsign_t::calc_image()
 		else {
 
 			if(temp_dir&ribi_t::east) {
-				foreground_image = desc->get_image_id(3);
+				foreground_image = desc->get_image_id(3, diag[3], left_variant);
 			}
 
 			if(temp_dir&ribi_t::north) {
 				if(foreground_image!=IMG_EMPTY) {
-					tmp_image = desc->get_image_id(0);
+					tmp_image = desc->get_image_id(0, diag[0], left_variant);
 				}
 				else {
-					foreground_image = desc->get_image_id(0);
+					foreground_image = desc->get_image_id(0, diag[0], left_variant);
 				}
 			}
 
 			if(temp_dir&ribi_t::west) {
-				tmp_image = desc->get_image_id(2);
+				tmp_image = desc->get_image_id(2, diag[2], left_variant);
 			}
 
 			if(temp_dir&ribi_t::south) {
 				if(tmp_image!=IMG_EMPTY) {
-					foreground_image = desc->get_image_id(1);
+					foreground_image = desc->get_image_id(1, diag[1], left_variant);
 				}
 				else {
-					tmp_image = desc->get_image_id(1);
+					tmp_image = desc->get_image_id(1, diag[1], left_variant);
 				}
 			}
+		}
+
+		// a pak that defines front images wants image[] drawn behind the
+		// vehicles and frontimage[] before them, instead of the position
+		// heuristics above. Only a sign showing a single direction has both
+		// slots free for that; two-direction signs keep the pairing above
+		if(  ribi_t::is_single(temp_dir)  &&  desc->has_front_images(left_variant)  ) {
+			const uint8 i = temp_dir==ribi_t::north ? 0 : temp_dir==ribi_t::south ? 1 : temp_dir==ribi_t::west ? 2 : 3;
+			tmp_image        = desc->get_image_id( i, diag[i], left_variant );
+			foreground_image = desc->get_front_image_id( i, diag[i], left_variant );
 		}
 
 		// some signs on roads must not have a background (but then they have only two rotations)
@@ -450,6 +522,10 @@ void roadsign_t::calc_image()
 // only used for traffic light: change the current state
 sync_result roadsign_t::sync_step(uint32 /*delta_t*/)
 {
+	if (!desc) {
+		// some illegal sign ...
+		return SYNC_DELETE;
+	}
 	if(  desc->is_private_way()  ) {
 		uint8 image = 1-(dir&1);
 		if(  (1<<welt->get_active_player_nr()) & get_player_mask()  ) {
@@ -546,20 +622,20 @@ void roadsign_t::display_after(int xpos, int ypos, bool ) const
 #endif
 {
 	if(  foreground_image != IMG_EMPTY  ) {
-		const int raster_width = get_current_tile_raster_width();
+		const int raster_width = gfx->get_current_tile_raster_width();
 		xpos += tile_raster_scale_x( after_xoffset, raster_width );
 		ypos += tile_raster_scale_y( after_yoffset, raster_width );
 		// draw with owner
 		if(  get_owner_nr() != PLAYER_UNOWNED  ) {
 			if(  obj_t::show_owner  ) {
-				display_blend( foreground_image, xpos, ypos, 0, color_idx_to_rgb(get_owner()->get_player_color1()+2) | OUTLINE_FLAG | TRANSPARENT75_FLAG, 0, get_flag(obj_t::dirty)  CLIP_NUM_PAR);
+				gfx->draw_blend( foreground_image, xpos, ypos, 0, gfx->palette_lookup(get_owner()->get_player_color1()+2) | OUTLINE_FLAG | TRANSPARENT75_FLAG, 0, get_flag(obj_t::dirty)  CLIP_NUM_PAR);
 			}
 			else {
-				display_color( foreground_image, xpos, ypos, get_owner_nr(), true, get_flag(obj_t::dirty)  CLIP_NUM_PAR);
+				gfx->draw_color( foreground_image, xpos, ypos, get_owner_nr(), true, get_flag(obj_t::dirty)  CLIP_NUM_PAR);
 			}
 		}
 		else {
-			display_normal( foreground_image, xpos, ypos, 0, true, get_flag(obj_t::dirty)  CLIP_NUM_PAR);
+			gfx->draw_normal( foreground_image, xpos, ypos, 0, true, get_flag(obj_t::dirty)  CLIP_NUM_PAR);
 		}
 	}
 }
@@ -622,11 +698,7 @@ void roadsign_t::rdwr(loadsave_t *file)
 		if(desc==NULL) {
 			desc = roadsign_t::table.get(translator::compatibility_name(bname));
 			if(  desc==NULL  ) {
-				dbg->warning("roadsign_t::rwdr", "description %s for roadsign/signal at %d,%d not found! (may be ignored)", bname, get_pos().x, get_pos().y);
 				pakset_manager_t::add_missing_paks( bname, MISSING_SIGN );
-			}
-			else {
-				dbg->warning("roadsign_t::rwdr", "roadsign/signal %s at %d,%d replaced by %s", bname, get_pos().x, get_pos().y, desc->get_name() );
 			}
 		}
 		// init ownership of private ways signs
@@ -637,27 +709,38 @@ void roadsign_t::rdwr(loadsave_t *file)
 				ticks_ns = 0xFF;
 			}
 		}
+		if(  desc  &&  desc->is_signal_type()  &&  ticks_ns >= 2  ) {
+			ticks_ns = 0;
+		}
 	}
 }
 
 
 void roadsign_t::cleanup(player_t *player)
 {
-	player_t::book_construction_costs(player, -desc->get_price(), get_pos().get_2d(), get_waytype());
+	if (desc) {
+		player_t::book_construction_costs(player, -desc->get_price(), get_pos().get_2d(), get_waytype());
+	}
 }
 
 
-void roadsign_t::finish_rd()
+bool roadsign_t::finish_rd()
 {
 	grund_t *gr=welt->lookup(get_pos());
 	if(  gr==NULL  ||  !gr->hat_weg(desc->get_wtyp()!=tram_wt ? desc->get_wtyp() : track_wt)  ) {
-		dbg->error("roadsign_t::finish_rd","roadsing: way/ground missing at %i,%i => ignore", get_pos().x, get_pos().y );
+		dbg->error("roadsign_t::finish_rd", "way/ground missing at (%s); roadsign ignored", get_pos().get_fullstr());
+		desc = NULL;
 	}
 	else {
 		// after loading restore directions
 		set_dir(dir);
-		gr->get_weg(desc->get_wtyp()!=tram_wt ? desc->get_wtyp() : track_wt)->count_sign();
+		if (desc) {
+			weg_t* way = gr->get_weg(desc->get_wtyp() != tram_wt ? desc->get_wtyp() : track_wt);
+			way->count_sign();
+			player_t::add_maintenance(this->get_owner(), desc->get_maintenance(), way->get_waytype());
+		}
 	}
+	return desc == 0;
 }
 
 
@@ -674,8 +757,13 @@ static bool compare_roadsign_desc(const roadsign_desc_t* a, const roadsign_desc_
 		}
 		diff += (int)(a->get_flags() & ~roadsign_desc_t::SIGN_SIGNAL) - (int)(b->get_flags()  & ~roadsign_desc_t::SIGN_SIGNAL);
 	}
+
 	if (diff == 0) {
-		/* Some type: sort by name */
+		diff = (sint32)a->get_intro_year_month() - (sint32)b->get_intro_year_month();
+	}
+
+	if (diff == 0) {
+		/* Same type and intro date: sort by name */
 		diff = strcmp(a->get_name(), b->get_name());
 	}
 	return diff < 0;

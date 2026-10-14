@@ -58,14 +58,13 @@ void strasse_t::rdwr(loadsave_t *file)
 				desc = default_strasse;
 				pakset_manager_t::add_missing_paks( bname, MISSING_WAY );
 			}
-			dbg->warning("strasse_t::rdwr()", "Unknown street %s replaced by %s (old_max_speed %i)", bname, desc->get_name(), old_max_speed );
 		}
 		set_desc(desc);
 		if(old_max_speed>0) {
 			set_max_speed(old_max_speed);
 		}
 		if(hat_gehweg()) {
-			set_max_speed(max(desc->get_topspeed(),weg_t::get_cityroad_speedlimit()));
+			set_max_speed(min(desc->get_topspeed(),weg_t::get_cityroad_speedlimit()));
 		}
 	}
 }

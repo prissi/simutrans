@@ -6,7 +6,6 @@
 #ifndef SYS_SIMSYS_H
 #define SYS_SIMSYS_H
 
-
 #include "../simtypes.h"
 #include "../display/scr_coord.h"
 #include "../simcolor.h"
@@ -48,7 +47,8 @@ enum sim_mouse_action_t : unsigned long
 	SIM_MOUSE_MIDBUTTON   = 6,
 	SIM_MOUSE_MOVED       = 7,
 	SIM_MOUSE_WHEELUP     = 8,
-	SIM_MOUSE_WHEELDOWN   = 9
+	SIM_MOUSE_WHEELDOWN   = 9,
+	SIM_MOUSE_LONGPRESS   = 10 ///< a touch held in place; a mouse never sends this
 };
 
 
@@ -138,15 +138,19 @@ int dr_chdir(const char *path);
 // Functions the same as getcwd except path must be UTF-8 encoded.
 char *dr_getcwd(char *buf, size_t size);
 
-// Functions the same as fopen except filename must be UTF-8 encoded.
+/// Opens a regular file specified by @p filename. The filename must be UTF-8 encoded.
+/// Returns NULL on failure (e.g. the path is a directory, or does not exist).
+/// @param mode How to open the file (reading, writing). Format is the same as for @ref fopen.
 FILE *dr_fopen(const char *filename, const char *mode);
 
 #ifndef NETTOOL
-// Functions the same as gzopen except path must be UTF-8 encoded.
+/// Opens a regular compressed file specified by @p filename. The filename must be UTF-8 encoded.
+/// Returns NULL on failure (e.g. the path is a directory, or does not exist).
+/// @param mode How to open the file (reading, writing). Format is the same as for @ref gzopen.
 gzFile dr_gzopen(const char *path, const char *mode);
 #endif
 
-// Functions the same as stat except path must be UTF-8 encoded.
+/// Functions the same as @ref stat except @p path must be UTF-8 encoded.
 int dr_stat(const char *path, struct stat *buf);
 
 /**
@@ -257,6 +261,9 @@ void dr_notify_input_pos(scr_coord pos);
 
 ///  returns current two byte languange ID
 const char* dr_get_locale();
+
+/// compre two utf8 strings
+int dr_compare_uft8_string(const utf8* s1, const utf8* s2, const utf8* locale);
 
 /// true, if there is a hardware fullcreen mode
 bool dr_has_fullscreen();

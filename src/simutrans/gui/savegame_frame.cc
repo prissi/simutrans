@@ -31,7 +31,7 @@ public:
 	del_button_t() : button_t()
 	{
 		init(button_t::roundbox, "X");
-		w = max(D_BUTTON_HEIGHT, display_get_char_width('X') + D_BUTTON_PADDINGS_X);
+		w = max(D_BUTTON_HEIGHT, gfx->get_char_width('X') + D_BUTTON_PADDINGS_X);
 	}
 	scr_size get_min_size() const OVERRIDE
 	{
@@ -169,15 +169,16 @@ void savegame_frame_t::add_section(std::string &name){
 	}
 	else {
 		// user_dir path
-		size_t name_len = strlen(name.c_str());
-		size_t user_dir_len = strlen(env_t::user_dir);
+		const size_t name_len     = name.length();
+		const size_t user_dir_len = strlen(env_t::user_dir);
 
 		if ( name_len+user_dir_len > FILENAME_MAX-1 ) {
 			// shouldn't happen, but I'll control anyway
 			strcpy(path_expanded,"** ERROR ** Path too long");
 		}
 		else {
-			sprintf(path_expanded,"%s%s", env_t::user_dir, name.c_str());
+			snprintf(path_expanded, FILENAME_MAX, "%s%s", env_t::user_dir, name.c_str());
+			path_expanded[FILENAME_MAX-1] = 0;
 		}
 	}
 
@@ -462,10 +463,12 @@ bool savegame_frame_t::infowin_event(const event_t *event)
 		// Notify of the end
 		list_filled();
 	}
-	if(  event->ev_class == EVENT_KEYBOARD  &&  event->ev_code == 13  ) {
+
+	if(  IS_KEYDOWN(event)  &&  event->ev_code == SIM_KEYCODE_ENTER  ) {
 		action_triggered(&input, (long)0);
 		return true; // swallowed
 	}
+
 	return gui_frame_t::infowin_event(event);
 }
 

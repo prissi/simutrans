@@ -28,19 +28,19 @@ void way_writer_t::write_obj(FILE* outfp, obj_node_t& parent, tabfileobj_t& obj)
 		"nse1", "new1", "nsw1", "sew1", "nsew1", // different crossings: northwest/southeast is straight
 		"nse2", "new2", "nsw2", "sew2", "nsew2",
 	};
-	int ribi, slope;
+	int ribi;
 
-	obj_node_t node(this, 28, &parent);
+	static const char *slope_heights[2] = { "", "2" };
+	static const char *slope_names[4] = { "n", "w", "e", "s" };
+	static const char* const image_type[] = { "", "front" };
 
+	const sint64 price       = obj.get_int64("cost",        100);
+	const sint64 maintenance = obj.get_int64("maintenance", 100);
+	const sint32 topspeed    = obj.get_int("topspeed",    999);
+	const uint32 max_weight  = obj.get_int("max_weight",  999);
+	const uint16 axle_load   = obj.get_int("axle_load",  9999);
+	const uint8  clip_below  = obj.get_int_clamped("clip_below", 1, 0, 1);         // clip ground below (if elevated way)
 
-	// Version needs high bit set as trigger -> this is required
-	// as marker because formerly nodes were unversionend
-	uint16 version     = 0x8006;
-	uint32 price       = obj.get_int("cost",        100);
-	uint32 maintenance = obj.get_int("maintenance", 100);
-	sint32 topspeed    = obj.get_int("topspeed",    999);
-	uint32 max_weight  = obj.get_int("max_weight",  999);
-	uint16 axle_load   = obj.get_int("axle_load",  9999);
 
 	uint16 intro = obj.get_int("intro_year", DEFAULT_INTRO_YEAR) * 12;
 	intro += obj.get_int("intro_month", 1) - 1;
@@ -50,6 +50,7 @@ void way_writer_t::write_obj(FILE* outfp, obj_node_t& parent, tabfileobj_t& obj)
 
 	uint8 wtyp = get_waytype(obj.get("waytype"));
 	uint8 styp = obj.get_int("system_type", 0);
+
 	// compatibility conversions
 	if (wtyp == track_wt && styp == 5) {
 		wtyp = monorail_wt;
@@ -62,9 +63,11 @@ void way_writer_t::write_obj(FILE* outfp, obj_node_t& parent, tabfileobj_t& obj)
 	uint8 draw_as_ding = (obj.get_int("draw_as_ding", 0) == 1);
 	sint8 number_of_seasons = 0;
 
-	node.write_version(outfp, 6);
-	node.write_uint32(outfp, price);
-	node.write_uint32(outfp, maintenance);
+	obj_node_t node(this, 37, &parent);
+
+	node.write_version(outfp, 8);
+	node.write_sint64(outfp, price);
+	node.write_sint64(outfp, maintenance);
 	node.write_sint32(outfp, topspeed);
 	node.write_uint32(outfp, max_weight);
 	node.write_uint16(outfp, intro);
@@ -73,14 +76,16 @@ void way_writer_t::write_obj(FILE* outfp, obj_node_t& parent, tabfileobj_t& obj)
 	node.write_uint8 (outfp, wtyp);
 	node.write_uint8 (outfp, styp);
 	node.write_uint8 (outfp, draw_as_ding);
+	node.write_uint8 (outfp, clip_below);
 
-	static const char* const image_type[] = { "", "front" };
 
-	slist_tpl<string> keys;
+	slist_tpl<std::string> keys;
 	char buf[40];
 	sprintf(buf, "image[%s][0]", ribi_codes[0]);
-	string str = obj.get(buf);
-	if (str.empty()) {
+
+	std::string str = obj.get(buf);
+
+	if (str.empty()) { // no winter images
 		node.write_sint8(outfp, number_of_seasons);
 		write_name_and_copyright(outfp, node, obj);
 
@@ -89,7 +94,8 @@ void way_writer_t::write_obj(FILE* outfp, obj_node_t& parent, tabfileobj_t& obj)
 		if (str.empty()) {
 			dbg->fatal("way_writer_t::write_obj", "image with label %s missing", buf);
 		}
-		for(int backtofront = 0; backtofront<2; backtofront++) {
+
+		for(size_t backtofront = 0; backtofront<lengthof(image_type); backtofront++) {
 			// way images defined without seasons
 			char buf[40];
 			sprintf(buf, "%simage[new2]", image_type[backtofront]);
@@ -105,22 +111,24 @@ void way_writer_t::write_obj(FILE* outfp, obj_node_t& parent, tabfileobj_t& obj)
 			imagelist_writer_t::instance()->write_obj(outfp, node, keys);
 
 			keys.clear();
-			for(  slope = 3;  slope <= 12;  slope += 3  ) {
-				char buf[40];
 
-				sprintf( buf, "%simageup[%d]", image_type[backtofront], slope );
-				string str = obj.get(buf);
-				keys.append(str);
-			}
-			for(  slope = 3;  slope <= 12;  slope += 3  ) {
-				char buf[40];
+			for (uint32 h = 0; h<lengthof(slope_heights); ++h) {
+				for (uint32 d = 0; d<lengthof(slope_names); ++d) {
+					char buf[40];
+					sprintf( buf, "%simageup%s[%s]", image_type[backtofront], slope_heights[h], slope_names[d]);
 
-				sprintf( buf, "%simageup2[%d]", image_type[backtofront], slope );
-				string str = obj.get(buf);
-				if(  !str.empty()  ) {
-					keys.append(str);
+					std::string str = obj.get(buf);
+					if (str.empty()) {
+						sprintf(buf, "%simageup%s[%d]", image_type[backtofront], slope_heights[h], (d+1)*3);
+						str = obj.get(buf);
+					}
+
+					if (!str.empty()) {
+						keys.append(str);
+					}
 				}
 			}
+
 			imagelist_writer_t::instance()->write_obj(outfp, node, keys);
 
 			keys.clear();
@@ -131,6 +139,13 @@ void way_writer_t::write_obj(FILE* outfp, obj_node_t& parent, tabfileobj_t& obj)
 				string str = obj.get(buf);
 				keys.append(str);
 			}
+			// close diagonals
+			sprintf(buf, "%sdiagonal[close1]", image_type[backtofront]);
+			str = obj.get(buf);
+			keys.append(str);
+			sprintf(buf, "%sdiagonal[close2]", image_type[backtofront]);
+			str = obj.get(buf);
+			keys.append(str);
 			imagelist_writer_t::instance()->write_obj(outfp, node, keys);
 			keys.clear();
 
@@ -144,7 +159,8 @@ void way_writer_t::write_obj(FILE* outfp, obj_node_t& parent, tabfileobj_t& obj)
 				cursorskin_writer_t::instance()->write_obj(outfp, node, obj, cursorkeys);
 			}
 		}
-	} else {
+	}
+	else { // with winter images
 		sprintf(buf, "image[%s][%d]", ribi_codes[0], number_of_seasons+1);
 		if (!strempty(obj.get(buf))) {
 			number_of_seasons++;
@@ -156,34 +172,36 @@ void way_writer_t::write_obj(FILE* outfp, obj_node_t& parent, tabfileobj_t& obj)
 		// has switch images for both directions?
 		const uint8 ribinr = *(obj.get("image[new2][0]"))==0 ? 16 : 26;
 
-		for(int backtofront = 0; backtofront<2; backtofront++) {
+		for(size_t backtofront = 0; backtofront<lengthof(image_type); backtofront++) {
 			for (uint8 season = 0; season <= number_of_seasons ; season++) {
 				for (ribi = 0; ribi < ribinr; ribi++) {
 					char buf[40];
 
 					sprintf(buf, "%simage[%s][%d]", image_type[backtofront], ribi_codes[ribi], season);
-					string str = obj.get(buf);
+					std::string str = obj.get(buf);
 					keys.append(str);
 				}
 				imagelist_writer_t::instance()->write_obj(outfp, node, keys);
 
 				keys.clear();
-				for(  slope = 3;  slope <= 12;  slope += 3  ) {
-					char buf[40];
 
-					sprintf( buf, "%simageup[%d][%d]", image_type[backtofront], slope, season );
-					string str = obj.get(buf);
-					keys.append(str);
-				}
-				for(  slope = 3;  slope <= 12;  slope += 3  ) {
-					char buf[40];
+				for (uint32 h = 0; h<lengthof(slope_heights); ++h) {
+					for (uint32 d = 0; d<lengthof(slope_names); ++d) {
+						char buf[40];
+						sprintf(buf, "%simageup%s[%s][%d]", image_type[backtofront], slope_heights[h], slope_names[d], season);
+						std::string str = obj.get(buf);
 
-					sprintf( buf, "%simageup2[%d][%d]", image_type[backtofront], slope, season );
-					string str = obj.get(buf);
-					if(  !str.empty()  ) {
-						keys.append(str);
+						if (str.empty()) {
+							sprintf( buf, "%simageup%s[%d][%d]", image_type[backtofront], slope_heights[h], (d+1)*3, season);
+							str = obj.get(buf);
+						}
+
+						if (!str.empty()) {
+							keys.append(str);
+						}
 					}
 				}
+
 				imagelist_writer_t::instance()->write_obj(outfp, node, keys);
 
 				keys.clear();
@@ -194,6 +212,13 @@ void way_writer_t::write_obj(FILE* outfp, obj_node_t& parent, tabfileobj_t& obj)
 					string str = obj.get(buf);
 					keys.append(str);
 				}
+				// close diagonals
+				sprintf(buf, "%sdiagonal[close1][%d]", image_type[backtofront], season);
+				str = obj.get(buf);
+				keys.append(str);
+				sprintf(buf, "%sdiagonal[close2][%d]", image_type[backtofront], season);
+				str = obj.get(buf);
+				keys.append(str);
 				imagelist_writer_t::instance()->write_obj(outfp, node, keys);
 
 				keys.clear();

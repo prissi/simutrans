@@ -1,4 +1,5 @@
 /**
+ * @file ai.nut
  * Main file of the AI player.
  */
 
@@ -10,24 +11,25 @@ ai <- {}
 ai.short_description <- "AI player implementation road/ship/rail"
 
 ai.author <- "dwachs/Andarix"
-ai.version <- "0.9.5.1"
+ai.version <- "0.10.1.5"
 
 // includes
 include("basic")  // .. definition of basic node classes
 include("astar")  // .. route search for way building etc
 include("save")   // .. routines to save class instances
 
-include("factorysearcher")              // .. checks factories for available connections
-include("industry_connection_planner")  // .. plans connection between 2 factories
-include("combined_connections")         // .. plans connections using water + land transport
-include("industry_manager")             // .. manages existing connection (buys, sells, upgrades convoys)
-include("placefinder")                  // .. utility functions to find places for stations near factories etc
-include("prototyper")                   // .. plans convoy-type for a connection
-include("road_connector")               // .. builds road connection
-include("rail_connector")               // .. builds rail connection
-include("ship_connector")               // .. creates ship connection
-include("station_manager")              // .. keeps information about freight station
-include("vehicle_constructor")          // .. constructs convoy, assign to line, start
+include("factorysearcher")              /// .. checks factories for available connections
+include("industry_connection_planner")  /// .. plans connection between 2 factories
+include("combined_connections")         /// .. plans connections using water + land transport
+include("industry_manager")             /// .. manages existing connection (buys, sells, upgrades convoys)
+include("placefinder")                  /// .. utility functions to find places for stations near factories etc
+include("prototyper")                   /// .. plans convoy-type for a connection
+include("road_connector")               /// .. builds road connection
+include("rail_connector")               /// .. builds rail connection
+include("ship_connector")               /// .. creates ship connection
+include("air_connector")                /// .. creates air connection
+include("station_manager")              /// .. keeps information about freight station
+include("vehicle_constructor")          /// .. constructs convoy, assign to line, start
 
 // basic functions
 sum <- @(a,b) a+b
@@ -43,6 +45,9 @@ month_count_ticks <- world.get_time().next_month_ticks
 build_check_month <- world.get_time().ticks
 // set factory strategie - 0 = traditional method, taken from C++ implementation
 factory_strategie <- 0
+
+// gate for the optional diagnostic output of this AI
+::debug.messages <- false
 
 /*
  *  different ticks per month for bits_per_month
@@ -261,8 +266,12 @@ function equal_coord3d(a,b)
   return a.x == b.x  &&  a.y == b.y  &&  a.z == b.z
 }
 
-
-function is_cash_available(cost /* in 1/100 cr */)
+/**
+ *  check cash <-> build cost
+ *
+ *  @param[in] cost build cost in 1/100 cr
+ */
+function is_cash_available(cost)
 {
   //gui.add_message_at(our_player, " ***** cash : " + our_player.get_current_cash(), world.get_time())
   //gui.add_message_at(our_player, " ***** cost : " + cost, world.get_time())
@@ -305,7 +314,7 @@ function myrand(upper)
 }
 
 /**
- * Returns ticks for today + @p m months
+ * @return ticks for today + @p m months
  */
 function today_plus_months(m)
 {
@@ -314,13 +323,14 @@ function today_plus_months(m)
 }
 
 /**
- * returns pakset name (lower case)
+ * This function read full string from ground.outside.pak.
+ * The string split by spaces and the first string (name pakset) return as lower case string.
  *
- *
+ * @return pakset name (lower case) or unknown
  */
 function get_set_name()
 {
-  local pakset = get_pakset_name()  // full string from ground.outside.pak
+  local pakset = get_pakset_name()  //* full string from ground.outside.pak
   if ( pakset != null ) {
     local s = pakset.find(" ")
     pakset = pakset.slice(0, s)
@@ -332,11 +342,11 @@ function get_set_name()
   return pakset
 }
 
-/*
+/**
  * set global variables citicar and convoy counts
  *
- * output = 0 -> no return
- * output = 1 -> return road_car_rate
+ * @param output   0 -> no return : 1 -> return road_car_rate
+ * @return none or calculate road car rate
  */
 function set_map_vehicles_counts(output = 0) {
   sleep()

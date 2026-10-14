@@ -29,9 +29,10 @@ class toolbar_t;
 class memory_rw_t;
 class karte_ptr_t;
 class zeiger_t;
+class karte_t;
 
 enum {
-	// general tools
+	// general tools (one click)
 	TOOL_QUERY=0,
 	TOOL_REMOVER,
 	TOOL_RAISE_LAND,
@@ -87,7 +88,7 @@ enum {
 };
 
 enum {
-	// simple one click tools
+	// simple no click tools
 	TOOL_PAUSE = 0,
 	TOOL_FASTFORWARD,
 	TOOL_SCREENSHOT,
@@ -131,6 +132,9 @@ enum {
 	TOOL_TOGGLE_CONTROL,
 	TOOL_LOAD_SCENARIO,
 	TOOL_DAY_NIGHT_TOGGLE,
+	TOOL_SINGLE_WAY_TOOGLE,
+	TOOL_WORK_WORLD,
+	TOOL_HALT_PERMISSION,
 	SIMPLE_TOOL_COUNT,
 	SIMPLE_TOOL = 0x2000
 };
@@ -175,6 +179,7 @@ enum {
 	DIALOG_EDIT_GROUNDOBJ,
 	DIALOG_CHAT,
 	DIALOG_PLAYER_RANKING,
+	DIALOG_WAY_BUILDER,
 	DIALOGE_TOOL_COUNT,
 	DIALOGE_TOOL = 0x4000
 };
@@ -185,6 +190,28 @@ enum {
 	TOOL_LAST_USED = 1022,
 	TOOLBAR_TOOL = 0x8000u
 };
+
+
+/**
+ * What a modifier key does for the tool that is currently armed, and whether
+ * that effect applies with the keys held right now.
+ *
+ * One entry per *effect*, not per key. A tool where one key drives two
+ * independent effects reports two entries carrying the same key name; that is
+ * how the hints stay truthful about what the tool actually does instead of
+ * pretending a key has a single meaning.
+ */
+struct tool_hint_t {
+	/// Modifier name as a translation key. Use the tokens the keyboard help
+	/// already uses - "[CTRL]", "[SHIFT]" - so the key names stay spelled the
+	/// same everywhere and come out already localised.
+	const char *key;
+	const char *text; ///< translation key describing the effect
+	bool active;      ///< the effect applies with the modifiers currently held
+};
+
+/// Number of hints tool_t::get_modifier_hints() may write.
+#define TOOL_MAX_HINTS (4)
 
 
 class tool_t {
@@ -200,6 +227,12 @@ protected:
 	const char *default_param;
 
 public:
+	// generate toolstips
+	static char* tooltip_with_price(const char* tip, sint64 price);
+	static char* tooltip_with_price_length(const char* tip, sint64 price, sint64 length);
+	static char* tooltip_with_price_maintenance(karte_t* welt, const char* tip, sint64 price, sint64 maintenance);
+	static char* tooltip_with_price_maintenance_capacity(karte_t* const welt, char const* const tip, sint64 const price, sint64 const maintenance, uint32 const capacity, uint8 const enables);
+
 	uint16 get_id() const { return id; }
 
 	const char *get_name() const { return id_to_string(id); }
@@ -320,6 +353,25 @@ public:
 	virtual const char *get_tooltip(const player_t *) const { return NULL; }
 
 	/**
+	 * Short translated name of what this tool builds, for the contextual build
+	 * bar. Returning NULL (the default) keeps the bar hidden for this tool, so
+	 * only tools that opt in ever appear there.
+	 */
+	virtual const char *get_context_label() const { return NULL; }
+
+	/**
+	 * Report what Shift and Ctrl currently do for this tool.
+	 *
+	 * @param hints     array of at least TOOL_MAX_HINTS entries to fill in
+	 * @param mod_flags effective modifier state as WFL_SHIFT|WFL_CTRL bits.
+	 *                  The caller has already applied tool_t::control_invert,
+	 *                  so this is what the tool would really see, not the raw
+	 *                  keyboard state.
+	 * @returns number of hints written
+	 */
+	virtual uint8 get_modifier_hints(tool_hint_t *hints, uint8 mod_flags) const { (void)hints; (void)mod_flags; return 0; }
+
+	/**
 	 * @return true if this tool operates over the grid, not the map tiles.
 	 */
 	virtual bool is_grid_tool() const {return false;}
@@ -336,16 +388,21 @@ public:
 	// returning true on exit will have tool_selector resets to query-tool on right-click
 	virtual bool exit( player_t * ) { return true; }
 
-	/* the return string can have different meanings:
-	 * NULL: ok
-	 * "": unspecified error
-	 * "blabla": errors message, will be handled and translated as appropriate
-	 * check: called before work (and move too?) koord3d already valid coordinate, checks visibility
-	 * work / move should depend on undergroundmode for not network safe tools
-	 */
-	virtual const char *check_pos( player_t *, koord3d );
-	virtual const char *work( player_t *, koord3d ) { return NULL; }
-	virtual const char *move( player_t *, uint16 /* buttonstate */, koord3d ) { return ""; }
+	/// Checks if @p pos is suitable for applying this tool.
+	/// @returns NULL if OK, else untranslated error message
+	virtual const char *check_pos( player_t *pl, koord3d pos);
+
+	/// Apply the tool to the world at @p pos.
+	/// @note This function should depend on undergroundmode for not network safe tools
+	/// @returns NULL if OK, else untranslated error message
+	virtual const char *work( player_t *pl, koord3d pos);
+
+	/// Called when the tool is dragged across the map.
+	/// If we are in network mode, the effects of the tool must be queued,
+	/// else the effects of the tool can just be applied directly.
+	/// @note This function should depend on undergroundmode for not network safe tools
+	/// @returns NULL if OK, else untranslated error message
+	virtual const char *move( player_t *pl, uint16 buttonstate, koord3d new_pos);
 
 	/**
 	 * Should be overloaded if derived class implements move,

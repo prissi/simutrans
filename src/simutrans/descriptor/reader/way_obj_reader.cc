@@ -13,12 +13,18 @@
 #include "way_obj_reader.h"
 #include "../obj_node_info.h"
 #include "../../network/pakset_info.h"
-#include "../../tpl/array_tpl.h"
+
+#include <cinttypes>
 
 
 void way_obj_reader_t::register_obj(obj_desc_t *&data)
 {
 	way_obj_desc_t *desc = static_cast<way_obj_desc_t *>(data);
+
+	// has diagonals/close diagonals?
+	desc->diagonals = (desc->get_back_diagonal_image_id(ribi_t::northeast) != IMG_EMPTY || desc->get_front_diagonal_image_id(ribi_t::northeast) != IMG_EMPTY);
+	desc->close_diagonals = (desc->get_back_close_diagonal_image_id(0) != IMG_EMPTY || desc->get_front_close_diagonal_image_id(0) != IMG_EMPTY);
+
 	wayobj_t::register_desc(desc);
 
 	checksum_t *chk = new checksum_t();
@@ -35,11 +41,8 @@ bool way_obj_reader_t::successfully_loaded() const
 
 obj_desc_t * way_obj_reader_t::read_node(FILE *fp, obj_node_info_t &node)
 {
-	array_tpl<char> desc_buf(node.size);
-	if (fread(desc_buf.begin(), node.size, 1, fp) != 1) {
-		return NULL;
-	}
-	char *p = desc_buf.begin();
+	node_body_t p(fp, node.size, get_type_name());
+	if (!p) return NULL;
 
 	// old versions of PAK files have no version stamp.
 	// But we know, the higher most bit was always cleared.
@@ -48,31 +51,40 @@ obj_desc_t * way_obj_reader_t::read_node(FILE *fp, obj_node_info_t &node)
 
 	way_obj_desc_t *desc = new way_obj_desc_t();
 
-	if(version==1) {
-		// Versioned node, version 3
-		desc->price = decode_uint32(p);
-		desc->maintenance = decode_uint32(p);
-		desc->topspeed = decode_uint32(p);
-		desc->intro_date = decode_uint16(p);
+	if (version == 2) {
+		// Cost/maintenance as sint64
+		desc->price       = decode_sint64(p);
+		desc->maintenance = decode_sint64(p);
+		desc->topspeed    = decode_uint32(p);
+		desc->intro_date  = decode_uint16(p);
 		desc->retire_date = decode_uint16(p);
-		desc->wtyp = decode_uint8(p);
-		desc->own_wtyp = decode_uint8(p);
+		desc->wtyp        = decode_uint8(p);
+		desc->own_wtyp    = decode_uint8(p);
+	}
+	else if (version==1) {
+		desc->price       = decode_uint32(p);
+		desc->maintenance = decode_uint32(p);
+		desc->topspeed    = decode_uint32(p);
+		desc->intro_date  = decode_uint16(p);
+		desc->retire_date = decode_uint16(p);
+		desc->wtyp        = decode_uint8(p);
+		desc->own_wtyp    = decode_uint8(p);
 	}
 	else {
 		dbg->fatal( "way_obj_reader_t::read_node()", "Cannot handle too new node version %i", version );
 	}
+
 	PAKSET_INFO("way_obj_reader_t::read_node()",
-	     "version=%d price=%d maintenance=%d topspeed=%d wtype=%d own_wtype=%d intro=%i/%i, retire=%i/%i",
+	     "version=%d price=%" PRId64 " maintenance=%" PRId64 " topspeed=%d wtype=%d own_wtype=%d intro=%i/%i, retire=%i/%i",
 	     version,
 	     desc->price,
 	     desc->maintenance,
 	     desc->topspeed,
 	     desc->wtyp,
 	     desc->own_wtyp,
-	     (desc->intro_date%12)+1,
-	     desc->intro_date/12,
-	     (desc->retire_date%12)+1,
-	     desc->retire_date/12);
+	     (desc->intro_date %12)+1, desc->intro_date /12,
+	     (desc->retire_date%12)+1, desc->retire_date/12
+	);
 
 	return desc;
 }

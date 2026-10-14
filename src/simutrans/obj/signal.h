@@ -11,7 +11,6 @@
 
 #include "simobj.h"
 
-
 /**
  * Signals for rail tracks.
  *
