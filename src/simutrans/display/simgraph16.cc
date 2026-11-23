@@ -1345,20 +1345,107 @@ PIXVAL inline zoomin_pixel(uint8 *p, uint8* pab, uint8 *prl, uint8* pdia)
 }
 
 
+// Bicubic kernel helper (Bicubic Convolution / Catmull-Rom spline)
+// Controls the sharpness/smoothing of the filter
+float bicubic_kernel(float x) {
+	x = fabsf(x);
+	if (x <= 1.0f) {
+		return (1.5f * x - 2.5f) * x * x + 1.0f;
+	}
+	else if (x < 2.0f) {
+		return ((-0.5f * x + 2.5f) * x - 4.0f) * x + 2.0f;
+	}
+	return 0.0f;
+}
+
+typedef struct {
+	unsigned char a, r, g, b;
+} RGBA;
+
+
+inline RGBA pixval2rgba(const PIXVAL& px)
+{
+	/*
+	 * mapping tables for RGB 555 to actual output format
+	 * plus the special (player, day&night) colors appended
+	 *
+	 * 0x0000 - 0x7FFF: RGB colors
+	 * 0x8000 - 0x800F: Player colors
+	 * 0x8010 - 0x001F: Day&Night special colors
+	 * The following transparent colors are not in the colortable
+	 * 0x8020 - 0xFFE1: 3 4 3 RGB transparent colors in 31 transparency levels
+	 */
+
+	RGBA ret;
+	if (px < 0x8000) {
+		ret.a = 255;   // opaque
+		ret.b = (px >> 7) & 0xF8u;
+		ret.g = (px >> 2) & 0xF8u;
+		ret.r = (px << 3) & 0xF8u;
+	}
+	else if (px < 0x8020) {
+		// special color => alpha == 1
+		ret.a = 1;
+		ret.b = px - 0x8000;
+		ret.g = 0;
+		ret.r = 0;
+	}
+	else if (px <= 0xFFE1) {
+		/* After substratction: bbbgggg rrraaaaa*/
+		PIXVAL i = px - 0x8020;
+		// alpha 32 is transparent (255)
+		sint16 alpha = (i & 0x001Fu) + 1;
+		ret.a = 255 - (alpha * 255) / 32;
+		ret.b = (i >> 7) & 0xE0;
+		ret.g = (i >> 4) & 0xF0u;
+		ret.r = (i) & 0xE0u;
+	}
+	else {
+		// illegal pixel full transparent
+		ret.a = 0;
+		ret.b = 0;
+		ret.g = 0;
+		ret.r = 0;
+	}
+	return ret;
+}
+
+
+PIXVAL rgba2pixval(const RGBA& rgba)
+{
+	if (rgba.a == 1) {
+		// special color, index saved in blue
+		return 0x8000 + (rgba.b & 0x1F);
+	}
+	sint16 alpha = ((255 - (uint16)rgba.a) * 33) / 256;
+	if (alpha==32) {
+		// transparent
+		return 0xFFFF;
+	}
+	else if (rgba.a==0) {
+		// opaque pixel RGB 555
+		return ((rgba.b & 0x00F8u) << 7) | ((rgba.g & 0x00F8u) << 2) | ((rgba.r & 0x00F8u) >> 3);
+	}
+	// transparent color
+	PIXVAL v = ((rgba.b & 0x00E0) << 7) | ((rgba.g & 0x00F0) << 4) | (rgba.r & 0x00E0);
+	return 0x8020 + (v | alpha);
+}
+
+
+
 /**
  * Convert base image data to actual image size
- * Uses averages of all sampled points to get the "real" value
- * Blurs a bit
+ * using bicubic interpolation
  */
 static void rezoom_img(const image_id n)
 {
 	// may this image be zoomed
-	if(  n < anz_images  &&  images[n].base_h > 0  ) {
+	if (n < anz_images && images[n].base_h > 0) {
 #ifdef MULTI_THREAD
-		pthread_mutex_lock( &rezoom_img_mutex[n % env_t::num_threads] );
-		if(  (images[n].recode_flags & FLAG_REZOOM) == 0  ) {
+		pthread_mutex_lock(&rezoom_img_mutex[n % env_t::num_threads]);
+		if ((images[n].recode_flags & FLAG_REZOOM) == 0) {
 			// other routine did already the re-zooming ...
-			pthread_mutex_unlock( &rezoom_img_mutex[n % env_t::num_threads] );
+			pthread_mutex_unlock(&rezoom_img_mutex[n % env_t::num_threads]);
 			return;
 		}
 #endif
@@ -1367,19 +1454,19 @@ static void rezoom_img(const image_id n)
 
 		//  we recalculate the len (since it may be larger than before)
 		// thus we have to free the old caches
-		if(  images[n].zoom_data != NULL  ) {
-			free( images[n].zoom_data );
+		if (images[n].zoom_data != NULL) {
+			free(images[n].zoom_data);
 			images[n].zoom_data = NULL;
 		}
-		for(  uint8 i = 0;  i < MAX_PLAYER_COUNT;  i++  ) {
-			if(  images[n].data[i] != NULL  ) {
-				free( images[n].data[i] );
-				images[n].data[i] = NULL;
+		for (uint8 i = 0; i < MAX_PLAYER_COUNT; i++) {
+			if (images[n].data != NULL) {
+				free(images[n].data);
+				images[n].data = NULL;
 			}
 		}
 
 		// just restore original size?
-		if(  zoom_factor == ZOOM_NEUTRAL  ||  (images[n].recode_flags&FLAG_ZOOMABLE) == 0  ) {
+		if (zoom_factor == ZOOM_NEUTRAL || (images[n].recode_flags & FLAG_ZOOMABLE) == 0) {
 			// this we can do be a simple copy ...
 			images[n].x = images[n].base_x;
 			images[n].w = images[n].base_w;
@@ -1387,50 +1474,38 @@ static void rezoom_img(const image_id n)
 			images[n].h = images[n].base_h;
 			// recalculate length
 			sint16 h = images[n].base_h;
-			PIXVAL *sp = images[n].base_data;
+			PIXVAL* sp = images[n].base_data;
 
-			while(  h-- > 0  ) {
+			while (h-- > 0) {
 				do {
 					// clear run + colored run + next clear run
 					sp++;
-					sp += (*sp)&(~TRANSPARENT_RUN); // MSVC crashes on (*sp)&(~TRANSPARENT_RUN) + 1 !!!
-					sp ++;
-				} while(  *sp  );
+					sp += (*sp) & (~TRANSPARENT_RUN); // MSVC crashes on (*sp)&(~TRANSPARENT_RUN) + 1 !!!
+					sp++;
+				} while (*sp);
 				sp++;
 			}
 			images[n].len = (uint32)(size_t)(sp - images[n].base_data);
 			images[n].recode_flags &= ~FLAG_REZOOM;
 #ifdef MULTI_THREAD
-			pthread_mutex_unlock( &rezoom_img_mutex[n % env_t::num_threads] );
+			pthread_mutex_unlock(&rezoom_img_mutex[n % env_t::num_threads]);
 #endif
 			return;
 		}
 
-		// now we want to downsize the image
+		// now we want to change the image
+
 		// just divide the sizes
 		images[n].x = (images[n].base_x * g_simgraph16.zoom_num[zoom_factor]) / g_simgraph16.zoom_den[zoom_factor];
 		images[n].y = (images[n].base_y * g_simgraph16.zoom_num[zoom_factor]) / g_simgraph16.zoom_den[zoom_factor];
 		images[n].w = (images[n].base_w * g_simgraph16.zoom_num[zoom_factor]) / g_simgraph16.zoom_den[zoom_factor];
 		images[n].h = (images[n].base_h * g_simgraph16.zoom_num[zoom_factor]) / g_simgraph16.zoom_den[zoom_factor];
 
-		if(  images[n].h > 0  &&  images[n].w > 0  ) {
+		if (images[n].h > 0 && images[n].w > 0) {
 			// just recalculate the image in the new size
-			PIXVAL *src = images[n].base_data;
-			PIXVAL *dest = NULL;
-			// embed the baseimage in an image with margin ~ remainder
-			const sint16 x_rem = (images[n].base_x * g_simgraph16.zoom_num[zoom_factor]) % g_simgraph16.zoom_den[zoom_factor];
-			const sint16 y_rem = (images[n].base_y * g_simgraph16.zoom_num[zoom_factor]) % g_simgraph16.zoom_den[zoom_factor];
-			const sint16 xl_margin = max( x_rem, 0);
-			const sint16 xr_margin = max(-x_rem, 0);
-			const sint16 yl_margin = max( y_rem, 0);
-			const sint16 yr_margin = max(-y_rem, 0);
-			// baseimage top-left  corner is at (xl_margin, yl_margin)
-			// ...       low-right corner is at (xr_margin, yr_margin)
 
-			sint32 orgzoomwidth = ((images[n].base_w + g_simgraph16.zoom_den[zoom_factor] - 1 ) / g_simgraph16.zoom_den[zoom_factor]) * g_simgraph16.zoom_den[zoom_factor];
-			sint32 newzoomwidth = (orgzoomwidth*g_simgraph16.zoom_num[zoom_factor])/g_simgraph16.zoom_den[zoom_factor];
-			sint32 orgzoomheight = ((images[n].base_h + g_simgraph16.zoom_den[zoom_factor] - 1 ) / g_simgraph16.zoom_den[zoom_factor]) * g_simgraph16.zoom_den[zoom_factor];
-			sint32 newzoomheight = (orgzoomheight * g_simgraph16.zoom_num[zoom_factor]) / g_simgraph16.zoom_den[zoom_factor];
+			sint32 newzoomwidth = images[n].w;
+			sint32 newzoomheight = images[n].h;
 
 			// we will unpack, re-sample, pack it
 
@@ -1444,329 +1519,177 @@ static void rezoom_img(const image_id n)
 			// We end with an over sized buffer for the normal usage, but since it's re-used for all re-zooms,
 			// it's not performance critical and we are safe from all possible inputs.
 
-			size_t new_size = ( ( (newzoomwidth * 3) / 2 ) + 1 + 2) * newzoomheight * sizeof(PIXVAL);
-			size_t unpack_size = (xl_margin + orgzoomwidth + xr_margin) * (yl_margin + orgzoomheight + yr_margin) * 4;
-			if(  unpack_size > new_size  ) {
+			size_t new_size = (((newzoomwidth * 3) / 2) + 1 + 2) * newzoomheight * sizeof(PIXVAL) * 2;
+			size_t unpack_size = images[n].base_w * images[n].base_h * 2;
+			if (unpack_size > new_size) {
 				new_size = unpack_size;
 			}
 			new_size = ((new_size * 128) + 127) / 128; // enlarge slightly to try and keep buffers on their own cacheline for multithreaded access. A portable aligned_alloc would be better.
-			if(  rezoom_size[n % env_t::num_threads] < new_size  ) {
-				free( rezoom_baseimage2[n % env_t::num_threads] );
-				free( rezoom_baseimage[n % env_t::num_threads] );
+			if (rezoom_size[n % env_t::num_threads] < new_size) {
+				free(rezoom_baseimage2[n % env_t::num_threads]);
+				free(rezoom_baseimage[n % env_t::num_threads]);
 				rezoom_size[n % env_t::num_threads] = new_size;
-				rezoom_baseimage[n % env_t::num_threads]  = MALLOCN( uint8, new_size );
-				rezoom_baseimage2[n % env_t::num_threads] = reinterpret_cast<PIXVAL *>(MALLOCN(uint8, new_size));
+				rezoom_baseimage[n % env_t::num_threads] = MALLOCN(uint8, new_size);
+				rezoom_baseimage2[n % env_t::num_threads] = reinterpret_cast<PIXVAL*>(MALLOCN(uint8, new_size));
 			}
-			memset( rezoom_baseimage[n % env_t::num_threads], 255, new_size ); // fill with invalid data to mark transparent regions
 
-			// index of top-left corner
-			uint32 baseoff = 4 * (yl_margin * (xl_margin + orgzoomwidth + xr_margin) + xl_margin);
-			sint32 basewidth = xl_margin + orgzoomwidth + xr_margin;
+			sint32 basewidth = images[n].base_w;
+			PIXVAL* src = images[n].base_data;
+			PIXVAL* dest = reinterpret_cast<PIXVAL*>(rezoom_baseimage[n % env_t::num_threads]);
+			memset(dest, 255, new_size); // fill with invalid data to mark transparent regions
 
-			// now: unpack the image
-			for(  sint32 y = 0;  y < images[n].base_h;  ++y  ) {
+			// now: unpack the image (to PIXVAL!)
+			for (sint32 y = 0; y < images[n].base_h; ++y) {
 				uint16 runlen;
-				uint8 *p = rezoom_baseimage[n % env_t::num_threads] + baseoff + y * (basewidth * 4);
+				PIXVAL* p = dest + (y * basewidth);
 
 				// decode line
 				runlen = *src++;
 				do {
 					// clear run
-					p += (runlen & ~TRANSPARENT_RUN) * 4;
+					p += (runlen & ~TRANSPARENT_RUN);
 					// color pixel
 					runlen = (*src++) & ~TRANSPARENT_RUN;
-					while(  runlen--  ) {
-						// get rgb components
-						PIXVAL s = *src++;
-						*p++ = (s>>15);
-						*p++ = (s & 31);
-						s >>= 5;
-						*p++ = (s & 31);
-						s >>= 5;
-						*p++ = (s & 31);
+					while (runlen--) {
+						*p++ = *src++;
 					}
 					runlen = *src++;
-				} while(  runlen != 0  );
+				} while (runlen != 0);
 			}
 
-			// now we have the image, we do a repack then
-			dest = rezoom_baseimage2[n % env_t::num_threads];
-			switch(  g_simgraph16.zoom_den[zoom_factor]  ) {
-				case 1: {
-					assert(g_simgraph16.zoom_num[zoom_factor]==2);
-
-					// first half row - just copy values, do not fiddle with neighbor colors
-					uint8 *p1 = rezoom_baseimage[n % env_t::num_threads] + baseoff;
-					for(  sint16 x = 0;  x < orgzoomwidth;  x++  ) {
-						PIXVAL c1 = compress_pixel_transparent( p1 + (x * 4) );
-						// now set the pixel ...
-						dest[x * 2] = c1;
-						dest[x * 2 + 1] = c1;
-					}
-					// skip one line
-					dest += newzoomwidth;
-
-					for(  sint16 y = 0;  y < orgzoomheight - 1;  y++  ) {
-						uint8 *p1 = rezoom_baseimage[n % env_t::num_threads] + baseoff + y * (basewidth * 4);
-						// copy leftmost pixels
-						dest[0] = compress_pixel_transparent( p1 );
-						dest[newzoomwidth] = compress_pixel_transparent( p1 + basewidth * 4 );
-						for(  sint16 x = 0;  x < orgzoomwidth - 1;  x++  ) {
-							uint8 *px1 = p1 + (x * 4);
-							// pixel at 2,2 in 2x2 superpixel
-							dest[x * 2 + 1] = zoomin_pixel( px1, px1 + 4, px1 + basewidth * 4, px1 + basewidth * 4 + 4 );
-
-							// 2x2 superpixel is transparent but original pixel was not
-							// preserve one pixel
-							if(  dest[x * 2 + 1] == 0x73FE  &&  px1[0] != 255  &&  dest[x * 2] == 0x73FE  &&  dest[x * 2 - newzoomwidth] == 0x73FE  &&  dest[x * 2 - newzoomwidth - 1] == 0x73FE  ) {
-								// preserve one pixel
-								dest[x * 2 + 1] = compress_pixel( px1 );
-							}
-
-							// pixel at 2,1 in next 2x2 superpixel
-							dest[x * 2 + 2] = zoomin_pixel( px1 + 4, px1, px1 + basewidth * 4 + 4, px1 + basewidth * 4 );
-
-							// pixel at 1,2 in next row 2x2 superpixel
-							dest[x * 2 + newzoomwidth + 1] = zoomin_pixel( px1 + basewidth * 4, px1 + basewidth * 4 + 4, px1, px1 + 4 );
-
-							// pixel at 1,1 in next row next 2x2 superpixel
-							dest[x * 2 + newzoomwidth + 2] = zoomin_pixel( px1 + basewidth * 4 + 4, px1 + basewidth * 4, px1 + 4, px1 );
-						}
-						// copy rightmost pixels
-						dest[2 * orgzoomwidth - 1] = compress_pixel_transparent( p1 + 4 * (orgzoomwidth - 1) );
-						dest[2 * orgzoomwidth + newzoomwidth - 1] = compress_pixel_transparent( p1 + 4 * (orgzoomwidth - 1) + basewidth * 4 );
-						// skip two lines
-						dest += 2 * newzoomwidth;
-					}
-					// last half row - just copy values, do not fiddle with neighbor colors
-					p1 = rezoom_baseimage[n % env_t::num_threads] + baseoff + (orgzoomheight - 1) * (basewidth * 4);
-					for(  sint16 x = 0;  x < orgzoomwidth;  x++  ) {
-						PIXVAL c1 = compress_pixel_transparent( p1 + (x * 4) );
-						// now set the pixel ...
-						dest[x * 2]   = c1;
-						dest[x * 2 + 1] = c1;
-					}
-					break;
+			// now we have the image
+			PIXVAL* pSrc = reinterpret_cast<PIXVAL*>(rezoom_baseimage[n % env_t::num_threads]);
+			dest = reinterpret_cast<PIXVAL*>(rezoom_baseimage2[n % env_t::num_threads]);
+#if 0
+			for (int dy = 0; dy < images[n].h; dy++) {
+				for (int dx = 0; dx < images[n].w; dx++) {
+					int offset = dy * basewidth + dx;
+					PIXVAL in = pSrc[offset];
+					RGBA pixel = pixval2rgba(in);
+					PIXVAL out = rgba2pixval(pixel);
+					dest[offset] = out;
 				}
-				case 2:
-					for(  sint16 y = 0;  y < newzoomheight;  y++  ) {
-						uint8 *p1 = rezoom_baseimage[n % env_t::num_threads] + baseoff + ((y * g_simgraph16.zoom_den[zoom_factor] + 0 - y_rem) / g_simgraph16.zoom_num[zoom_factor]) * (basewidth * 4);
-						uint8 *p2 = rezoom_baseimage[n % env_t::num_threads] + baseoff + ((y * g_simgraph16.zoom_den[zoom_factor] + 1 - y_rem) / g_simgraph16.zoom_num[zoom_factor]) * (basewidth * 4);
-						for(  sint16 x = 0;  x < newzoomwidth;  x++  ) {
-							uint8 valid = 0;
-							uint8 r = 0, g = 0, b = 0;
-							sint16 xreal1 = ((x * g_simgraph16.zoom_den[zoom_factor] + 0 - x_rem) / g_simgraph16.zoom_num[zoom_factor]) * 4;
-							sint16 xreal2 = ((x * g_simgraph16.zoom_den[zoom_factor] + 1 - x_rem) / g_simgraph16.zoom_num[zoom_factor]) * 4;
-							SumSubpixel( p1 + xreal1 );
-							SumSubpixel( p1 + xreal2 );
-							SumSubpixel( p2 + xreal1 );
-							SumSubpixel( p2 + xreal2 );
-							if(  valid == 0  ) {
-								*dest++ = 0x73FE;
-							}
-							else if(  valid == 255  ) {
-								*dest++ = (0x8000 | r) + (((uint16)g)<<5) + (((uint16)b)<<10);
-							}
-							else {
-								*dest++ = (r/valid) + (((uint16)(g/valid))<<5) + (((uint16)(b/valid))<<10);
-							}
-						}
-					}
-					break;
-				case 3:
-					for(  sint16 y = 0;  y < newzoomheight;  y++  ) {
-						uint8 *p1 = rezoom_baseimage[n % env_t::num_threads] + baseoff + ((y * g_simgraph16.zoom_den[zoom_factor] + 0 - y_rem) / g_simgraph16.zoom_num[zoom_factor]) * (basewidth * 4);
-						uint8 *p2 = rezoom_baseimage[n % env_t::num_threads] + baseoff + ((y * g_simgraph16.zoom_den[zoom_factor] + 1 - y_rem) / g_simgraph16.zoom_num[zoom_factor]) * (basewidth * 4);
-						uint8 *p3 = rezoom_baseimage[n % env_t::num_threads] + baseoff + ((y * g_simgraph16.zoom_den[zoom_factor] + 2 - y_rem) / g_simgraph16.zoom_num[zoom_factor]) * (basewidth * 4);
-						for(  sint16 x = 0;  x < newzoomwidth;  x++  ) {
-							uint8 valid = 0;
-							uint16 r = 0, g = 0, b = 0;
-							sint16 xreal1 = ((x * g_simgraph16.zoom_den[zoom_factor] + 0 - x_rem) / g_simgraph16.zoom_num[zoom_factor]) * 4;
-							sint16 xreal2 = ((x * g_simgraph16.zoom_den[zoom_factor] + 1 - x_rem) / g_simgraph16.zoom_num[zoom_factor]) * 4;
-							sint16 xreal3 = ((x * g_simgraph16.zoom_den[zoom_factor] + 2 - x_rem) / g_simgraph16.zoom_num[zoom_factor]) * 4;
-							SumSubpixel( p1 + xreal1 );
-							SumSubpixel( p1 + xreal2 );
-							SumSubpixel( p1 + xreal3 );
-							SumSubpixel( p2 + xreal1 );
-							SumSubpixel( p2 + xreal2 );
-							SumSubpixel( p2 + xreal3 );
-							SumSubpixel( p3 + xreal1 );
-							SumSubpixel( p3 + xreal2 );
-							SumSubpixel( p3 + xreal3 );
-							if(  valid == 0  ) {
-								*dest++ = 0x73FE;
-							}
-							else if(  valid == 255  ) {
-								*dest++ = (0x8000 | r) + (((uint16)g)<<5) + (((uint16)b)<<10);
-							}
-							else {
-								*dest++ = (r/valid) | (((uint16)(g/valid))<<5) | (((uint16)(b/valid))<<10);
-							}
-						}
-					}
-					break;
-				case 4:
-					for(  sint16 y = 0;  y < newzoomheight;  y++  ) {
-						uint8 *p1 = rezoom_baseimage[n % env_t::num_threads] + baseoff + ((y * g_simgraph16.zoom_den[zoom_factor] + 0 - y_rem) / g_simgraph16.zoom_num[zoom_factor]) * (basewidth * 4);
-						uint8 *p2 = rezoom_baseimage[n % env_t::num_threads] + baseoff + ((y * g_simgraph16.zoom_den[zoom_factor] + 1 - y_rem) / g_simgraph16.zoom_num[zoom_factor]) * (basewidth * 4);
-						uint8 *p3 = rezoom_baseimage[n % env_t::num_threads] + baseoff + ((y * g_simgraph16.zoom_den[zoom_factor] + 2 - y_rem) / g_simgraph16.zoom_num[zoom_factor]) * (basewidth * 4);
-						uint8 *p4 = rezoom_baseimage[n % env_t::num_threads] + baseoff + ((y * g_simgraph16.zoom_den[zoom_factor] + 3 - y_rem) / g_simgraph16.zoom_num[zoom_factor]) * (basewidth * 4);
-						for(  sint16 x = 0;  x < newzoomwidth;  x++  ) {
-							uint8 valid = 0;
-							uint16 r = 0, g = 0, b = 0;
-							sint16 xreal1 = ((x * g_simgraph16.zoom_den[zoom_factor] + 0 - x_rem) / g_simgraph16.zoom_num[zoom_factor]) * 4;
-							sint16 xreal2 = ((x * g_simgraph16.zoom_den[zoom_factor] + 1 - x_rem) / g_simgraph16.zoom_num[zoom_factor]) * 4;
-							sint16 xreal3 = ((x * g_simgraph16.zoom_den[zoom_factor] + 2 - x_rem) / g_simgraph16.zoom_num[zoom_factor]) * 4;
-							sint16 xreal4 = ((x * g_simgraph16.zoom_den[zoom_factor] + 3 - x_rem) / g_simgraph16.zoom_num[zoom_factor]) * 4;
-							SumSubpixel( p1 + xreal1 );
-							SumSubpixel( p1 + xreal2 );
-							SumSubpixel( p1 + xreal3 );
-							SumSubpixel( p1 + xreal4 );
-							SumSubpixel( p2 + xreal1 );
-							SumSubpixel( p2 + xreal2 );
-							SumSubpixel( p2 + xreal3 );
-							SumSubpixel( p2 + xreal4 );
-							SumSubpixel( p3 + xreal1 );
-							SumSubpixel( p3 + xreal2 );
-							SumSubpixel( p3 + xreal3 );
-							SumSubpixel( p3 + xreal4 );
-							SumSubpixel( p4 + xreal1 );
-							SumSubpixel( p4 + xreal2 );
-							SumSubpixel( p4 + xreal3 );
-							SumSubpixel( p4 + xreal4 );
-							if(  valid == 0  ) {
-								*dest++ = 0x73FE;
-							}
-							else if(  valid == 255  ) {
-								*dest++ = (0x8000 | r) + (((uint16)g)<<5) + (((uint16)b)<<10);
-							}
-							else {
-								*dest++ = (r/valid) | (((uint16)(g/valid))<<5) | (((uint16)(b/valid))<<10);
-							}
-						}
-					}
-					break;
-				case 8:
-					for(  sint16 y = 0;  y < newzoomheight;  y++  ) {
-						uint8 *p1 = rezoom_baseimage[n % env_t::num_threads] + baseoff + ((y * g_simgraph16.zoom_den[zoom_factor] + 0 - y_rem) / g_simgraph16.zoom_num[zoom_factor]) * (basewidth * 4);
-						uint8 *p2 = rezoom_baseimage[n % env_t::num_threads] + baseoff + ((y * g_simgraph16.zoom_den[zoom_factor] + 1 - y_rem) / g_simgraph16.zoom_num[zoom_factor]) * (basewidth * 4);
-						uint8 *p3 = rezoom_baseimage[n % env_t::num_threads] + baseoff + ((y * g_simgraph16.zoom_den[zoom_factor] + 2 - y_rem) / g_simgraph16.zoom_num[zoom_factor]) * (basewidth * 4);
-						uint8 *p4 = rezoom_baseimage[n % env_t::num_threads] + baseoff + ((y * g_simgraph16.zoom_den[zoom_factor] + 3 - y_rem) / g_simgraph16.zoom_num[zoom_factor]) * (basewidth * 4);
-						uint8 *p5 = rezoom_baseimage[n % env_t::num_threads] + baseoff + ((y * g_simgraph16.zoom_den[zoom_factor] + 4 - y_rem) / g_simgraph16.zoom_num[zoom_factor]) * (basewidth * 4);
-						uint8 *p6 = rezoom_baseimage[n % env_t::num_threads] + baseoff + ((y * g_simgraph16.zoom_den[zoom_factor] + 5 - y_rem) / g_simgraph16.zoom_num[zoom_factor]) * (basewidth * 4);
-						uint8 *p7 = rezoom_baseimage[n % env_t::num_threads] + baseoff + ((y * g_simgraph16.zoom_den[zoom_factor] + 6 - y_rem) / g_simgraph16.zoom_num[zoom_factor]) * (basewidth * 4);
-						uint8 *p8 = rezoom_baseimage[n % env_t::num_threads] + baseoff + ((y * g_simgraph16.zoom_den[zoom_factor] + 7 - y_rem) / g_simgraph16.zoom_num[zoom_factor]) * (basewidth * 4);
-						for(  sint16 x = 0;  x < newzoomwidth;  x++  ) {
-							uint8 valid = 0;
-							uint16 r = 0, g = 0, b = 0;
-							sint16 xreal1 = ((x * g_simgraph16.zoom_den[zoom_factor] + 0 - x_rem) / g_simgraph16.zoom_num[zoom_factor]) * 4;
-							sint16 xreal2 = ((x * g_simgraph16.zoom_den[zoom_factor] + 1 - x_rem) / g_simgraph16.zoom_num[zoom_factor]) * 4;
-							sint16 xreal3 = ((x * g_simgraph16.zoom_den[zoom_factor] + 2 - x_rem) / g_simgraph16.zoom_num[zoom_factor]) * 4;
-							sint16 xreal4 = ((x * g_simgraph16.zoom_den[zoom_factor] + 3 - x_rem) / g_simgraph16.zoom_num[zoom_factor]) * 4;
-							sint16 xreal5 = ((x * g_simgraph16.zoom_den[zoom_factor] + 4 - x_rem) / g_simgraph16.zoom_num[zoom_factor]) * 4;
-							sint16 xreal6 = ((x * g_simgraph16.zoom_den[zoom_factor] + 5 - x_rem) / g_simgraph16.zoom_num[zoom_factor]) * 4;
-							sint16 xreal7 = ((x * g_simgraph16.zoom_den[zoom_factor] + 6 - x_rem) / g_simgraph16.zoom_num[zoom_factor]) * 4;
-							sint16 xreal8 = ((x * g_simgraph16.zoom_den[zoom_factor] + 7 - x_rem) / g_simgraph16.zoom_num[zoom_factor]) * 4;
-							SumSubpixel( p1 + xreal1 );
-							SumSubpixel( p1 + xreal2 );
-							SumSubpixel( p1 + xreal3 );
-							SumSubpixel( p1 + xreal4 );
-							SumSubpixel( p1 + xreal5 );
-							SumSubpixel( p1 + xreal6 );
-							SumSubpixel( p1 + xreal7 );
-							SumSubpixel( p1 + xreal8 );
-							SumSubpixel( p2 + xreal1 );
-							SumSubpixel( p2 + xreal2 );
-							SumSubpixel( p2 + xreal3 );
-							SumSubpixel( p2 + xreal4 );
-							SumSubpixel( p2 + xreal5 );
-							SumSubpixel( p2 + xreal6 );
-							SumSubpixel( p2 + xreal7 );
-							SumSubpixel( p2 + xreal8 );
-							SumSubpixel( p3 + xreal1 );
-							SumSubpixel( p3 + xreal2 );
-							SumSubpixel( p3 + xreal3 );
-							SumSubpixel( p3 + xreal4 );
-							SumSubpixel( p3 + xreal5 );
-							SumSubpixel( p3 + xreal6 );
-							SumSubpixel( p3 + xreal7 );
-							SumSubpixel( p3 + xreal8 );
-							SumSubpixel( p4 + xreal1 );
-							SumSubpixel( p4 + xreal2 );
-							SumSubpixel( p4 + xreal3 );
-							SumSubpixel( p4 + xreal4 );
-							SumSubpixel( p4 + xreal5 );
-							SumSubpixel( p4 + xreal6 );
-							SumSubpixel( p4 + xreal7 );
-							SumSubpixel( p4 + xreal8 );
-							SumSubpixel( p5 + xreal1 );
-							SumSubpixel( p5 + xreal2 );
-							SumSubpixel( p5 + xreal3 );
-							SumSubpixel( p5 + xreal4 );
-							SumSubpixel( p5 + xreal5 );
-							SumSubpixel( p5 + xreal6 );
-							SumSubpixel( p5 + xreal7 );
-							SumSubpixel( p5 + xreal8 );
-							SumSubpixel( p6 + xreal1 );
-							SumSubpixel( p6 + xreal2 );
-							SumSubpixel( p6 + xreal3 );
-							SumSubpixel( p6 + xreal4 );
-							SumSubpixel( p6 + xreal5 );
-							SumSubpixel( p6 + xreal6 );
-							SumSubpixel( p6 + xreal7 );
-							SumSubpixel( p6 + xreal8 );
-							SumSubpixel( p7 + xreal1 );
-							SumSubpixel( p7 + xreal2 );
-							SumSubpixel( p7 + xreal3 );
-							SumSubpixel( p7 + xreal4 );
-							SumSubpixel( p7 + xreal5 );
-							SumSubpixel( p7 + xreal6 );
-							SumSubpixel( p7 + xreal7 );
-							SumSubpixel( p7 + xreal8 );
-							SumSubpixel( p8 + xreal1 );
-							SumSubpixel( p8 + xreal2 );
-							SumSubpixel( p8 + xreal3 );
-							SumSubpixel( p8 + xreal4 );
-							SumSubpixel( p8 + xreal5 );
-							SumSubpixel( p8 + xreal6 );
-							SumSubpixel( p8 + xreal7 );
-							SumSubpixel( p8 + xreal8 );
-							if(  valid == 0  ) {
-								*dest++ = 0x73FE;
-							}
-							else if(  valid == 255  ) {
-								*dest++ = (0x8000 | r) + (((uint16)g)<<5) + (((uint16)b)<<10);
-							}
-							else {
-								*dest++ = (r/valid) | (((uint16)(g/valid))<<5) | (((uint16)(b/valid))<<10);
-							}
-						}
-					}
-					break;
-				default: assert(0);
 			}
+#else
+			const int bw = images[n].base_w;
+			const int bh = images[n].base_h;
+			const int nw = images[n].w;
+			const int nh = images[n].h;
+
+			// pixel-center aligned scales
+			const float x_scale = (float)bw / nw;
+			const float y_scale = (float)bh / nh;
+			// when shrinking, stretch the kernel so every source pixel contributes
+			const float fx = min(max(x_scale, 1.0f), 15.0f);
+			const float fy = min(max(y_scale, 1.0f), 15.0f);
+
+			enum { MAXTAP = 64 };   // >= 4*15+2
+			float wx[MAXTAP], wy[MAXTAP];
+
+			for (int dy = 0; dy < nh; dy++) {
+				const float src_y = (dy + 0.5f) * y_scale - 0.5f;
+				const int y0 = (int)floorf(src_y - 2.0f * fy) + 1;
+				const int y1 = (int)ceilf(src_y + 2.0f * fy) - 1;
+				const int ny = y1 - y0 + 1;
+
+				float sum = 0.0f;
+				for (int j = 0; j < ny; j++) {
+					wy[j] = bicubic_kernel(((y0 + j) - src_y) / fy);
+					sum += wy[j];
+				}
+				for (int j = 0; j < ny; j++) {
+					wy[j] /= sum;
+				}
+
+				for (int dx = 0; dx < nw; dx++) {
+					const float src_x = (dx + 0.5f) * x_scale - 0.5f;
+
+					// special colors: take nearest source pixel unchanged
+					{
+						int nx = clamp((int)floorf(src_x + 0.5f), 0, bw - 1);
+						int ny_ = clamp((int)floorf(src_y + 0.5f), 0, bh - 1);
+						PIXVAL nearest = pSrc[ny_ * bw + nx];
+						if (nearest >= 0x8000 && nearest < 0x8020) {
+							dest[dx + dy * nw] = nearest;
+							continue;
+						}
+					}
+
+					const int x0 = (int)floorf(src_x - 2.0f * fx) + 1;
+					const int x1 = (int)ceilf(src_x + 2.0f * fx) - 1;
+					const int nx = x1 - x0 + 1;
+
+					sum = 0.0f;
+					for (int i = 0; i < nx; i++) {
+						wx[i] = bicubic_kernel(((x0 + i) - src_x) / fx);
+						sum += wx[i];
+					}
+					for (int i = 0; i < nx; i++) {
+						wx[i] /= sum;
+					}
+
+					float r_sum = 0, g_sum = 0, b_sum = 0, a_sum = 0;   // r,g,b are alpha-premultiplied
+
+					for (int j = 0; j < ny; j++) {
+						const int sy = clamp(y0 + j, 0, bh - 1);
+						for (int i = 0; i < nx; i++) {
+							const int sx = clamp(x0 + i, 0, bw - 1);
+							const RGBA p = pixval2rgba(pSrc[sy * bw + sx]);
+							if (p.a <= 1) {
+								continue;               // transparent or special color: contributes nothing
+							}
+							const float w = wy[j] * wx[i];
+							const float wa = w * (p.a / 255.0f);
+							a_sum += w * p.a;
+							r_sum += p.r * wa;
+							g_sum += p.g * wa;
+							b_sum += p.b * wa;
+						}
+					}
+
+					PIXVAL out;
+					const float cw = a_sum / 255.0f;       // == sum of w*alpha, i.e. the color normalizer
+					if (a_sum < 0.5f || cw < 0.0001f) {
+						// transparent
+						out = 0xFFFF;
+					}
+					else {
+						// normal pixel
+						RGBA rgb;
+						rgb.a = (int)(a_sum + 0.5f);
+						rgb.b = clamp((int)(b_sum / cw + 0.5f), 0, 255);
+						rgb.g = clamp((int)(g_sum / cw + 0.5f), 0, 255);
+						rgb.r = clamp((int)(r_sum / cw + 0.5f), 0, 255);
+						out = rgba2pixval(rgb);
+					}
+					dest[dx + dy * nw] = out;
+				}
+			}
+#endif
 
 			// now encode the image again
-			dest = reinterpret_cast<PIXVAL *>(rezoom_baseimage[n % env_t::num_threads]);
-			for(  sint16 y = 0;  y < newzoomheight;  y++  ) {
-				PIXVAL *line = ((PIXVAL *)rezoom_baseimage2[n % env_t::num_threads]) + (y * newzoomwidth);
+			src = reinterpret_cast<PIXVAL*>(rezoom_baseimage2[n % env_t::num_threads]);
+			dest = reinterpret_cast<PIXVAL*>(rezoom_baseimage[n % env_t::num_threads]);
+			for (sint16 y = 0; y < newzoomheight; y++) {
+				PIXVAL* line = src + (y * newzoomwidth);
 				PIXVAL count;
 				sint16 x = 0;
 				uint16 clear_colored_run_pair_count = 0;
 
 				do {
 					// check length of transparent pixels
-					for(  count = 0;  x < newzoomwidth  &&  line[x] == 0x73FE;  count++, x++  )
-						{}
+					for (count = 0; x < newzoomwidth && line[x] == 0xFFFF; count++, x++)
+					{
+					}
 					// first runlength: transparent pixels
 					*dest++ = count;
 					uint16 has_alpha = 0;
 					// copy for non-transparent
 					count = 0;
-					while(  x < newzoomwidth  &&  line[x] != 0x73FE  ) {
+					while (x < newzoomwidth && line[x] != 0xFFFF) {
 						PIXVAL pixval = line[x++];
-						if(  pixval >= 0x8020  &&  !has_alpha  ) {
-							if(  count  ) {
+						if (pixval >= 0x8020 && !has_alpha) {
+							if (count) {
 								*dest++ = count;
 								dest += count;
 								count = 0;
@@ -1774,9 +1697,9 @@ static void rezoom_img(const image_id n)
 							}
 							has_alpha = TRANSPARENT_RUN;
 						}
-						else if(  pixval < 0x8020  &&  has_alpha  ) {
-							if(  count  ) {
-								*dest++ = count+TRANSPARENT_RUN;
+						else if (pixval < 0x8020 && has_alpha) {
+							if (count) {
+								*dest++ = count + TRANSPARENT_RUN;
 								dest += count;
 								count = 0;
 								*dest++ = TRANSPARENT_RUN;
@@ -1791,44 +1714,42 @@ static void rezoom_img(const image_id n)
 					 * If it is not the first clear-colored-run pair and its colored run is empty
 					 * --> it is superfluous and can be removed by rolling back the pointer
 					 */
-					if(  clear_colored_run_pair_count > 0  &&  count == 0  ) {
+					if (clear_colored_run_pair_count > 0 && count == 0) {
 						dest--;
 						// this only happens at the end of a line, so no need to increment clear_colored_run_pair_count
 					}
 					else {
-						*dest++ = count+has_alpha; // number of colored pixels
+						*dest++ = count + has_alpha; // number of colored pixels
 						dest += count; // skip them
 						clear_colored_run_pair_count++;
 					}
-				} while(  x < newzoomwidth  );
+				} while (x < newzoomwidth);
 				*dest++ = 0; // mark line end
 			}
 
 			// something left?
 			images[n].w = newzoomwidth;
 			images[n].h = newzoomheight;
-			if(  newzoomheight > 0  ) {
-				const size_t zoom_len = (size_t)(((uint8 *)dest) - ((uint8 *)rezoom_baseimage[n % env_t::num_threads]));
-				images[n].len = (uint32)(zoom_len / sizeof(PIXVAL));
-				images[n].zoom_data = MALLOCN(PIXVAL, images[n].len);
-				assert( images[n].zoom_data );
-				memcpy( images[n].zoom_data, rezoom_baseimage[n % env_t::num_threads], zoom_len );
+			if (newzoomheight > 0) {
+				const size_t zoom_len = (size_t)(((uint8*)dest) - ((uint8*)rezoom_baseimage[n % env_t::num_threads]));
+				images[n].zoom_data = MALLOCN(PIXVAL, zoom_len);
+				images[n].len = zoom_len;
+				memcpy(images[n].zoom_data, rezoom_baseimage[n % env_t::num_threads], zoom_len);
 			}
 		}
 		else {
-//			if (images[n].w <= 0) {
-//				// h=0 will be ignored, with w=0 there was an error!
-//				printf("WARNING: image%d w=0!\n", n);
-//			}
+			//         if (images[n].w <= 0) {
+			//            // h=0 will be ignored, with w=0 there was an error!
+			//            printf("WARNING: image%d w=0!\n", n);
+			//         }
 			images[n].h = 0;
 		}
 		images[n].recode_flags &= ~FLAG_REZOOM;
 #ifdef MULTI_THREAD
-		pthread_mutex_unlock( &rezoom_img_mutex[n % env_t::num_threads] );
+		pthread_mutex_unlock(&rezoom_img_mutex[n % env_t::num_threads]);
 #endif
 	}
 }
-
 
 
 // get next smallest size when scaling to percent
