@@ -13,6 +13,7 @@ jobs:
         with:
           msystem: UCRT64
           update: false
+          path-type: minimal
           install: base-devel pkg-config make mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-libpng
 
       - name: Checkout code
