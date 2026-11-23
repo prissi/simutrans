@@ -22,6 +22,8 @@ jobs:
         shell: msys2 {0}
         working-directory: ${{env.GITHUB_WORKSPACE}}
         run: |
+          gcc -dumpmachine
+          cc -dumpmachine
           printf 'BACKEND := posix\nOSTYPE := mingw\nOPTIMISE := 1\nSTATIC := 1\n' | cat >config.default
           cd src/makeobj
           make
